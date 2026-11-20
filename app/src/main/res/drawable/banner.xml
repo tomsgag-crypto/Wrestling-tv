@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 Android TV home-screen banner -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#120A2A" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#E0182D" android:pathData="M0,128h320v14h-320z" />
+    <path android:fillColor="#FFD400" android:pathData="M0,146h320v6h-320z" />
+    <!-- wrestling ring: posts and ropes -->
+    <path android:fillColor="#FFFFFF" android:pathData="M40,40h8v80h-8z M272,40h8v80h-8z" />
+    <path android:strokeColor="#E0182D" android:strokeWidth="4" android:pathData="M48,56H272 M48,76H272 M48,96H272" />
+    <path android:fillColor="#FFD400" android:pathData="M120,62 L200,62 L188,110 L132,110 Z" />
+    <path android:fillColor="#120A2A" android:pathData="M146,72 L174,72 L168,100 L152,100 Z" />
+</vector>
