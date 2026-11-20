@@ -7,7 +7,6 @@ import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MediaMetadata;
 import androidx.media3.common.PlaybackException;
@@ -59,7 +58,7 @@ public class PlayerActivity extends Activity {
 
         player.addListener(new Player.Listener() {
             @Override
-            public void onPlayerError(@NonNull PlaybackException error) {
+            public void onPlayerError(PlaybackException error) {
                 Toast.makeText(PlayerActivity.this,
                         "This video can't be played on this TV", Toast.LENGTH_LONG).show();
                 if (player.hasNextMediaItem()) {
