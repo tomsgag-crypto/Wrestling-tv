@@ -2,6 +2,9 @@ name: Build APK
 
 on:
   push:
+    paths-ignore:
+      - 'archive-app/**'
+      - '.github/workflows/build-archive-app.yml'
   workflow_dispatch:
 
 permissions:

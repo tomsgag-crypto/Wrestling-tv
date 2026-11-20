@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#0B0B12" android:pathData="M0,0h320v180h-320z" />
+    <!-- VHS-style tape body -->
+    <path android:fillColor="#23232F" android:pathData="M60,40h200v100h-200z" />
+    <path android:fillColor="#0B0B12" android:pathData="M90,70h140v40h-140z" />
+    <path android:fillColor="#DADADA" android:pathData="M120,90m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0 M200,90m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
+    <!-- label stripes: red (WCW-ish) and gold -->
+    <path android:fillColor="#D81E2C" android:pathData="M60,40h100v20h-100z" />
+    <path android:fillColor="#F2B705" android:pathData="M160,40h100v20h-100z" />
+    <path android:fillColor="#D81E2C" android:pathData="M0,156h320v8h-320z" />
+    <path android:fillColor="#F2B705" android:pathData="M0,166h320v4h-320z" />
+</vector>
