@@ -1,6 +1,6 @@
 // Builds the movie catalogue used by the Movie Channels and Movie Archive apps.
 // Runs on a GitHub runner (weekly): matches Internet Archive uploads against Wikidata's list of
-// English-language films from 1980-2009, keeps only whole films in one video, and adds workprints and fan edits.
+// English-language films from 1980 to this year, keeps only whole films in one video, and adds workprints and fan edits.
 // Output: out/movies.json  {v, built, films:[{i,f,t,y,g,d,c,n}]}
 //   i = Archive id, f = video file, t = title, y = year, g = genres, d = seconds, c = 'f' film | 'w' workprint | 'e' fan edit, n = downloads
 'use strict';
@@ -30,7 +30,7 @@ async function pool(list, n, fn) {
 // ------------------------------------------------------------ 1. Wikidata: the films
 async function wikidata() {
   const films = new Map();
-  for (let y = 1979; y <= 2010; y++) {
+  for (let y = M.FIRST_YEAR - 1; y <= M.LAST_YEAR; y++) {
     const q = `SELECT ?f ?l (MIN(?dt) AS ?d) (GROUP_CONCAT(DISTINCT ?gl; separator="|") AS ?g) (SAMPLE(?sl) AS ?s) (SAMPLE(?alt) AS ?a) WHERE {
       ?f wdt:P31 wd:Q11424; wdt:P577 ?dt; wdt:P364 wd:Q1860; wikibase:sitelinks ?sl.
       FILTER(YEAR(?dt) = ${y})
@@ -49,7 +49,7 @@ async function wikidata() {
     console.log('wikidata', y, films.size);
     await sleep(1500);
   }
-  return [...films.values()].filter((f) => f.y >= 1980 && f.y <= 2009);
+  return [...films.values()].filter((f) => f.y >= M.FIRST_YEAR && f.y <= M.LAST_YEAR);
 }
 
 // ------------------------------------------------------------ 2. Internet Archive: candidate uploads
@@ -88,7 +88,7 @@ async function inspect(it, kind) {
   const index = M.buildIndex(wd);
 
   console.log('searching the Archive…');
-  const cands = await scrape(`mediatype:movies AND item_size:[400000000 TO 60000000000] AND NOT collection:(${NOT_COLL})`, 1500000);
+  const cands = await scrape(`mediatype:movies AND item_size:[400000000 TO 60000000000] AND NOT collection:(${NOT_COLL})`, 3000000);
   console.log('candidate uploads:', cands.length);
 
   // match uploads to films
@@ -113,7 +113,7 @@ async function inspect(it, kind) {
     for (const it of g.copies.slice(0, 3)) {
       const p = await inspect(it, 'f');
       if (p) {
-        out.push({ i: it.identifier, f: p.name, t: g.film.t, y: g.film.y, g: M.genres(g.film.g), d: p.d, c: 'f', n: it.downloads || 0 });
+        out.push({ i: it.identifier, f: p.name, t: g.film.t, y: g.film.y, g: M.genres(g.film.g, g.film.t), d: p.d, c: 'f', n: it.downloads || 0 });
         break;
       }
     }
