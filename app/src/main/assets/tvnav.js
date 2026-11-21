@@ -21,7 +21,10 @@
     'min-width:0 !important;min-height:0 !important;margin:0 !important;padding:0 !important;border:0 !important;' +
     'border-radius:0 !important;transform:none !important;object-fit:contain !important;background:#000 !important;' +
     'z-index:2147483647 !important;outline:none !important;box-shadow:none !important}' +
-    '#rc-fs-bg{position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:2147483646}' +
+    /* hide the rest of the page rather than covering it (covers can end up on top of the video) */
+    'html.rc-fs,html.rc-fs body{background:#000 !important}' +
+    'html.rc-fs body *{visibility:hidden !important}' +
+    'html.rc-fs .rc-fs-el,html.rc-fs .rc-fs-el *{visibility:visible !important}' +
     '#rc-msg{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);background:rgba(10,10,20,.92);color:#fff;' +
     'font:600 20px/1.3 sans-serif;padding:12px 22px;border-radius:10px;border:2px solid #ffd400;' +
     'z-index:2147483647;pointer-events:none;transition:opacity .4s;max-width:80vw;text-align:center}' +
@@ -179,15 +182,28 @@
 
   function area(el) { var r = el.getBoundingClientRect(); return r.width * r.height; }
   function pickVideo() {
-    var best = null, bestA = 0;
-    ['video', 'iframe', 'canvas'].some(function (sel) {
-      Array.prototype.forEach.call(document.querySelectorAll(sel), function (el) {
-        var r = el.getBoundingClientRect();
-        if (r.width < 160 || r.height < 90 || !visible(el)) return;
-        var a = area(el) * (sel === 'video' && !el.paused ? 2 : 1);
-        if (a > bestA) { bestA = a; best = el; }
-      });
-      return !!best;                       // prefer <video>, then <iframe>, then <canvas>
+    var best = null, bestScore = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('video, iframe'), function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.width < 160 || r.height < 90 || !visible(el)) return;
+      var op = 1;
+      for (var a = el; a && a.nodeType === 1; a = a.parentElement) op *= +getComputedStyle(a).opacity;
+      if (op < 0.5) return;                                         // faint decorative layer
+      var score = r.width * r.height, src = (el.currentSrc || el.src || '') + '';
+      var cover = r.width >= innerWidth * 0.95 && r.height >= innerHeight * 0.95;
+      if (el.tagName === 'VIDEO') {
+        if (!el.paused && el.readyState > 1) score *= 4;          // actually playing
+        if (el.loop && el.muted && !el.controls) score *= cover ? 0.05 : 0.3;   // background/static effect
+        if (el.controls || el.poster) score *= 1.5;
+      } else if (/youtube|youtu\.be|vimeo|player|embed|stream|twitch|dailymotion|archive\.org/i.test(src)) {
+        score *= 3;
+      }
+      if (score > bestScore) { bestScore = score; best = el; }
+    });
+    if (best) return best;
+    Array.prototype.forEach.call(document.querySelectorAll('canvas'), function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.width >= 160 && r.height >= 90 && visible(el) && r.width * r.height > bestScore) { bestScore = r.width * r.height; best = el; }
     });
     return best;
   }
@@ -199,9 +215,6 @@
     for (var a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) a.classList.add('rc-anc');
     el.classList.add('rc-fs-el');
     document.documentElement.classList.add('rc-fs');
-    if (!document.getElementById('rc-fs-bg')) {
-      var bg = document.createElement('div'); bg.id = 'rc-fs-bg'; document.body.appendChild(bg);
-    }
     if (current) { current.classList.remove('tvnav-focus'); }
     fsOn = true; guideFromFs = false;
     if (window.RingApp) { RingApp.setFullscreen(true); RingApp.setShowing(true); }
@@ -215,7 +228,6 @@
     Array.prototype.forEach.call(document.querySelectorAll('.rc-anc'), function (a) { a.classList.remove('rc-anc'); });
     if (fsEl) fsEl.classList.remove('rc-fs-el');
     document.documentElement.classList.remove('rc-fs');
-    var bg = document.getElementById('rc-fs-bg'); if (bg) bg.remove();
     fsOn = false; fsEl = null;
     if (window.RingApp) { RingApp.setShowing(false); if (!keepWanted) RingApp.setFullscreen(false); }
     if (current && remote) current.classList.add('tvnav-focus');
