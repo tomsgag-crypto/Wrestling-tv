@@ -26,34 +26,55 @@
   #status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; display: none;
     background: rgba(0,0,0,.8); padding: 1.4vh 2vw; border-radius: 8px; font-size: 2.6vh; font-weight: 700; text-align: center; }
   #status.show { display: block; }
+  body.guide #status { top: calc(2.5vh + 11.25vw); left: auto; right: 22vw; transform: translate(50%, -50%); font-size: 2vh; }
 
   /* the guide */
-  #guide { position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; background: #0a1a7a; z-index: 1; display: none; }
+  #guide { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #0a1a7a; z-index: 1; display: none; }
   body.guide #guide { display: block; }
   #gTop { height: calc(22.5vw + 5vh); padding: 2.5vh 2vw 1vh 2.5vw; width: 56vw; }
   #gBrand { font-size: 3.2vh; font-weight: 800; color: #ffd400; letter-spacing: .1vw; }
   #gClock { font-size: 2.2vh; font-weight: 700; margin-bottom: 1.4vh; }
-  #iChan { font-size: 2.3vh; font-weight: 700; color: #7fe0ff; }
-  #iTitle { font-size: 3.2vh; font-weight: 800; margin: .4vh 0; line-height: 1.2; }
+  #iChan { font-size: 2.2vh; font-weight: 700; color: #7fe0ff; }
+  #iTitle { font-size: 3.1vh; font-weight: 800; margin: .4vh 0; line-height: 1.2; }
   #iWhen { font-size: 2.2vh; color: #ffd400; }
-  #gHead { display: flex; background: #1030c8; padding: .8vh 2vw; font-size: 1.9vh; font-weight: 800; color: #ffd400; }
-  #rows { position: absolute; left: 0; right: 0; bottom: 0; overflow: hidden; padding: .6vh 1vw 2vh; }
-  .row { display: flex; padding: 1vh 1vw; margin: .4vh 0; border-radius: 6px; border: 2px solid transparent;
-    border-bottom-color: rgba(80,110,255,.35); }
-  .row.sel { background: #1838e0; border-color: #ffd400; }
-  .c1 { width: 24%; } .c2 { width: 44%; padding-right: 1vw; } .c3 { width: 32%; }
-  .num { font-size: 2.8vh; font-weight: 800; color: #ffd400; }
-  .call { font-size: 1.8vh; font-weight: 700; color: #7fe0ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .t { font-size: 2.3vh; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .s { font-size: 1.8vh; color: #c8d2ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .c3 .t { font-weight: 400; color: #e6ebff; }
+  #gHead { display: flex; background: #1030c8; height: 4vh; line-height: 4vh; font-size: 1.8vh; font-weight: 800; color: #ffd400; }
+  #gHead .gch { padding-left: 1.5vw; }
+  #gTimes { position: relative; flex: 1; }
+  .tick { position: absolute; top: 0; padding-left: .5vw; border-left: 1px solid rgba(255,212,0,.5); white-space: nowrap; }
+  #rows { position: absolute; left: 0; right: 0; bottom: 0; overflow: hidden; }
+  .grow { display: flex; height: 6.4vh; border-bottom: 1px solid rgba(80,110,255,.45); }
+  .gch { width: 20%; flex: none; padding: .6vh 0 0 1.5vw; overflow: hidden; }
+  .grow.selrow .gch { background: #1838e0; }
+  .gline { position: relative; flex: 1; overflow: hidden; }
+  .blk { position: absolute; top: .4vh; bottom: .4vh; background: #1530b0; border: 1px solid #3355ff; border-radius: 4px;
+    padding: .3vh .5vw; overflow: hidden; }
+  .blk.now { background: #1a3ad0; }
+  .blk.gap { background: rgba(0,0,0,.25); border-color: rgba(80,110,255,.3); color: #8899dd; }
+  .blk.sel { background: #ffd400; color: #111; border-color: #fff; }
+  .blk.sel .bl { color: #3a2c00; }
+  .bt { font-size: 1.9vh; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bl { font-size: 1.5vh; color: #c8d2ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nowline { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff3355; z-index: 2; }
+  .num { font-size: 2.4vh; font-weight: 800; color: #ffd400; }
+  .call { font-size: 1.6vh; font-weight: 700; color: #7fe0ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .watch { color: #7fffa0; }
+
+  /* "Back at …" card */
+  #slate { position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; z-index: 3; display: none; text-align: center;
+    background: radial-gradient(#13289a, #050a30); padding-top: 30vh; }
+  #slate.show { display: block; }
+  body.guide #slate { top: 2.5vh; left: auto; right: 2vw; width: 40vw; height: 22.5vw; padding-top: 5vw; border: 3px solid #ffd400; }
+  .sCh { font-size: 3vh; font-weight: 800; color: #7fe0ff; }
+  .sBig { font-size: 7vh; font-weight: 800; color: #ffd400; margin: 1vh 0; }
+  .sNext { font-size: 2.8vh; }
+  .sHint { font-size: 2vh; color: #aab4ee; margin-top: 3vh; }
+  body.guide #slate .sBig { font-size: 3.5vh; } body.guide #slate .sNext, body.guide #slate .sHint { font-size: 1.6vh; }
 
   /* phone, held upright */
   @media (max-aspect-ratio: 1/1) {
     body.guide #v { width: 46vw; height: 25.9vw; }
     #gTop { width: 50vw; height: calc(25.9vw + 5vh); }
-    .c3 { display: none; } .c1 { width: 30%; } .c2 { width: 70%; }
+    .gch { width: 26%; }
   }
 </style>
 </head>
@@ -61,6 +82,7 @@
   <video id="v" playsinline preload="auto"></video>
   <div id="banner"><div id="bNum"></div><div id="bName"></div><div id="bNow"></div></div>
   <div id="status"></div>
+  <div id="slate"></div>
   <div id="guide">
     <div id="gTop">
       <div id="gBrand">WRESTLING CHANNELS</div>
@@ -69,7 +91,7 @@
       <div id="iTitle"></div>
       <div id="iWhen"></div>
     </div>
-    <div id="gHead"><div class="c1">CHANNEL</div><div class="c2">ON NOW</div><div class="c3">NEXT</div></div>
+    <div id="gHead"><div class="gch">CHANNEL</div><div id="gTimes"></div></div>
     <div id="rows"></div>
   </div>
   <script src="catalog.js"></script>
