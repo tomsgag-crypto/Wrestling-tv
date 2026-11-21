@@ -62,6 +62,8 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable hideButtons = () -> { if (fsButtons != null) fsButtons.setVisibility(View.GONE); };
     private int fsHints = 0;
+    private volatile String zoomMode = "video";   // "video" or "guide"
+    private TextView exitBtn, guideBtn;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -86,6 +88,8 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);   // let channels autoplay
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
+        s.setSupportZoom(false);                         // no pinch-zoom, so the page can't drift sideways
+        s.setBuiltInZoomControls(false);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);       // normal HTTP caching: picks up site updates
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         // Present as a desktop browser so the site serves its full TV-sized layout.
@@ -94,12 +98,17 @@ public class MainActivity extends Activity {
         webView.setBackgroundColor(Color.BLACK);
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
+        webView.setHorizontalScrollBarEnabled(false);
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface public void setFullscreen(boolean on) { fsWanted = on; }
             @JavascriptInterface public void setShowing(boolean on) {
                 fsShowing = on;
                 runOnUiThread(() -> onShowingChanged(on));
+            }
+            @JavascriptInterface public void setMode(String mode) {
+                zoomMode = "guide".equals(mode) ? "guide" : "video";
             }
             @JavascriptInterface public void zoomTo(float l, float t, float w, float h, float iw, float ih) {
                 runOnUiThread(() -> applyZoom(l, t, w, h, iw, ih));
@@ -196,9 +205,14 @@ public class MainActivity extends Activity {
 
     private void onShowingChanged(boolean on) {
         if (on) {
+            boolean guide = "guide".equals(zoomMode);
             phoneFullscreen(true);
+            exitBtn.setText(guide ? "\u2715  Close guide" : "\u2715  Exit full screen");
+            guideBtn.setVisibility(guide ? View.GONE : View.VISIBLE);
             if (!isTv()) { shield.setVisibility(View.VISIBLE); showButtons(); }
-            if (fsHints++ < 2) Toast.makeText(this, isTv()
+            if (guide) {
+                if (isTv() && fsHints < 3) Toast.makeText(this, "Press Back, OK or Menu to close the guide", Toast.LENGTH_SHORT).show();
+            } else if (fsHints++ < 2) Toast.makeText(this, isTv()
                     ? "Full screen – hold OK to exit, ▼ or Menu for the TV guide"
                     : "Tap the screen for buttons – double-tap or Back to exit", Toast.LENGTH_LONG).show();
         } else {
@@ -262,14 +276,19 @@ public class MainActivity extends Activity {
                 if (fsButtons.getVisibility() == View.VISIBLE) hideButtons.run(); else showButtons();
                 return true;
             }
-            @Override public boolean onDoubleTap(MotionEvent e) { nav("toggleFullscreen()"); return true; }
+            @Override public boolean onDoubleTap(MotionEvent e) {
+                nav("guide".equals(zoomMode) ? "guide()" : "toggleFullscreen()"); return true;
+            }
         });
         shield.setOnTouchListener((v, e) -> { gd.onTouchEvent(e); return true; });
 
         fsButtons = new LinearLayout(this);
         fsButtons.setOrientation(LinearLayout.HORIZONTAL);
-        TextView exit = pill("\u2715  Exit full screen", () -> nav("toggleFullscreen()"));
+        TextView exit = pill("\u2715  Exit full screen",
+                () -> nav("guide".equals(zoomMode) ? "guide()" : "toggleFullscreen()"));
         TextView guide = pill("\u2630  Guide", () -> nav("guide()"));
+        exitBtn = exit;
+        guideBtn = guide;
         LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         gap.setMarginStart(dp(10));
@@ -337,7 +356,7 @@ public class MainActivity extends Activity {
             if (event.getAction() == KeyEvent.ACTION_UP) {
                 if (!okLong && held >= 600) { nav("toggleFullscreen()"); }
                 else if (!okLong) {
-                    if (fsShowing) nav("playPause()");
+                    if (fsShowing) nav("zoomKey('ok')");
                     else {
                         webView.dispatchKeyEvent(new KeyEvent(event.getDownTime(), event.getEventTime(),
                                 KeyEvent.ACTION_DOWN, code, 0, event.getMetaState(), event.getDeviceId(),
@@ -356,8 +375,9 @@ public class MainActivity extends Activity {
         if (fsShowing && customView == null) {
             switch (code) {
                 case KeyEvent.KEYCODE_DPAD_UP:
+                    nav("zoomKey('up')"); return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    nav("guide()"); return true;
+                    nav("zoomKey('down')"); return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     return true;
