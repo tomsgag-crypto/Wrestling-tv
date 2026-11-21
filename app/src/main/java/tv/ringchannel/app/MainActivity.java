@@ -80,6 +80,8 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
         buildShield();
+        // On a TV, start straight into the full-screen picture (OK brings up the guide)
+        fsWanted = isTv();
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -193,6 +195,13 @@ public class MainActivity extends Activity {
         webView.evaluateJavascript("window.__tvnav && window.__tvnav." + call, null);
     }
 
+    private void exitPrompt() {
+        long now = System.currentTimeMillis();
+        if (now - lastBackPress < 2000) { finish(); return; }
+        lastBackPress = now;
+        Toast.makeText(this, "Press Back again to exit", Toast.LENGTH_SHORT).show();
+    }
+
     private void goBackOrExit() {
         if (webView.canGoBack()) { webView.goBack(); return; }
         long now = System.currentTimeMillis();
@@ -211,9 +220,9 @@ public class MainActivity extends Activity {
             guideBtn.setVisibility(guide ? View.GONE : View.VISIBLE);
             if (!isTv()) { shield.setVisibility(View.VISIBLE); showButtons(); }
             if (guide) {
-                if (isTv() && fsHints < 3) Toast.makeText(this, "Press Back, OK or Menu to close the guide", Toast.LENGTH_SHORT).show();
+                if (isTv() && fsHints < 4) { fsHints++; Toast.makeText(this, "\u25B2\u25BC pick a channel  \u2022  OK to watch  \u2022  Back to close", Toast.LENGTH_LONG).show(); }
             } else if (fsHints++ < 2) Toast.makeText(this, isTv()
-                    ? "Full screen – hold OK to exit, ▼ or Menu for the TV guide"
+                    ? "OK = TV guide  \u2022  \u25B2\u25BC = change channel  \u2022  hold OK = full page"
                     : "Tap the screen for buttons – double-tap or Back to exit", Toast.LENGTH_LONG).show();
         } else {
             resetZoom();
@@ -379,8 +388,9 @@ public class MainActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     nav("zoomKey('down')"); return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
+                    nav("zoomKey('left')"); return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    return true;
+                    nav("zoomKey('right')"); return true;
             }
         }
 
@@ -388,7 +398,9 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_BACK:
                 if (customView != null) { exitFullscreen(); return true; }
                 webView.evaluateJavascript("(window.__tvnav && window.__tvnav.back()) || false", r -> {
-                    if (!"true".equals(r)) goBackOrExit();
+                    if ("true".equals(r)) return;
+                    if (fsShowing && isTv()) exitPrompt();      // the full-screen picture is "home" on a TV
+                    else goBackOrExit();
                 });
                 return true;
 

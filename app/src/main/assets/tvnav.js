@@ -15,6 +15,7 @@
     'html,body{overflow-x:hidden !important;overflow-x:clip !important;overscroll-behavior-x:none !important;max-width:100vw}' +
     /* full screen is done by the app zooming in on the player; the page itself is left alone */
     'html.rc-fs #rc-bar,html.rc-fs #rc-msg{display:none !important}' +
+    '.rc-frozen,.rc-frozen *{animation-play-state:paused !important;scroll-behavior:auto !important}' +
     '#rc-msg{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);background:rgba(10,10,20,.92);color:#fff;' +
     'font:600 20px/1.3 sans-serif;padding:12px 22px;border-radius:10px;border:2px solid #ffd400;' +
     'z-index:2147483647;pointer-events:none;transition:opacity .4s;max-width:80vw;text-align:center}' +
@@ -88,7 +89,7 @@
   function scrollParent(el) {
     for (var a = el.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
       var cs = getComputedStyle(a);
-      if (/(auto|scroll)/.test(cs.overflowY) && a.scrollHeight > a.clientHeight + 4) return a;
+      if (/(auto|scroll|hidden)/.test(cs.overflowY) && a.scrollHeight > a.clientHeight + 4) return a;
     }
     return document.scrollingElement || document.documentElement;
   }
@@ -101,7 +102,7 @@
     if (centre) d = (r.top + r.height / 2) - (top + h / 2);
     else if (r.top < top + 60) d = r.top - top - 60;
     else if (r.bottom > bottom - 60) d = r.bottom - bottom + 60;
-    if (d) sp.scrollTop += d;
+    if (d) ownScroll(sp, sp.scrollTop + d);
     noSideways();
   }
   function noSideways() {
@@ -111,8 +112,8 @@
   }
   window.addEventListener('scroll', noSideways, { passive: true });
 
-  function move(dir) {
-    var list = candidates();
+  function move(dir, only) {
+    var list = only || candidates();
     if (!list.length) {
       window.scrollBy(0, dir === 'up' ? -300 : dir === 'down' ? 300 : 0);
       return;
@@ -135,7 +136,7 @@
       if (score < bestScore) { bestScore = score; best = el; }
     });
     if (best) setFocus(best);
-    else if (dir === 'up' || dir === 'down') window.scrollBy(0, dir === 'up' ? -250 : 250);
+    else if (!only && (dir === 'up' || dir === 'down')) window.scrollBy(0, dir === 'up' ? -250 : 250);
   }
 
   function firstInView(list) {
@@ -381,18 +382,94 @@
     return parts;
   }
 
+  // ---------- freeze the guide's auto-scrolling while it's open ----------
+  var frozen = [], allowScroll = false;
+  var nativeTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+  function ownScroll(el, v) {
+    allowScroll = true;
+    try { nativeTop.set.call(el, v); } finally { allowScroll = false; }
+  }
+  function freezeEl(el) {
+    if (frozen.indexOf(el) >= 0) return;
+    frozen.push(el);
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: function () { return nativeTop.get.call(el); },
+      set: function (v) { if (allowScroll) nativeTop.set.call(el, v); }      // the site's auto-scroll is ignored
+    });
+    ['scrollTo', 'scrollBy', 'scroll'].forEach(function (m) {
+      el[m] = function () { if (allowScroll) Element.prototype[m].apply(el, arguments); };
+    });
+  }
+  function freeze(box) {
+    var els = [].concat(box);
+    els.forEach(function (b) {
+      b.classList.add('rc-frozen');
+      freezeEl(b);
+      Array.prototype.forEach.call(b.querySelectorAll('*'), function (x) {
+        var cs = getComputedStyle(x);
+        if (/(auto|scroll|hidden)/.test(cs.overflowY) && x.scrollHeight > x.clientHeight + 4) freezeEl(x);
+      });
+    });
+  }
+  function unfreeze() {
+    frozen.forEach(function (el) {
+      delete el.scrollTop; delete el.scrollTo; delete el.scrollBy; delete el.scroll;
+    });
+    frozen = [];
+    Array.prototype.forEach.call(document.querySelectorAll('.rc-frozen'), function (x) { x.classList.remove('rc-frozen'); });
+  }
+
+  // The guide's channel buttons: the clickable items lined up down its left-hand side.
+  function guideItems() { return candidates().filter(function (el) { return [].concat(fsEl || []).some(function (b) { return b.contains(el); }); }); }
+  function channelCells() {
+    var items = guideItems();
+    if (!items.length) return items;
+    var minLeft = Math.min.apply(null, items.map(function (el) { return el.getBoundingClientRect().left; }));
+    var col = items.filter(function (el) { return el.getBoundingClientRect().left <= minLeft + 30; });
+    return col.length >= 2 ? col : items;
+  }
+  function focusChannel() {
+    var cells = channelCells();
+    if (!cells.length) return;
+    remote = true;
+    setFocus(firstInView(cells));
+  }
+
+  // Channel up / down from full screen, using the site's own CH buttons if it has them.
+  function channel(dir) {
+    var btns = candidates().filter(function (el) {
+      var t = ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.title || '')).trim();
+      return /(^|\W)ch(\W|$)|channel (up|down)|next channel|previous channel|prev channel/i.test(t) && t.length < 30;
+    });
+    var want = null;
+    btns.forEach(function (b) {
+      var t = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '') + ' ' + (b.title || '')).toLowerCase();
+      var up = /▲|↑|\^|\bup\b|\+|next/.test(t), down = /▼|↓|\bdown\b|−|-|prev/.test(t);
+      if (dir > 0 && up && !down && !want) want = b;
+      if (dir < 0 && down && !up && !want) want = b;
+    });
+    if (!want && btns.length === 2) want = dir > 0 ? btns[0] : btns[1];
+    if (!want) { showGuide(); return; }               // no channel buttons: open the guide instead
+    var keep = current; current = want; activate(); current = keep;
+  }
+
   function showGuide() {
     if (fsOn && fsMode === 'guide') { closeGuide(); return; }
     var box = guideBox();
     if (!box) { oldGuide(); return; }
-    guidePrev = fsOn && fsMode === 'video' ? 'video' : null;
+    guidePrev = (fsOn && fsMode === 'video') || !TOUCH ? 'video' : null;
     var first = [].concat(box)[0], sp = scrollParent(first);
     savedScroll = { el: sp, top: sp.scrollTop };
-    showVert(first, true);                // bring it on screen so it's drawn and animating
+    showVert(first, true);                // bring it on screen so it's drawn
     zoomOn(box, 'guide');
+    freeze(box);
+    if (!TOUCH) focusChannel();
   }
 
   function closeGuide() {
+    unfreeze();
+    if (current) current.classList.remove('tvnav-focus');
     if (savedScroll) { savedScroll.el.scrollTop = savedScroll.top; savedScroll = null; }
     if (guidePrev === 'video') {
       var v = pickVideo();
@@ -419,26 +496,28 @@
     }
   }
 
-  /** Remote keys while zoomed (sent by the app): video – ▲▼ guide, OK pause; guide – ▲▼ scroll it, OK/Back close. */
+  /** Remote keys while zoomed (sent by the app).
+   *  Picture: OK = guide, ▲▼ = channel up/down.   Guide: ▲▼ = channels, ◀▶ = programmes, OK = watch, Back = close. */
   function zoomKey(k) {
     if (fsMode === 'guide') {
-      if (k === 'up' || k === 'down') {
-        var sc = null, all = [];
-        [].concat(fsEl || []).forEach(function (x) { all = all.concat([].slice.call(x.querySelectorAll('*'))); });
-        for (var i = 0; i < all.length && !sc; i++) {
-          var cs = getComputedStyle(all[i]);
-          if (/(auto|scroll)/.test(cs.overflowY) && all[i].scrollHeight > all[i].clientHeight + 4) sc = all[i];
-        }
-        if (sc) sc.scrollTop += (k === 'up' ? -1 : 1) * sc.clientHeight * 0.6;
-      } else if (k === 'ok') closeGuide();
+      if (k === 'up' || k === 'down') move(k, channelCells());
+      else if (k === 'left' || k === 'right') move(k, guideItems());
+      else if (k === 'ok') {
+        if (current && [].concat(fsEl || []).some(function (b) { return b.contains(current); })) {
+          activate();
+          setTimeout(function () { if (fsOn && fsMode === 'guide') { guidePrev = 'video'; closeGuide(); } }, 700);
+        } else closeGuide();
+      }
       return;
     }
-    if (k === 'up' || k === 'down') showGuide();
-    else if (k === 'ok' && fsEl && fsEl.tagName === 'VIDEO') playPause(fsEl);
+    if (k === 'ok') { if (TOUCH && fsEl && fsEl.tagName === 'VIDEO') playPause(fsEl); else showGuide(); }
+    else if (k === 'up') channel(+1);
+    else if (k === 'down') channel(-1);
   }
 
   function back() {
     if (fsOn && fsMode === 'guide') { closeGuide(); return true; }
+    if (fsOn && !TOUCH) return false;
     if (fsOn) { fsExit(false); return true; }
     return false;
   }
@@ -447,7 +526,7 @@
     if (fsOn) {                                   // keys while the video is full screen
       var fk = e.key;
       if (fk === 'ArrowUp' || fk === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); zoomKey(fk === 'ArrowUp' ? 'up' : 'down'); return; }
-      if (fk === 'ArrowLeft' || fk === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); return; }
+      if (fk === 'ArrowLeft' || fk === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); zoomKey(fk === 'ArrowLeft' ? 'left' : 'right'); return; }
       if (fk === 'Enter' || e.keyCode === 23 || fk === ' ') {
         e.preventDefault(); e.stopPropagation(); zoomKey('ok'); return;
       }
