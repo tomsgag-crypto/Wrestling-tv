@@ -15,7 +15,9 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.cast.CastPlayer;
 import androidx.media3.cast.SessionAvailabilityListener;
+import androidx.media3.common.C;
 import androidx.media3.common.ForwardingPlayer;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MediaMetadata;
 import androidx.media3.common.MimeTypes;
@@ -46,7 +48,8 @@ public class PlayerActivity extends AppCompatActivity {
     private Player active;
     private PlayerView view;
     private TextView castLabel;
-    private String[] urls;
+    private String[] urls, keys;
+    private final java.util.Set<Integer> reported = new java.util.HashSet<>();
     private final List<MediaItem> items = new ArrayList<>();
     private SharedPreferences prefs;
     private boolean leaving = false;
@@ -61,6 +64,7 @@ public class PlayerActivity extends AppCompatActivity {
         prefs = getSharedPreferences("positions", MODE_PRIVATE);
 
         urls = getIntent().getStringArrayExtra("urls");
+        keys = getIntent().getStringArrayExtra("keys");
         String[] titles = getIntent().getStringArrayExtra("titles");
         int index = getIntent().getIntExtra("index", 0);
         if (urls == null || urls.length == 0) { finish(); return; }
@@ -204,8 +208,25 @@ public class PlayerActivity extends AppCompatActivity {
     private final Player.Listener listener = new Player.Listener() {
         @Override
         public void onPlayerError(PlaybackException error) {
-            toast("This video can't be played here – skipping");
+            markBroken();
+            toast("This episode won't play – skipping it (it'll be hidden from now on)");
             goNext();
+        }
+
+        /** Sound but no picture: the video is in a format this TV can't show. */
+        @Override
+        public void onTracksChanged(Tracks tracks) {
+            if (active != exo) return;
+            boolean hasVideo = false, videoOk = false;
+            for (Tracks.Group g : tracks.getGroups()) {
+                if (g.getType() != C.TRACK_TYPE_VIDEO) continue;
+                hasVideo = true;
+                if (g.isSupported()) videoOk = true;
+            }
+            if (hasVideo && !videoOk && markBroken()) {
+                toast("This episode has no picture on this TV – skipping it");
+                goNext();
+            }
         }
 
         @Override
@@ -224,6 +245,20 @@ public class PlayerActivity extends AppCompatActivity {
             }
         }
     };
+
+    /** Remember the episode that just failed so the list hides it. */
+    private boolean markBroken() {
+        if (active == null) return false;
+        int i = active.getCurrentMediaItemIndex();
+        if (i < 0 || i >= urls.length || !reported.add(i)) return false;
+        String k = keys != null && i < keys.length && keys[i] != null ? keys[i] : urls[i];
+        SharedPreferences b = getSharedPreferences("broken", MODE_PRIVATE);
+        java.util.Set<String> set = new java.util.HashSet<>(b.getStringSet("keys", new java.util.HashSet<>()));
+        set.add(k);
+        set.add(urls[i]);
+        b.edit().putStringSet("keys", set).apply();
+        return true;
+    }
 
     private void savePosition() {
         if (active == null) return;

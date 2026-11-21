@@ -153,17 +153,26 @@ public class MainActivity extends Activity {
         public void play(String playlistJson, int index) {
             try {
                 JSONArray a = new JSONArray(playlistJson);
-                String[] urls = new String[a.length()], titles = new String[a.length()];
+                String[] urls = new String[a.length()], titles = new String[a.length()], keys = new String[a.length()];
                 for (int i = 0; i < a.length(); i++) {
                     urls[i] = a.getJSONObject(i).getString("url");
                     titles[i] = a.getJSONObject(i).optString("title", "");
+                    keys[i] = a.getJSONObject(i).optString("key", urls[i]);
                 }
                 Intent it = new Intent(MainActivity.this, PlayerActivity.class);
                 it.putExtra("urls", urls);
                 it.putExtra("titles", titles);
+                it.putExtra("keys", keys);
                 it.putExtra("index", index);
                 ui.post(() -> startActivityForResult(it, 1));
             } catch (Exception ignored) { }
+        }
+
+        /** Episodes that failed to play (JSON array of keys), so the list can hide them. */
+        @JavascriptInterface
+        public String getBroken() {
+            return new JSONArray(getSharedPreferences("broken", MODE_PRIVATE)
+                    .getStringSet("keys", new java.util.HashSet<>())).toString();
         }
 
         @JavascriptInterface
@@ -183,6 +192,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        js("app.reloadBroken()");                         // hide anything that just failed to play
         if (requestCode == 1 && resultCode == RESULT_OK && data != null) {
             int dir = data.getIntExtra("dir", 0);
             if (dir != 0) js("app.playAdjacent(" + dir + ")");

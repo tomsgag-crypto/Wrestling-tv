@@ -45,6 +45,16 @@ var app = (function () {
 
   // ---------- catalogue ----------
   var packs = {};            // pack id -> [{file, title, key, label, y}] once looked inside
+  var broken = {};           // episodes that failed to play on this device
+  function loadBroken() {
+    broken = {};
+    try { JSON.parse(window.Native && Native.getBroken ? Native.getBroken() : '[]').forEach(function (k) { broken[k] = 1; }); } catch (e) {}
+  }
+  function reloadBroken() {
+    loadBroken();
+    var keep = currentId(); listCat = null;
+    build(); restore(keep); render(); countStatus();
+  }
   function build() {
     var seen = {}, dups = {}, packList = [], singles = [];
     PROMOS.forEach(function (p) {
@@ -90,6 +100,7 @@ var app = (function () {
       } else if (!eps) add(pk);       // not looked inside yet: show the pack itself for now
     });
     function add(it) {
+      if (broken[it.id + '|' + (it.file || '')]) return;        // failed to play before
       var ep = it.key < 8000000 && !it.pack;
       var dk = it.promo + '|' + it.cat + '|' + it.key + '|' + (ep ? '' : it.title.toLowerCase());
       if (dups[dk]) { if (!it.file) dups[dk].ids.push(it.id); return; }     // same episode, another copy
@@ -249,6 +260,14 @@ var app = (function () {
   }
 
   // ---------- opening a show ----------
+  function bestFile(o, derivs) {
+    var fmt = String(o.format || '');
+    if (/\.(mp4|m4v)$/i.test(o.name) && (!fmt || /h\.?264|mpeg4/i.test(fmt))) return o.name;
+    var d = derivs.filter(function (x) { return x.original === o.name; })[0];
+    if (d) return d.name;
+    return DIRECT.test(o.name) ? o.name : o.name;
+  }
+
   function fileUrl(id, name) {
     return 'https://archive.org/download/' + encodeURIComponent(id) + '/' +
       name.split('/').map(encodeURIComponent).join('/');
@@ -264,7 +283,8 @@ var app = (function () {
 
   function open(it, copy, auto) {
     if (it.file) {
-      play([{ url: fileUrl(it.id, it.file), label: it.label, name: it.title }], 0, (it.label ? it.label + ' – ' : '') + it.title);
+      play([{ url: fileUrl(it.id, it.file), label: it.label, name: it.title, key: it.id + '|' + it.file }], 0,
+        (it.label ? it.label + ' – ' : '') + it.title);
       return;
     }
     copy = copy || 0;
@@ -285,13 +305,9 @@ var app = (function () {
       var longEnough = function (f) { var n = secs(f); return n === null || n >= 240; };
       var origs = files.filter(function (f) { return f.source !== 'derivative' && VIDEO.test(f.name) && longEnough(f); });
       var list = origs.map(function (o) {
-        var best = o.name;
-        if (!DIRECT.test(o.name)) {
-          var d = derivs.filter(function (x) { return x.original === o.name; })[0];
-          if (d) best = d.name;
-        }
-        return { name: partName(o.name.split('/').pop(), it), file: best, dt: C.parseDate(o.name) };
+        return { name: partName(o.name.split('/').pop(), it), file: bestFile(o, derivs), dt: C.parseDate(o.name) };
       });
+      list = list.filter(function (p) { return !broken[id + '|' + p.file] && !broken[fileUrl(id, p.file)]; });
       if (!list.length) list = derivs.map(function (d) {
         return { name: partName(d.name.split('/').pop(), it), file: d.name, dt: C.parseDate(d.name) };
       });
@@ -304,7 +320,10 @@ var app = (function () {
         if (dated) { var k = C.dateKey(a.dt) - C.dateKey(b.dt); if (k) return k; }
         return a.name.localeCompare(b.name, undefined, { numeric: true });
       });
-      list.forEach(function (p) { p.label = p.dt && p.dt.d ? C.dateLabel(p.dt) : ''; p.url = fileUrl(id, p.file); });
+      list.forEach(function (p) {
+        p.label = p.dt && p.dt.d ? C.dateLabel(p.dt) : ''; p.url = fileUrl(id, p.file);
+        p.key = list.length === 1 ? it.id + '|' : id + '|' + p.file;      // a one-video upload is hidden as a whole
+      });
 
       if (list.length === 1 || auto) { play(list, auto && auto < 0 ? list.length - 1 : 0, (it.label ? it.label + ' – ' : '') + it.title); return; }
       parts = { item: it, list: list };
@@ -323,7 +342,7 @@ var app = (function () {
   // ---------- season packs: look inside, file each episode into its season ----------
   var saveTimer = null, rebuildTimer = null, busy = 0;
   function saveAll() {
-    try { Native.saveCache(JSON.stringify({ t: Date.now(), raw: raw, packs: packs })); } catch (e) {}
+    try { Native.saveCache(JSON.stringify({ t: Date.now(), raw: raw, packs: packs, pv: 2 })); } catch (e) {}
   }
   function rebuildSoon() {
     clearTimeout(rebuildTimer);
@@ -351,12 +370,7 @@ var app = (function () {
         var e = C.episodeFromFile(f.name, pk.cat, pk.season);
         if (!e || seen[e.key]) return;
         seen[e.key] = 1;
-        var best = f.name;
-        if (!DIRECT.test(f.name)) {
-          var d = derivs.filter(function (x) { return x.original === f.name; })[0];
-          if (d) best = d.name;
-        }
-        e.file = best;
+        e.file = bestFile(f, derivs);
         eps.push(e);
       });
       packs[pk.id] = eps;
@@ -383,7 +397,7 @@ var app = (function () {
 
   function play(list, i, title) {
     var pl = list.map(function (p) {
-      return { url: p.url, title: (list.length === 1 ? title : (p.label ? p.label + ' – ' : '') + p.name) };
+      return { url: p.url, key: p.key || p.url, title: (list.length === 1 ? title : (p.label ? p.label + ' – ' : '') + p.name) };
     });
     if (window.Native) Native.play(JSON.stringify(pl), i);
     else window.open(pl[i].url);
@@ -501,13 +515,14 @@ var app = (function () {
   document.addEventListener('keydown', key, true);
   try {
     var cached = window.Native ? Native.loadCache() : '';
-    if (cached) { var cj = JSON.parse(cached); raw = cj.raw || []; packs = cj.packs || {}; }
+    if (cached) { var cj = JSON.parse(cached); raw = cj.raw || []; packs = cj.pv === 2 ? (cj.packs || {}) : {}; }
   } catch (e) { raw = []; }
+  loadBroken();
   build();
   render();
   if (raw.length) countStatus();
   refresh(false);
   if (raw.length) setTimeout(expandPacks, 2000);
 
-  return { back: back, refresh: refresh, jumpYear: jumpYear, page: page, playAdjacent: playAdjacent, _cb: _cb };
+  return { back: back, refresh: refresh, jumpYear: jumpYear, page: page, playAdjacent: playAdjacent, reloadBroken: reloadBroken, _cb: _cb };
 })();

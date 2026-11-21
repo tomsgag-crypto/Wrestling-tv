@@ -93,7 +93,27 @@
     ['The Biskitts', /biskitts/i],
     ['The Shirt Tales', /shirt tales/i],
     ['Ghostbusters: Slimer!', /slimer!/i],
-    ['Police Academy: The Animated Series', /police academy.{0,20}(animated|cartoon)/i]
+    ['Police Academy: The Animated Series', /police academy.{0,20}(animated|cartoon)/i],
+
+    // ---------- 90s Marvel and DC (5th value: latest year allowed in a title) ----------
+    ['X-Men: The Animated Series', /x-?men/i, /animated|\btas\b|1992|1993|1994|1995|1996|1997|fox kids|season|episode|\bs\d|\d+x\d|\bep\b|pryde/i,
+      /\b97\b|'97|x-?men 97|2024|evolution|wolverine and the|first class|apocalypse 2016|days of future|dark phoenix|last stand|origins|\\bgame\\b|arcade|snes|genesis|legends|children of the atom|mutant academy|marvel anime|2011|xmen 97/i, 1997],
+    ['Spider-Man Unlimited', /spider-?man unlimited/i, null, /\\bgame\\b|ps\d|dreamcast/i, 2001],
+    ['Spider-Man: The Animated Series', /spider-?man/i, /animated|\btas\b|1994|1995|1996|1997|1998|fox kids|season|episode|\bs\d|\d+x\d|\bep\b/i,
+      /amazing friends|\b1967\b|\b1981\b|unlimited|spectacular|ultimate|2017|2003|mtv|homecoming|far from home|no way home|into the spider|across the spider|miles morales|ps\d|\\bgame\\b|web of shadows|shattered|friendly neighborhood|spidey|tom holland|tobey|garfield|2002 movie|spider-man 2\b|spider-man 3\b/i, 1998],
+    ['Fantastic Four (1994)', /fantastic (four|4)/i, /animated|1994|1995|1996|episode|season|\bs\d|\d+x\d|\bep\b|cartoon/i,
+      /\b1967\b|\b1978\b|world'?s greatest heroes|2005|2007|2015|2025|first steps|rise of the silver|\\bgame\\b/i, 1996],
+    ['Iron Man (1994)', /iron ?man/i, /animated|1994|1995|1996|episode|season|\bs\d|\d+x\d|\bep\b|cartoon/i,
+      /armored adventures|2008|2010|2013|anime|\\bgame\\b|\b1966\b|robert downey/i, 1996],
+    ['The Incredible Hulk (1996)', /incredible hulk/i, /animated|1996|1997|1998|episode|season|\bs\d|\d+x\d|\bep\b|cartoon/i,
+      /\b1966\b|\b1982\b|\b1977\b|lou ferrigno|bill bixby|2008|\\bgame\\b/i, 1998],
+    ['Silver Surfer', /silver surfer/i, /animated|1998|episode|\bs\d|\d+x\d|\bep\b|cartoon/i, /\\bgame\\b|nes\b|rise of/i, 1999],
+    ['The New Batman Adventures', /new batman adventures/i, null, /\\bgame\\b/i, 1999],
+    ['Batman Beyond', /batman beyond/i, null, /return of the joker|\\bgame\\b|ps\d|2000 movie/i, 2001],
+    ['Batman: The Animated Series', /batman/i, /animated series|\btas\b|\bbtas\b|1992|1993|1994|1995|fox kids|season|episode|\bs\d|\d+x\d|\bep\b/i,
+      /beyond|new batman adventures|brave and the bold|the batman\b|arkham|lego|\\bgame\\b|\b1966\b|adam west|beware the batman|caped crusader|2022|2024|dark knight|begins|batman returns|batman forever|batman & robin|batman and robin|keaton|bale|pattinson|affleck|batman v|vs superman|harley quinn|ps\d|mask of the phantasm|subzero|mystery of the batwoman|gotham|telltale/i, 1995],
+    ['Superman: The Animated Series', /superman/i, /animated series|\btas\b|\bstas\b|1996|1997|1998|1999|season|episode|\bs\d|\d+x\d|\bep\b/i,
+      /man of steel|superman returns|\b2023\b|\b2025\b|my adventures|lois|smallville|christopher reeve|\b1978\b|\b1941\b|fleischer|\\bgame\\b|\b1988\b|batman v|vs batman|doomsday|legacy/i, 2000]
   ];
 
   // Things that mention the shows but aren't episodes.
@@ -170,7 +190,10 @@
     '"captain planet"', '"teddy ruxpin"', 'wuzzles', 'superted', 'raccoons', '"henry\'s cat"', '"trap door"', '"jimbo and the jet-set"',
     '"family-ness"', '"button moon"', '"fraggle rock"', 'gobots', 'inhumanoids', 'dinosaucers', '"dino-riders"', 'beetlejuice',
     '"the littles"', '"popeye and son"', '"pole position"', '"adventures of sonic"', '"captain n"', '"super mario bros. super show"',
-    '"turbo teen"', '"spiral zone"', '"bionic six"', 'galtar', 'biskitts', '"shirt tales"', '"police academy"'
+    '"turbo teen"', '"spiral zone"', '"bionic six"', 'galtar', 'biskitts', '"shirt tales"', '"police academy"',
+    '"x-men"', 'xmen', '"spider-man"', 'spiderman', '"fantastic four"', '"iron man"', '"incredible hulk"', '"silver surfer"',
+    '"batman the animated series"', '"batman: the animated series"', 'btas', '"batman animated"', '"new batman adventures"',
+    '"batman beyond"', '"superman the animated series"', '"superman: the animated series"', '"superman animated"'
   ];
 
   function clean(s) {
@@ -200,7 +223,7 @@
   }
 
   // Longer forms of show names, removed when working out an episode's own title
-  var SUBTITLES = /\b(and the masters of the universe|masters of the universe|princess of power|and the wheeled warriors|wheeled warriors|and the catillac cats|catillac cats|knights of the magical light|and the holograms|and his amazing friends|and the planeteers|and the star sheriffs|the u\.?s\.? space force|the force of freedom|and the three muskehounds|and the golden lance|the game master|g1|generation (1|one)|1980s|80s|'?n'? friends|and friends|the animated series|animated series|cartoon series|tv series|the series|cartoons?|animated)\b/ig;
+  var SUBTITLES = /\b(and the masters of the universe|masters of the universe|princess of power|and the wheeled warriors|wheeled warriors|and the catillac cats|catillac cats|knights of the magical light|and the holograms|and his amazing friends|and the planeteers|and the star sheriffs|the u\.?s\.? space force|the force of freedom|and the three muskehounds|and the golden lance|the game master|g1|generation (1|one)|1980s|80s|'?n'? friends|and friends|the animated series|animated series|cartoon series|tv series|the series|cartoons?|animated|tas|btas|stas)\b/ig;
 
   function stripShow(title, show) {
     var t0 = clean(title).replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ');
@@ -251,7 +274,8 @@
     var show = findShow(title) || findShow(text);
     if (!show) return null;
     var yr = text.match(/\b(19[5-9]\d|20[0-2]\d)\b/g);
-    if (yr && yr.every(function (y) { return +y >= 1996; })) return null;      // a modern remake or upload about it
+    var maxY = show[4] || 1995;
+    if (yr && yr.every(function (y) { return +y > maxY; })) return null;      // a modern remake or upload about it
 
     var ep = epInfo(title) || epInfo(idText);
     if (!ep) {                                     // "She-Ra 01 The Secret of the Sword"
@@ -286,6 +310,7 @@
       key = 9000000;
       if (!name) name = show[0];
     }
+    if (name && show[0].toLowerCase().indexOf(name.toLowerCase()) >= 0) name = ep && !ep.bundle ? show[0] + ' – Episode ' + ep.e : show[0];
     if (foreign(name)) return null;
     if (name.length > 90) name = name.slice(0, 88) + '…';
     return { id: item.identifier, title: name, promo: 'TOONS', cat: show[0], key: key, label: label, y: group, precise: true };
