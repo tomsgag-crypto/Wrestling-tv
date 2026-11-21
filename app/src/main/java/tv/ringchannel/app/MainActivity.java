@@ -60,7 +60,8 @@ import java.util.concurrent.Executors;
  */
 public class MainActivity extends Activity {
 
-    private static final String GUIDE_URL = "https://ring-channel-tv.emergent.host/api/guide";
+    private static final String BASE = "https://ring-channel-tv.emergent.host";
+    private static final String GUIDE_URL = BASE + "/api/guide";
     private static final int BLUE = 0xFF1030C8, DARK = 0xFF0A1A7A, YELLOW = 0xFFFFD400, ROW = 0xFF1838E0;
 
     static class Prog { String title, episode, url; long start, end; }
@@ -75,6 +76,8 @@ public class MainActivity extends Activity {
     private int cur = -1;                  // index of the channel being watched
     private long lastBack = 0;
     private boolean loading = false;
+    private int tuneSeq = 0;                                   // ignores answers for channels you've already left
+    private final List<Prog> playlist = new ArrayList<>();     // what's queued in the player
     private Runnable pendingThen = null;     // what to do once the guide has loaded
     private long lastRefreshForTune = 0;
 
@@ -110,7 +113,7 @@ public class MainActivity extends Activity {
             @Override public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) hideStatus();
                 if (state == Player.STATE_BUFFERING) showStatus("Tuning…");
-                if (state == Player.STATE_ENDED) refreshAndRetune();      // ran past the guide window
+                if (state == Player.STATE_ENDED && cur >= 0) tune(cur);   // ask the channel what's on next
             }
             @Override public void onMediaItemTransition(MediaItem item, int reason) {
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) showBanner();
@@ -118,7 +121,7 @@ public class MainActivity extends Activity {
             @Override public void onPlayerError(PlaybackException e) {
                 showStatus("Signal lost – moving on…");
                 if (player.hasNextMediaItem()) { player.seekToNextMediaItem(); player.prepare(); player.play(); }
-                else refreshAndRetune();
+                else if (cur >= 0) ui.postDelayed(() -> tune(cur), 3000);
             }
         });
 
@@ -336,7 +339,6 @@ public class MainActivity extends Activity {
                         if (p == null) continue;
                         Prog g = new Prog();
                         g.url = p.optString("stream_url", "");
-                        if (g.url.isEmpty()) continue;
                         g.title = p.optString("title", p.optString("raw_title", ""));
                         g.episode = p.optString("episode", "");
                         g.start = parseIso(s.optString("start"));
@@ -388,34 +390,76 @@ public class MainActivity extends Activity {
         int n = chans.size();
         idx = ((idx % n) + n) % n;
         cur = idx;
-        Chan c = chans.get(idx);
+        final Chan c = chans.get(idx);
         prefs.edit().putString("channel", c.id).apply();
-        int i = nowIndex(c);
-        if (i < 0) {
-            if (System.currentTimeMillis() - lastRefreshForTune > 60_000) {
-                lastRefreshForTune = System.currentTimeMillis();
-                showStatus("Updating the guide…");
-                refreshAndRetune();
-            } else showStatus("Nothing on this channel right now");
-            return;
-        }
+        final int seq = ++tuneSeq;
+        showBanner();
+        highlightCurrentRow();
+        showStatus("Tuning…");
+        io.execute(() -> {
+            try {
+                JSONObject j = new JSONObject(get(BASE + "/api/channels/" + java.net.URLEncoder.encode(c.id, "UTF-8") + "/now"));
+                long server = parseIso(j.optString("server_time"));
+                List<Prog> list = new ArrayList<>();
+                Prog first = slotProg(j.optJSONObject("current"));
+                if (first != null) list.add(first);
+                JSONArray next = j.optJSONArray("up_next");
+                if (next != null) for (int k = 0; k < next.length(); k++) {
+                    Prog p = slotProg(next.optJSONObject(k));
+                    if (p != null) list.add(p);
+                }
+                double off = j.optDouble("offset_seconds", Double.NaN);
+                long offMs = !Double.isNaN(off) ? (long) (off * 1000)
+                        : (first != null && server > 0 ? Math.max(0, server - first.start) : 0);
+                final long serverOff = server > 0 ? server - System.currentTimeMillis() : clockOffset;
+                ui.post(() -> {
+                    if (seq != tuneSeq) return;                  // you've already flicked to another channel
+                    clockOffset = serverOff;
+                    if (list.isEmpty()) { showStatus("Nothing on this channel right now"); return; }
+                    play(list, offMs);
+                });
+            } catch (Exception e) {
+                ui.post(() -> {
+                    if (seq != tuneSeq) return;
+                    showStatus("Can't tune in – retrying…");
+                    ui.postDelayed(() -> { if (seq == tuneSeq) tune(cur); }, 8000);
+                });
+            }
+        });
+    }
 
+    /** {program:{stream_url,title,episode}, start, end} -> Prog (null if it has no video link) */
+    private static Prog slotProg(JSONObject slot) {
+        if (slot == null) return null;
+        JSONObject p = slot.optJSONObject("program");
+        if (p == null) return null;
+        Prog g = new Prog();
+        g.url = p.optString("stream_url", "");
+        if (g.url.isEmpty()) return null;
+        g.title = p.optString("title", p.optString("raw_title", ""));
+        g.episode = p.optString("episode", "");
+        g.start = parseIso(slot.optString("start"));
+        g.end = parseIso(slot.optString("end"));
+        return g;
+    }
+
+    private void play(List<Prog> list, long offsetMs) {
+        playlist.clear();
+        playlist.addAll(list);
         List<MediaItem> items = new ArrayList<>();
-        for (int k = i; k < c.slots.size(); k++) {
-            Prog p = c.slots.get(k);
+        for (int k = 0; k < list.size(); k++) {
+            Prog p = list.get(k);
             items.add(new MediaItem.Builder()
                     .setUri(p.url)
-                    .setMediaId(c.id + "#" + k)
+                    .setMediaId("p" + k)
                     .setMediaMetadata(new MediaMetadata.Builder().setTitle(p.title).build())
                     .build());
         }
-        long pos = Math.max(0, now() - c.slots.get(i).start);    // join it live, part-way through
-        player.setMediaItems(items, 0, pos);
+        player.setMediaItems(items, 0, Math.max(0, offsetMs));     // join it live, part-way through
         player.setVolume(1f);
         player.prepare();
         player.play();
         showBanner();
-        highlightCurrentRow();
     }
 
     private Prog onNow(Chan c) {
@@ -424,16 +468,15 @@ public class MainActivity extends Activity {
     }
 
     private Prog playingNow() {
-        if (cur < 0 || cur >= chans.size()) return null;
-        Chan c = chans.get(cur);
         MediaItem m = player.getCurrentMediaItem();
-        if (m != null && m.mediaId.startsWith(c.id + "#")) {
+        if (m != null && m.mediaId.startsWith("p")) {
             try {
-                int k = Integer.parseInt(m.mediaId.substring(c.id.length() + 1));
-                if (k < c.slots.size()) return c.slots.get(k);
+                int k = Integer.parseInt(m.mediaId.substring(1));
+                if (k < playlist.size()) return playlist.get(k);
             } catch (Exception ignored) { }
         }
-        return onNow(c);
+        if (cur < 0 || cur >= chans.size()) return null;
+        return onNow(chans.get(cur));
     }
 
     private String time(long ms) {

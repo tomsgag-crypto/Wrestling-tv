@@ -4,6 +4,8 @@ on:
   push:
     paths-ignore:
       - 'archive-app/**'
+      - 'cartoon-app/**'
+      - '.github/workflows/build-cartoon-app.yml'
       - '.github/workflows/build-archive-app.yml'
   workflow_dispatch:
 
