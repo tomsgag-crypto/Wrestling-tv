@@ -53,14 +53,13 @@
   function parse(title) {
     var t = String(title || '').replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
     var m, year = 0, name = t, re = new RegExp(YEAR_RE.source, 'g');
+    var first = null;
     while ((m = re.exec(t))) {
       var at = m.index + m[1].length, before = t.slice(0, at).replace(/[\s(\[{\-–]+$/, '');
-      if (before.length >= 1) { year = +m[2]; name = before; break; }
-      if (!year) {                                         // year first: "(1999) Fight Club"
-        var after = t.slice(at + 4).replace(/^[\s)\]}\-–:]+/, '');
-        if (after.length >= 2) { year = +m[2]; name = after; break; }
-      }
+      if (before.length >= 1) { year = +m[2]; name = before; first = null; break; }
+      if (!first) first = { y: +m[2], after: t.slice(at + 4).replace(/^[\s)\]}\-–:]+/, '') };
     }
+    if (!year && first && first.after.length >= 2) { year = first.y; name = first.after; }   // year first: "(1999) Fight Club"
     name = name.replace(/\[[^\]]*\]|\{[^}]*\}/g, ' ').replace(/\([^)]*\)/g, ' ');
     name = name.split(/\s[-–|]\s/)[0];
     name = name.replace(TAGS, ' ').replace(/\s+/g, ' ').replace(/[\s\-–:,(]+$/, '').trim();
@@ -88,7 +87,7 @@
   }
 
   // ---------------------------------------------------------------- matching uploads to films
-  var NOT_FILM = /\b(trailers?|teasers?|tv spots?|featurettes?|behind the scenes|making of|deleted scenes|bloopers|gag reel|interview|review|reaction|commentary|soundtrack|score|ost|full album|music video|clip|scenes?|episode|season|series|s\d{1,2} ?e\d{1,2}|part \d|pt \d|cd ?\d|disc ?\d|reel \d|sample|promo|premiere|press kit|tribute|parody of|explained|recap|ending|game ?play|walkthrough|audiobook|abridged|podcast|vlog)\b/i;
+  var NOT_FILM = /\b(trailers?|teasers?|tv spots?|featurettes?|behind the scenes|making of|deleted scenes|bloopers|gag reel|interview|review|reaction|commentary|soundtrack|score|ost|full album|music video|clip|scenes?|episode|season|series|s\d{1,2} ?e\d{1,2}|part \d|pt \d|cd ?\d|disc ?\d|reel \d|sample|promo|premiere|press kit|tribute|parody of|explained|recap|ending|game ?play|walkthrough|audiobook|abridged|podcast|vlog|fan ?edit|fanedit|fan ?cut|fan restoration|despecialized|work ?print|rough cut|re-?cut|redux edition)\b/i;
   function buildIndex(films) {
     var idx = new Map();
     function add(k, f) {
@@ -109,9 +108,15 @@
     });
     return idx;
   }
+  /** An upload named "101-dalmatians-1961" isn't the 1996 film: years in the Archive id must agree (upload-date suffixes ignored). */
+  function yearsAgree(id, f) {
+    var s = String(id).replace(/_\d{6,}$/, ''), inTitle = norm(f.t), ys = [], m, re = /(?:^|[^0-9])(19\d\d|20[0-2]\d)(?![0-9])/g;
+    while ((m = re.exec(s))) if (inTitle.split(' ').indexOf(m[1]) < 0) ys.push(+m[1]);
+    return !ys.length || ys.some(function (y) { return Math.abs(y - f.y) <= 1; });
+  }
   function matchFilm(it, idx) {
     var title = String(it.title || '');
-    if (NOT_FILM.test(title.replace(/[._]+/g, ' '))) return null;
+    if (NOT_FILM.test(title.replace(/[._]+/g, ' ')) || NOT_FILM.test(String(it.identifier || '').replace(/[._-]+/g, ' '))) return null;
     var p = parse(title), k = norm(p.name);
     var cands = idx.get(k);
     if (!cands || !cands.length) return null;
@@ -123,6 +128,7 @@
         if (dy > 1) return;
         if (!best || dy < Math.abs(best.y - y) || (dy === Math.abs(best.y - y) && f.s > best.s)) best = f;
       });
+      if (best && it.identifier && !yearsAgree(it.identifier, best)) return null;
       return best;
     }
     // no usable year: only for well-known films with a distinctive name
