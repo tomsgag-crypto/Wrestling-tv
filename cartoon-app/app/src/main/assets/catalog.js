@@ -192,8 +192,11 @@
 
   function stripShow(title, show) {
     var t0 = clean(title).replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ');
-    var t = t0.replace(show[1], ' ').replace(SUBTITLES, ' ');
-    if (t0.search(show[1]) > 2) show[0].replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/).forEach(function (w) {
+    // only take the show's name off the front – later on it's part of the episode title ("ThunderCats Ho!")
+    var at = t0.search(show[1]);
+    var front = at >= 0 && /^\W*(the\s+)?$/i.test(t0.slice(0, at));
+    var t = (front ? t0.replace(show[1], ' ') : t0).replace(SUBTITLES, ' ');
+    if (at < 0) show[0].replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/).forEach(function (w) {
       if (w.length > 2 && !/^(the|and)$/i.test(w)) t = t.replace(new RegExp('\\b' + w + '\\b', 'i'), ' ');
     });
     return t.replace(/^[\s\-–:|.,#'!]*(the|and)?[\s\-–:|.,#'!]+/i, ' ').replace(/\s+/g, ' ').trim();
@@ -244,8 +247,13 @@
       if (m && +m[1] > 0 && +m[1] < 400 && !/^(19|20)\d\d/.test(m[1])) ep = { s: 0, e: +m[1], tok: m[0].trim() };
     }
     var name = epTitle(title, show, ep), label, group, key;
-    // Only proper episodes (numbered) or whole-season uploads
-    if (!ep) return null;
+    // Only proper episodes (numbered), whole-season uploads, or big packs (over ~700 MB) whose episodes get filed later
+    var big = +item.item_size > 700e6;
+    if (!ep) {
+      if (!big) return null;
+      return { id: item.identifier, title: show[0] + ' – collection', promo: 'TOONS', cat: show[0], key: 8000000,
+        label: 'Pack', y: 'Collections', precise: true, pack: true, season: 0 };
+    }
     if (ep.bundle && !/season|series|complete|collection|volume|vol\b|dvd|disc|episodes/i.test(text)) return null;
     if (name && (name.length < 4 || /^(complete|full|episode|part ?\d*|uncut|restored|hq|hd)$/i.test(name))) name = '';
     if (ep && !ep.bundle) {
@@ -257,7 +265,9 @@
       label = 'Season ' + ep.s;
       group = 'Season ' + ep.s;
       key = ep.s * 10000;
-      name = show[0] + ' – Season ' + ep.s + (name ? ' (' + name + ')' : '');
+      name = show[0] + ' – Season ' + ep.s + ' (whole season)';
+      return { id: item.identifier, title: name, promo: 'TOONS', cat: show[0], key: key, label: label, y: group,
+        precise: true, pack: true, season: ep.s };
     } else {
       label = '';
       group = 'More episodes';
@@ -268,6 +278,34 @@
     return { id: item.identifier, title: name, promo: 'TOONS', cat: show[0], key: key, label: label, y: group, precise: true };
   }
 
+  /** One video file inside a season pack -> episode {label, y, key, title}, or null if it isn't a numbered episode. */
+  function episodeFromFile(path, showName, packSeason) {
+    var show = null;
+    for (var i = 0; i < SHOWS.length; i++) if (SHOWS[i][0] === showName) show = SHOWS[i];
+    if (!show) return null;
+    var parts = String(path).split('/'), base = parts.pop(), dir = parts.join(' ');
+    var t = clean(declutter(base));
+    if (EXCLUDE.test(t) || NOT_ENGLISH.test(t) || OTHER_SCRIPT.test(t)) return null;
+    var ep = epInfo(t);
+    if (!ep || ep.bundle) {
+      var st = stripShow(t, show).replace(/\b(19[5-9]\d|20[0-2]\d)\b/g, ' ').trim();
+      var m = st.match(/^(\d{1,3})\b\s*[-–.:)]?\s*/);
+      ep = m && +m[1] > 0 && +m[1] < 400 ? { s: ep && ep.bundle ? ep.s : 0, e: +m[1], tok: m[0].trim() } : null;
+    }
+    if (!ep) return null;
+    if (!ep.s) {
+      var dm = dir.match(/season\s*(\d{1,2})|series\s*(\d{1,2})|\bs(\d{1,2})\b/i);
+      if (dm) ep.s = +(dm[1] || dm[2] || dm[3]);
+      else if (packSeason) ep.s = packSeason;
+    }
+    var name = epTitle(t, show, ep);
+    if (name && (name.length < 4 || /^(complete|full|episode|part ?\d*|uncut|restored|hq|hd)$/i.test(name))) name = '';
+    if (!name) name = showName + ' – Episode ' + ep.e;
+    if (name.length > 90) name = name.slice(0, 88) + '…';
+    return { label: (ep.s ? 'S' + ep.s + ' · ' : '') + 'Ep ' + ep.e, y: ep.s ? 'Season ' + ep.s : 'Episodes',
+      key: (ep.s || 0) * 10000 + ep.e, title: name };
+  }
+
   function parseDate(s) {
     var ep = epInfo(s);
     return ep && !ep.bundle ? { y: ep.s || 0, m: 1, d: ep.e } : null;
@@ -276,6 +314,6 @@
   function dateLabel(dt) { return dt ? (dt.y ? 'S' + dt.y + ' · ' : '') + 'Ep ' + dt.d : ''; }
 
   var api = { classify: classify, parseDate: parseDate, dateKey: dateKey, dateLabel: dateLabel, ORDER: ORDER,
-    clean: clean, TERMS: TERMS, epInfo: epInfo };
+    clean: clean, TERMS: TERMS, epInfo: epInfo, episodeFromFile: episodeFromFile };
   if (typeof module !== 'undefined') module.exports = api; else root.Catalog = api;
 })(this);

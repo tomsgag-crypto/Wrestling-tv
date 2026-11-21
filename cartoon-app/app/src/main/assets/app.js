@@ -44,8 +44,9 @@ var app = (function () {
   function status(html) { $('status').innerHTML = html; }
 
   // ---------- catalogue ----------
+  var packs = {};            // pack id -> [{file, title, key, label, y}] once looked inside
   function build() {
-    var seen = {}, dups = {};
+    var seen = {}, dups = {}, packList = [];
     PROMOS.forEach(function (p) {
       var cats = {};
       C.ORDER[p].forEach(function (n) { cats[n] = []; });
@@ -56,13 +57,28 @@ var app = (function () {
       seen[r.identifier] = 1;
       var it = C.classify(r);
       if (!it) return;
-      var dk = it.promo + '|' + it.cat + '|' + it.key + '|' + it.title.toLowerCase();
-      if (dups[dk]) { dups[dk].ids.push(it.id); return; }     // another copy of the same show
+      if (it.pack) { packList.push(it); return; }          // season packs are filed after the single episodes
+      add(it);
+    });
+    packList.forEach(function (pk) {
+      var eps = packs[pk.id];
+      if (eps && eps.length) {
+        eps.forEach(function (e) {
+          add({ id: pk.id, file: e.file, title: e.title, promo: pk.promo, cat: pk.cat, key: e.key, label: e.label,
+            y: e.y, precise: true });
+        });
+      } else if (!eps) add(pk);       // not looked inside yet: show the pack itself for now
+    });
+    function add(it) {
+      var ep = it.key < 8000000 && !it.pack;
+      var dk = it.promo + '|' + it.cat + '|' + it.key + '|' + (ep ? '' : it.title.toLowerCase());
+      if (dups[dk]) { if (!it.file) dups[dk].ids.push(it.id); return; }     // same episode, another copy
       it.ids = [it.id];
+      it.uid = it.id + '|' + (it.file || '');
       dups[dk] = it;
       data[it.promo][it.cat].push(it);
       data[it.promo]['All shows'].push(Object.assign({}, it, { y: it.cat }));   // grouped by show
-    });
+    }
     PROMOS.forEach(function (p) {
       var list = [];
       C.ORDER[p].forEach(function (n) {
@@ -81,7 +97,7 @@ var app = (function () {
   function fetchQuery(q) {
     var out = [], pages = 0;
     function page(cursor) {
-      var url = 'https://archive.org/services/search/v1/scrape?fields=identifier,title,date,year,language&count=5000&q=' +
+      var url = 'https://archive.org/services/search/v1/scrape?fields=identifier,title,date,year,language,item_size&count=5000&q=' +
         encodeURIComponent(q) + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
       return get(url).then(function (txt) {
         var j = JSON.parse(txt);
@@ -112,14 +128,15 @@ var app = (function () {
     Promise.all(PROMOS.map(fetchPromo)).then(function (res) {
       var keep = currentId();
       raw = [].concat.apply([], res).map(function (r) {
-        return { identifier: r.identifier, title: r.title, date: r.date, year: r.year, language: r.language };
+        return { identifier: r.identifier, title: r.title, date: r.date, year: r.year, language: r.language, item_size: r.item_size };
       });
-      try { Native.saveCache(JSON.stringify({ t: Date.now(), raw: raw })); } catch (e) {}
+      saveAll();
       build();
       restore(keep);
       render();
       loading = false;
       countStatus();
+      expandPacks();
       if (manual && window.Native) Native.toast('List updated');
     }).catch(function (e) {
       loading = false;
@@ -137,13 +154,13 @@ var app = (function () {
   // ---------- state helpers ----------
   function cats() { return data[PROMOS[st.promo]] || []; }
   function items() { var c = cats()[st.cat]; return c ? c.items : []; }
-  function currentId() { var it = items()[st.row]; return it ? { cat: (cats()[st.cat] || {}).name, id: it.id } : null; }
+  function currentId() { var it = items()[st.row]; return it ? { cat: (cats()[st.cat] || {}).name, id: it.uid || it.id } : null; }
   function restore(k) {
     if (!k) return;
     var cs = cats();
     for (var i = 0; i < cs.length; i++) if (cs[i].name === k.cat) {
       st.cat = i;
-      for (var j = 0; j < cs[i].items.length; j++) if (cs[i].items[j].id === k.id) { st.row = j; return; }
+      for (var j = 0; j < cs[i].items.length; j++) if ((cs[i].items[j].uid || cs[i].items[j].id) === k.id) { st.row = j; return; }
     }
   }
   function clamp() {
@@ -226,6 +243,10 @@ var app = (function () {
   }
 
   function open(it, copy, auto) {
+    if (it.file) {
+      play([{ url: fileUrl(it.id, it.file), label: it.label, name: it.title }], 0, (it.label ? it.label + ' – ' : '') + it.title);
+      return;
+    }
     copy = copy || 0;
     var id = (it.ids || [it.id])[copy];
     var more = it.ids && copy + 1 < it.ids.length;
@@ -277,6 +298,67 @@ var app = (function () {
       countStatus();
       if (window.Native) Native.toast('Couldn\'t open this show: ' + e.message);
     });
+  }
+
+  // ---------- season packs: look inside, file each episode into its season ----------
+  var saveTimer = null, rebuildTimer = null, busy = 0;
+  function saveAll() {
+    try { Native.saveCache(JSON.stringify({ t: Date.now(), raw: raw, packs: packs })); } catch (e) {}
+  }
+  function rebuildSoon() {
+    clearTimeout(rebuildTimer);
+    rebuildTimer = setTimeout(function () {
+      var keep = currentId(); listCat = null;
+      build(); restore(keep); render(); countStatus();
+      clearTimeout(saveTimer); saveTimer = setTimeout(saveAll, 3000);
+    }, 1500);
+  }
+  function videoLen(f) {
+    var l = String(f.length || '');
+    if (!l) return null;
+    if (l.indexOf(':') >= 0) return l.split(':').reduce(function (t, x) { return t * 60 + (+x || 0); }, 0);
+    return +l || null;
+  }
+  function lookInside(pk) {
+    return get('https://archive.org/metadata/' + encodeURIComponent(pk.id)).then(function (txt) {
+      var files = (JSON.parse(txt).files || []);
+      var derivs = files.filter(function (f) { return f.source === 'derivative' && /\.mp4$/i.test(f.name); });
+      var seen = {}, eps = [];
+      files.forEach(function (f) {
+        if (f.source === 'derivative' || !VIDEO.test(f.name)) return;
+        var n = videoLen(f);
+        if (n !== null && n < 240) return;                       // clips and intros
+        var e = C.episodeFromFile(f.name, pk.cat, pk.season);
+        if (!e || seen[e.key]) return;
+        seen[e.key] = 1;
+        var best = f.name;
+        if (!DIRECT.test(f.name)) {
+          var d = derivs.filter(function (x) { return x.original === f.name; })[0];
+          if (d) best = d.name;
+        }
+        e.file = best;
+        eps.push(e);
+      });
+      packs[pk.id] = eps;
+    }).catch(function () { /* try again next time */ });
+  }
+  function expandPacks() {
+    var want = [], cur = (cats()[st.cat] || {}).name, seenId = {};
+    raw.forEach(function (r) {
+      if (!r || seenId[r.identifier] || packs[r.identifier]) return;
+      seenId[r.identifier] = 1;
+      var it = C.classify(r);
+      if (it && it.pack) want.push(it);
+    });
+    want.sort(function (a, b) { return (b.cat === cur) - (a.cat === cur); });   // the show you're looking at first
+    function next() {
+      if (!want.length) { if (!busy) countStatus(); return; }
+      var pk = want.shift();
+      busy++;
+      status('<span class="spinner"></span>Opening season packs… ' + (want.length + busy) + ' to go');
+      lookInside(pk).then(function () { busy--; rebuildSoon(); next(); });
+    }
+    if (!busy) { next(); next(); }
   }
 
   function play(list, i, title) {
@@ -399,12 +481,13 @@ var app = (function () {
   document.addEventListener('keydown', key, true);
   try {
     var cached = window.Native ? Native.loadCache() : '';
-    if (cached) { raw = JSON.parse(cached).raw || []; }
+    if (cached) { var cj = JSON.parse(cached); raw = cj.raw || []; packs = cj.packs || {}; }
   } catch (e) { raw = []; }
   build();
   render();
   if (raw.length) countStatus();
   refresh(false);
+  if (raw.length) setTimeout(expandPacks, 2000);
 
   return { back: back, refresh: refresh, jumpYear: jumpYear, page: page, playAdjacent: playAdjacent, _cb: _cb };
 })();
