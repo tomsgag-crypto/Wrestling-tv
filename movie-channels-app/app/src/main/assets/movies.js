@@ -32,6 +32,42 @@
     });
     return GENRES.filter(function (g) { return out.indexOf(g) >= 0; });
   }
+  // Finer channels: [name, genre-label pattern, title pattern]
+  var SUBGENRES = [
+    ['Slashers', /slasher/],
+    ['Zombies & Monsters', /zombie|monster|creature|kaiju|giant monster|werewolf|vampire/, /\b(zombies?|vampires?|werewolf)\b/i, /horror/],
+    ['Ghosts & Supernatural', /supernatural|ghost|haunted|possession|occult|demon/],
+    ['Martial Arts', /martial arts|kung fu|wuxia|karate|ninja/, /\b(ninja|kickboxer|karate|kung fu)\b/i, /action/],
+    ['Superheroes', /superhero|comic book|comics film/],
+    ['Space & Aliens', /space opera|space western|alien invasion|extraterrestrial|space film|first contact/, /\b(aliens?|space|planet|mars|galaxy|star wars|star trek)\b/i, /science fiction|sci-fi/],
+    ['Sword & Sorcery', /sword and sorcery|high fantasy|dark fantasy|heroic fantasy|fairy tale|epic fantasy/],
+    ['Animated Movies', /animat|anime|cartoon|stop.motion|computer-animated/],
+    ['Rom-Coms', /romantic comedy/],
+    ['Teen Movies', /teen|coming.of.age|high school|youth/],
+    ['Spoofs & Parodies', /parody|spoof|mockumentary|satire/],
+    ['Black Comedy', /black comedy|dark comedy/],
+    ['Gangsters & Heists', /gangster|mafia|mob film|heist|caper|organized crime|hood film/],
+    ['Cops & Detectives', /police|cop film|buddy cop|detective|mystery/],
+    ['Psychological Thrillers', /psychological|neo-noir|noir|mind-bending/],
+    ['Disaster Movies', /disaster/],
+    ['Sports Movies', /sport|boxing|baseball|basketball|football|surf/],
+    ['True Stories', /biograph|biopic|based on actual|true story|docudrama/],
+    ['Historical Epics', /historical|period|epic|costume drama|sword-and-sandal/],
+    ['Cult & B-Movies', /exploitation|b movie|b-movie|cult film|grindhouse|direct-to-video|splatter|trash|midnight movie/],
+    ['Road Movies', /road movie|road film/],
+    ['Musicals', /musical/],
+    ['Dance Movies', /dance/],
+    ['Westerns', /western/],
+    ['War Movies', /war film|\bwar\b|military|anti-war/],
+    ['Kids Movies', /children|family|kids/],
+    ['Mockumentaries', /mockumentary|found footage/]
+  ];
+  /** Sub-genres: from the listed genres, or from the title when the film is in the right broad genre (e.g. "Zombie" + horror). */
+  function tags(list, title) {
+    var g = (list || []).join('|').toLowerCase(), out = [];
+    SUBGENRES.forEach(function (t) { if (t[1].test(g) || (t[2] && t[2].test(title || '') && t[3].test(g))) out.push(t[0]); });
+    return out;
+  }
   function decade(y) { return y >= FIRST_YEAR && y <= LAST_YEAR ? (Math.floor(y / 10) * 10) + 's' : ''; }
 
   // ---------------------------------------------------------------- titles
@@ -189,7 +225,7 @@
     return { t: tidy(it.title), y: y, g: f ? genres(f.g, f.t) : genres([], it.title) };
   }
 
-  var api = { GENRES: GENRES, FIRST_YEAR: FIRST_YEAR, LAST_YEAR: LAST_YEAR, genres: genres, decade: decade, norm: norm, parse: parse, tidy: tidy, foreign: foreign,
+  var api = { SUBGENRES: SUBGENRES.map(function (t) { return t[0]; }), tags: tags, GENRES: GENRES, FIRST_YEAR: FIRST_YEAR, LAST_YEAR: LAST_YEAR, genres: genres, decade: decade, norm: norm, parse: parse, tidy: tidy, foreign: foreign,
     buildIndex: buildIndex, matchFilm: matchFilm, pickFile: pickFile, junkSpecial: junkSpecial, specialInfo: specialInfo, secs: secs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Movies = api;
 })(this);

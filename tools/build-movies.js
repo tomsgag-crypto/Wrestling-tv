@@ -46,6 +46,21 @@ async function wikidata() {
       if (prev && prev.y <= yr) continue;
       films.set(id, { q: id, t: b.l.value, a: b.a ? b.a.value : '', y: yr, g: b.g ? b.g.value.split('|') : [], s: +b.s.value });
     }
+    // directors and cast (separately: a combined query is too heavy)
+    try {
+      const q2 = `SELECT ?f (GROUP_CONCAT(DISTINCT ?dl; separator="|") AS ?d) (GROUP_CONCAT(DISTINCT ?cl; separator="|") AS ?c) WHERE {
+        ?f wdt:P31 wd:Q11424; wdt:P577 ?dt; wdt:P364 wd:Q1860. FILTER(YEAR(?dt) = ${y})
+        OPTIONAL { ?f wdt:P57 ?d0. ?d0 rdfs:label ?dl. FILTER(LANG(?dl) = "en") }
+        OPTIONAL { ?f wdt:P161 ?c0. ?c0 rdfs:label ?cl. FILTER(LANG(?cl) = "en") }
+      } GROUP BY ?f`;
+      const j2 = await getJSON('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q2));
+      for (const b of j2.results.bindings) {
+        const f = films.get(b.f.value.split('/').pop());
+        if (!f) continue;
+        f.dr = b.d && b.d.value ? b.d.value.split('|') : [];
+        f.cast = b.c && b.c.value ? b.c.value.split('|') : [];
+      }
+    } catch (e) { console.log('  no directors/cast for', y, e.message); }
     console.log('wikidata', y, films.size);
     await sleep(1500);
   }
@@ -113,7 +128,8 @@ async function inspect(it, kind) {
     for (const it of g.copies.slice(0, 3)) {
       const p = await inspect(it, 'f');
       if (p) {
-        out.push({ i: it.identifier, f: p.name, t: g.film.t, y: g.film.y, g: M.genres(g.film.g, g.film.t), d: p.d, c: 'f', n: it.downloads || 0 });
+        out.push({ i: it.identifier, f: p.name, t: g.film.t, y: g.film.y, g: M.genres(g.film.g, g.film.t), s: M.tags(g.film.g, g.film.t),
+          p: g.film.s, dr: g.film.dr || [], st: g.film.cast || [], d: p.d, c: 'f', n: it.downloads || 0 });
         break;
       }
     }
@@ -142,6 +158,16 @@ async function inspect(it, kind) {
     console.log(c === 'w' ? 'workprints:' : 'fan edits:', n, 'of', items.length);
   }
 
+  // keep only directors and stars with enough films for a channel of their own
+  const count = (key) => { const n = {}; out.forEach((x) => (x[key] || []).forEach((v) => (n[v] = (n[v] || 0) + 1))); return n; };
+  const dn = count('dr'), sn = count('st');
+  out.forEach((x) => {
+    if (x.c !== 'f') { delete x.dr; delete x.st; delete x.s; delete x.p; return; }
+    x.dr = (x.dr || []).filter((v) => dn[v] >= 6);
+    x.st = (x.st || []).filter((v) => sn[v] >= 10).slice(0, 6);
+    ['dr', 'st', 's'].forEach((k) => { if (!x[k] || !x[k].length) delete x[k]; });
+  });
+  console.log('director channels:', Object.keys(dn).filter((v) => dn[v] >= 6).length, 'star channels:', Object.keys(sn).filter((v) => sn[v] >= 10).length);
   out.sort((a, b) => a.t.localeCompare(b.t) || a.y - b.y);
   fs.writeFileSync('out/movies.json', JSON.stringify({ v: 1, built: new Date().toISOString(), films: out }));
   console.log('done in', Math.round((Date.now() - t0) / 60000), 'min;', out.length, 'entries;',
