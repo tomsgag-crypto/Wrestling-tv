@@ -120,11 +120,15 @@ var app = (function () {
   // A unit is one episode: a single upload, or the videos for one date inside a bundle upload.
   var chItems = [], units = [];
 
+  var PARTS = /\b(part|pt\.?|disc|disk|dvd|cd|tape|vol\.?|volume)\s*#?\s*(\d+|one|two|three|four|i{1,3}|iv)\b/i;
+  var MAX_PARTS = 2, WHOLE = 2700;    // a video of 45 minutes or more counts as a whole show, not a part
+
   function buildItems() {
     var seen = {}, dups = {}, all = [];
     raw.forEach(function (r) {
       if (!r || !r.identifier || seen[r.identifier]) return;
       seen[r.identifier] = 1;
+      if (PARTS.test(r.title || '')) return;          // one part of a show split across several uploads
       var it = C.classify(r);
       if (!it) return;
       var dk = it.promo + '|' + it.cat + '|' + it.key + '|' + it.title.toLowerCase();
@@ -139,13 +143,23 @@ var app = (function () {
     buildUnits();
   }
 
+  /** Most videos for any one date in an upload (a whole show split into many pieces scores high). */
+  function partsOf(x) {
+    var g = {}, m = 0;
+    x.forEach(function (f) { if (!bad[f.url] && !WRONG[f.url] && !(f.dur >= WHOLE)) { g[f.k] = (g[f.k] || 0) + 1; m = Math.max(m, g[f.k]); } });
+    return m;
+  }
+  /** The best copy of a show: the first in one or two parts. Other copies are looked at only if needed. */
   function expandedOf(it) {
+    var fallback = null;
     for (var i = 0; i < it.ids.length; i++) {
       var x = exp[it.ids[i]];
       if (x === undefined) return undefined;
-      if (x.length) return x;
+      if (!x.length) continue;
+      if (partsOf(x) <= MAX_PARTS) return x;
+      if (!fallback) fallback = x;
     }
-    return [];
+    return fallback || [];
   }
 
   function unitsOf(items, mins) {
@@ -166,6 +180,12 @@ var app = (function () {
         var fs = groups[k], d = 0, known = true;
         fs.forEach(function (f) { d += f.dur || (mins * 60 / fs.length); if (!f.dur) known = false; });
         if (known && d < minDur(it, +k)) return;
+        if (fs.length > MAX_PARTS) {
+          // several full-length videos with no dates (e.g. a box set): each is its own show; otherwise it's in too many pieces
+          if (fs.every(function (f) { return f.dur >= WHOLE; }))
+            fs.forEach(function (f, j) { out.push({ ref: { k: +k, id: it.id + '#' + j }, item: it, files: [f], title: f.title, label: f.label, dur: f.dur }); });
+          return;
+        }
         out.push({ ref: { k: +k, id: it.id }, item: it, files: fs, title: fs[0].title, label: fs[0].label, dur: d });
       });
     });
