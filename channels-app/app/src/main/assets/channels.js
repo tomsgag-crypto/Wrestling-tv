@@ -97,6 +97,8 @@ var app = (function () {
 
   // ---------------------------------------------------------------- saved state
   var raw = [], exp = {}, bad = {}, tl = [], searchedAt = 0;
+  // uploads known to hold the wrong video
+  var WRONG = { 'https://archive.org/download/jan.-2000/JAN.%2031%2C%202000.mp4': 1 };
   var cur = 0;
   try { cur = Math.max(0, Math.min(CHANNELS.length - 1, +localStorage.getItem('ch') || 0)); } catch (e) {}
   var saveTimer = null;
@@ -156,7 +158,7 @@ var app = (function () {
       }
       var groups = {};
       x.forEach(function (f) {
-        if (bad[f.url]) return;
+        if (bad[f.url] || WRONG[f.url]) return;
         var k = f.k || it.key;
         (groups[k] = groups[k] || []).push(f);
       });
@@ -360,12 +362,18 @@ var app = (function () {
         if (tlEnd(ci) !== tlEnd(other)) { tl[P.a] = []; tl[P.b] = []; }
       }
       var from = tlEnd(ci) || now;
-      if (from >= now + COMMIT_AHEAD || n > 30) return Promise.resolve();
+      if (from >= now + COMMIT_AHEAD || n > 40) return Promise.resolve();
       var st = stateOf(ci);
       var need = [];
       if (P) {
         var w = nextWeek(P, st.w);
-        if (!w) return Promise.resolve();
+        if (!w) {
+          // no matching weeks known yet: look inside month / year bundles until some turn up
+          var open = chItems[P.a].concat(chItems[P.b]).filter(function (it) { return expandedOf(it) === undefined; });
+          open.sort(function (x, y) { return (y.key % 100 === 0) - (x.key % 100 === 0); });
+          if (!open.length) return Promise.resolve();
+          return Promise.all(open.slice(0, 4).map(expand)).then(function () { buildUnits(); return loop(n + 1); });
+        }
         if (!P.A[w].files) need.push(P.A[w].item);
         if (!P.B[w].files) need.push(P.B[w].item);
         // make sure some filler shows have known lengths
@@ -456,6 +464,21 @@ var app = (function () {
     watchdog = setTimeout(function () { if (playing && playing.seq === seq && v.readyState < 2) failed(); }, 35000);
     commit(cur);
     showBanner();
+    renderGuide();
+  }
+
+  /** Hold OK on a programme that isn't what it says: it's removed for good and the schedule moves on. */
+  function removeProg(ci, e) {
+    if (!e || e.g || !e.url) { toast('Nothing to remove there'); return; }
+    bad[e.url] = 1;
+    [ci].concat(paired(ci) ? [partner(ci)] : []).forEach(function (c) { tl[c] = tl[c].filter(function (x) { return x.s < e.s; }); });
+    if (paired(ci)) { var P = pairOf(ci); if (tlEnd(P.a) !== tlEnd(P.b)) { tl[P.a] = []; tl[P.b] = []; } }
+    buildUnits();
+    saveSoon();
+    toast('Removed "' + e.t + (e.l ? ' ' + e.l : '') + '" – it won\'t be shown again');
+    var live = playing && !playing.od && playing.e.url === e.url;
+    if (live || (playing && playing.od && playing.od.files.some(function (f) { return f.url === e.url; }))) { playing = null; tune(cur, true); }
+    commit(ci).then(function () { renderGuide(); });
     renderGuide();
   }
 
@@ -650,7 +673,7 @@ var app = (function () {
     if (fp && !fp.g) {
       $('iTitle').textContent = fp.t + (fp.l ? ' (' + fp.l + ')' : '') + (fp.f ? ' – filling in' : '');
       var live = fp.s <= now && fp.e > now;
-      $('iWhen').textContent = clock(fp.s) + ' – ' + clock(fp.e) + (live ? (gRow === cur ? '   ▶ watching' : '   OK to watch') : '   starts ' + dayWord(fp.s) + ' at ' + clock(fp.s) + ' · OK to watch it now');
+      $('iWhen').textContent = clock(fp.s) + ' – ' + clock(fp.e) + (live ? (gRow === cur ? '   ▶ watching' : '   OK to watch') + (TOUCH ? '' : ' · wrong show? hold OK to remove') : '   starts ' + dayWord(fp.s) + ' at ' + clock(fp.s) + ' · OK to watch it now');
     } else { $('iTitle').textContent = fp ? 'Break – back at ' + clock(fp.e) : '—'; $('iWhen').textContent = ''; }
   }
   function dayWord(t) {
@@ -686,9 +709,11 @@ var app = (function () {
         closeGuide();
         if (gRow !== cur || (!playing && !slateUntil)) tune(gRow);
       }
+      else if (k === 'hold') removeProg(gRow, focused());
       else if (k === 'guide' || k === 'back') closeGuide();
       return true;
     }
+    if (k === 'hold') { if (playing && playing.od) removeProg(cur, { url: playing.od.files[playing.od.i].url, t: playing.od.t, l: playing.od.l, s: Infinity }); else removeProg(cur, onAt(cur, nowSec())); return true; }
     if (k === 'up' || k === 'chup') tune(cur + 1);
     else if (k === 'down' || k === 'chdown') tune(cur - 1);
     else if (k === 'ok' || k === 'guide') openGuide();
@@ -700,13 +725,32 @@ var app = (function () {
     else if (k === 'back') { if (playing && playing.od) { toast('Back to live TV'); tune(cur, false); return true; } return false; }
     return true;
   }
+  var okTimer = null, okHeld = false;
   document.addEventListener('keydown', function (e) {
     var map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok' };
     var k = map[e.key] || (e.keyCode === 23 ? 'ok' : null);
     if (!k) return;
     e.preventDefault();
+    if (k === 'ok') {                                   // OK acts when let go; held for a second = remove
+      if (okTimer || okHeld) return;
+      okTimer = setTimeout(function () { okTimer = null; okHeld = true; key('hold'); }, 1000);
+      return;
+    }
     key(k);
   }, true);
+  document.addEventListener('keyup', function (e) {
+    if (!(e.key === 'Enter' || e.keyCode === 23)) return;
+    e.preventDefault();
+    if (okTimer) { clearTimeout(okTimer); okTimer = null; key('ok'); }
+    okHeld = false;
+  }, true);
+  document.addEventListener('contextmenu', function (e) {     // long-press on a phone
+    var b = e.target.closest('.blk');
+    if (!b || !guideOpen()) return;
+    e.preventDefault();
+    gRow = +b.closest('.grow').id.slice(1); gT = +b.getAttribute('data-t');
+    key('hold');
+  });
   document.addEventListener('click', function (e) {
     var b = e.target.closest('.blk, .gch');
     if (b && guideOpen()) {
@@ -777,6 +821,10 @@ var app = (function () {
     expand(it).then(function () {
       pumping--;
       buildUnits();
+      // a bundle may have just produced the first head-to-head weeks
+      PAIRS.forEach(function (P) {
+        if ((P.weeks || []).length && !tl[P.a].length) commit(P.a).then(function () { if (cur === P.a || cur === P.b) { if (!playing && !slateUntil) tune(cur, true); } renderGuide(); });
+      });
       if (guideOpen()) renderGuide();
       setTimeout(pump, 1500);
     });

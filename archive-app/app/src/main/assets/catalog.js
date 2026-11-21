@@ -27,7 +27,7 @@
     'funny', 'charity', 'basketball', 'twitch', 'nitro team', 'nitro ?circus', 'nitrous', 'nitro rc',
     'freight train', 'american gladiators?',
     // podcasts and commentary uploads that are named after the episode they talk about
-    'chasing that w', 'worst year of our lives', 'raw vs\\.? nitro', 'tunes ?to ?tube', 'y ?2 ?mate', 'makes fun of',
+    'worst year of our lives', 'raw vs\\.? nitro', 'tunes ?to ?tube', 'y ?2 ?mate', 'makes fun of',
     'castellano', 'espa[nñ]ol', 'subtitulado', 'commentary', 'audio only', 'watch ?party', 'retro ?review', 'rewind'
   ].join('|'), 'i');
   function junk(text) { return EXCLUDE.test(clean(text || '')); }
