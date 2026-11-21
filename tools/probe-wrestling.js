@@ -3,7 +3,7 @@ const fs = require('fs');
 const NEW = require('../archive-app/app/src/main/assets/catalog.js');
 const OLD = require('./catalog-before.js');
 const src = fs.readFileSync('archive-app/app/src/main/assets/app.js', 'utf8');
-const body = src.slice(src.indexOf('var M ='), src.indexOf('// ---------- native bridge'));
+const body = src.slice(src.indexOf('var M ='), src.indexOf('var VIDEO ='));
 const QUERIES = new Function(body + '; return QUERIES;')();
 async function scrape(q) {
   let out = [], cursor = null, pages = 0;
