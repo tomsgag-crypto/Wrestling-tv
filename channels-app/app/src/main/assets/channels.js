@@ -5,7 +5,7 @@
  * from the same week, starting at the same time, side by side.
  *
  *   Watching: ▲ ▼ change channel · OK guide · ◀ ▶ what's on · Back twice exit
- *   Guide:    ▲ ▼ channel · ◀ ▶ earlier / later programmes · OK watch · Back close
+ *   Guide:    ▲ ▼ channel · ◀ ▶ earlier / later programmes · OK watch (later ones play from the start) · Back close
  */
 var app = (function () {
   var C = window.Catalog;
@@ -23,23 +23,40 @@ var app = (function () {
     'LiveWire, Action Zone & Mania', 'Metal & Jakked'];
   var isNitro = function (i) { return i.promo === 'WCW' && i.cat === 'Monday Nitro'; };
   var isRaw = function (i) { return i.promo === 'WWF' && i.cat === 'Raw'; };
+  var isThunder = function (i) { return i.promo === 'WCW' && i.cat === 'Thunder'; };
+  var isSmack = function (i) { return i.promo === 'WWF' && i.cat === 'SmackDown'; };
   var CHANNELS = [
     { n: 1, call: 'NITRO', name: 'WCW Monday Nitro', sub: 'Monday Night Wars', mins: 120, pick: isNitro },
     { n: 2, call: 'RAW', name: 'WWF Raw', sub: 'Monday Night Wars', mins: 120, pick: isRaw },
     { n: 3, call: 'MORE', name: 'Raw & Nitro: More Episodes', mins: 90, pick: function (i) { return isNitro(i) || isRaw(i); } },
-    { n: 4, call: 'THUNDER', name: 'WCW Thunder', mins: 120, pick: function (i) { return i.promo === 'WCW' && i.cat === 'Thunder'; } },
-    { n: 5, call: 'SMACK', name: 'WWF SmackDown!', mins: 120, pick: function (i) { return i.promo === 'WWF' && i.cat === 'SmackDown'; } },
-    { n: 6, call: 'WCW-SAT', name: 'WCW Saturday Night & Syndication', mins: 60,
+    { n: 4, call: 'THUNDER', name: 'WCW Thunder', sub: 'Thunder vs SmackDown', mins: 120, pick: isThunder },
+    { n: 5, call: 'SMACK', name: 'WWF SmackDown!', sub: 'Thunder vs SmackDown', mins: 120, pick: isSmack },
+    { n: 6, call: 'MORE-THU', name: 'Thunder & SmackDown: More Episodes', mins: 90, pick: function (i) { return isThunder(i) || isSmack(i); } },
+    { n: 7, call: 'WCW-SAT', name: 'WCW Saturday Night & Syndication', mins: 60,
       pick: function (i) { return i.promo === 'WCW' && WCW_SAT.indexOf(i.cat) >= 0; } },
-    { n: 7, call: 'WWF-WKND', name: 'WWF Weekend Shows', mins: 60,
+    { n: 8, call: 'WWF-WKND', name: 'WWF Weekend Shows', mins: 60,
       pick: function (i) { return i.promo === 'WWF' && WWF_WEEKEND.indexOf(i.cat) >= 0; } },
-    { n: 8, call: 'WCW-PPV', name: 'WCW Pay-Per-View', mins: 180,
+    { n: 9, call: 'WCW-PPV', name: 'WCW Pay-Per-View', mins: 180,
       pick: function (i) { return i.promo === 'WCW' && (i.cat === 'Pay-Per-Views' || i.cat === 'Clash of the Champions'); } },
-    { n: 9, call: 'WWF-PPV', name: 'WWF Pay-Per-View', mins: 180,
+    { n: 10, call: 'WWF-PPV', name: 'WWF Pay-Per-View', mins: 180,
       pick: function (i) { return i.promo === 'WWF' && (i.cat === 'Pay-Per-Views' || i.cat === "Saturday Night's Main Event"); } }
   ];
-  var NITRO = 0, RAW = 1, MORE = 2;
-  function paired(ci) { return ci === NITRO || ci === RAW; }
+  var WCW_SATI = 6, WWF_WKNDI = 7;
+  // Head-to-head channels: the same week's shows start together; the extras channel gets the rest.
+  var PAIRS = [{ a: 0, b: 1, more: 2 }, { a: 3, b: 4, more: 5 }];
+  function pairOf(ci) { for (var i = 0; i < PAIRS.length; i++) if (PAIRS[i].a === ci || PAIRS[i].b === ci) return PAIRS[i]; return null; }
+  function paired(ci) { return !!pairOf(ci); }
+  function partner(ci) { var P = pairOf(ci); return P.a === ci ? P.b : P.a; }
+  // When one show is shorter, the rest of the slot is filled with a weekend / syndicated show from the same company
+  function poolOf(ci) { return ci === 0 || ci === 3 ? WCW_SATI : WWF_WKNDI; }
+
+  // Shortest believable length for a full episode (anything shorter is a clip or a cut-down copy)
+  function minDur(it, k) {
+    if (it.cat === 'Monday Nitro') return k < 19960520 ? 1500 : 3300;
+    if (it.cat === 'Raw') return k < 19970203 ? 1500 : 3300;
+    if (it.cat === 'Thunder' || it.cat === 'SmackDown') return 2400;
+    return 0;
+  }
 
   // ---------------------------------------------------------------- Internet Archive searches
   var M = ' AND mediatype:(movies)';
@@ -86,19 +103,20 @@ var app = (function () {
   function saveSoon() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
-      try { Native.saveCache(JSON.stringify({ v: 2, t: searchedAt, raw: raw, exp: exp, bad: bad, tl: tl })); } catch (e) {}
+      try { Native.saveCache(JSON.stringify({ v: 3, t: searchedAt, raw: raw, exp: exp, bad: bad, tl: tl })); } catch (e) {}
     }, 2000);
   }
   try {
     var cj = JSON.parse(window.Native ? Native.loadCache() || '{}' : '{}');
     if (cj.raw) { raw = cj.raw; searchedAt = cj.t || 0; }
-    if (cj.v === 2) { exp = cj.exp || {}; bad = cj.bad || {}; tl = cj.tl || []; }
+    if (cj.v === 2 || cj.v === 3) { exp = cj.exp || {}; bad = cj.bad || {}; }
+    if (cj.v === 3) tl = cj.tl || [];
   } catch (e) {}
   CHANNELS.forEach(function (c, ci) { if (!tl[ci]) tl[ci] = []; });
 
   // ---------------------------------------------------------------- shows, grouped into "units"
   // A unit is one episode: a single upload, or the videos for one date inside a bundle upload.
-  var chItems = [], units = [], weeks = [], weekN = {}, weekR = {};
+  var chItems = [], units = [];
 
   function buildItems() {
     var seen = {}, dups = {}, all = [];
@@ -143,8 +161,9 @@ var app = (function () {
         (groups[k] = groups[k] || []).push(f);
       });
       Object.keys(groups).forEach(function (k) {
-        var fs = groups[k], d = 0;
-        fs.forEach(function (f) { d += f.dur || (mins * 60 / fs.length); });
+        var fs = groups[k], d = 0, known = true;
+        fs.forEach(function (f) { d += f.dur || (mins * 60 / fs.length); if (!f.dur) known = false; });
+        if (known && d < minDur(it, +k)) return;
         out.push({ ref: { k: +k, id: it.id }, item: it, files: fs, title: fs[0].title, label: fs[0].label, dur: d });
       });
     });
@@ -163,14 +182,15 @@ var app = (function () {
 
   function buildUnits() {
     units = CHANNELS.map(function (ch, ci) { return unitsOf(chItems[ci], ch.mins); });
-    // Monday Night Wars: weeks that have both a Nitro and a Raw
-    weekN = {}; weekR = {};
-    units[NITRO].forEach(function (u) { var w = weekOf(u.ref.k); if (w && !weekN[w]) weekN[w] = u; });
-    units[RAW].forEach(function (u) { var w = weekOf(u.ref.k); if (w && !weekR[w]) weekR[w] = u; });
-    weeks = Object.keys(weekN).filter(function (w) { return weekR[w]; }).map(Number).sort(function (a, b) { return a - b; });
-    var used = {};
-    weeks.forEach(function (w) { used[weekN[w].ref.id + '|' + weekN[w].ref.k] = 1; used[weekR[w].ref.id + '|' + weekR[w].ref.k] = 1; });
-    units[MORE] = units[MORE].filter(function (u) { return !used[u.ref.id + '|' + u.ref.k]; });   // weeks without a pair
+    PAIRS.forEach(function (P) {
+      P.A = {}; P.B = {};
+      units[P.a].forEach(function (u) { var w = weekOf(u.ref.k); if (w && !P.A[w]) P.A[w] = u; });
+      units[P.b].forEach(function (u) { var w = weekOf(u.ref.k); if (w && !P.B[w]) P.B[w] = u; });
+      P.weeks = Object.keys(P.A).filter(function (w) { return P.B[w]; }).map(Number).sort(function (x, y) { return x - y; });
+      var used = {};
+      P.weeks.forEach(function (w) { used[P.A[w].ref.id + '|' + P.A[w].ref.k] = 1; used[P.B[w].ref.id + '|' + P.B[w].ref.k] = 1; });
+      units[P.more] = units[P.more].filter(function (u) { return !used[u.ref.id + '|' + u.ref.k]; });   // weeks without a pair
+    });
   }
 
   // ---------------------------------------------------------------- looking inside an upload
@@ -207,6 +227,7 @@ var app = (function () {
         var p = playable(o, derivs);
         if (!p) return;
         var base = o.name.split('/').pop();
+        if (C.junk(base)) return;
         var title = it.title.replace(/ – whole month$| – collection$/, ''), label = it.label, k = it.key;
         if (many) {
           var c = C.classify({ identifier: id, title: base });
@@ -243,11 +264,36 @@ var app = (function () {
     for (var i = 0; i < us.length; i++) if (cmp(us[i].ref, after) > 0) return us[i];
     return us[0];
   }
-  function nextWeek(after) {
+  function nextWeek(P, after) {
+    var weeks = P.weeks || [];
     if (!weeks.length) return 0;
     if (!after) return weeks[startIndex(weeks.length)];
     for (var i = 0; i < weeks.length; i++) if (weeks[i] > after) return weeks[i];
     return weeks[0];
+  }
+
+  /** Fill the end of a head-to-head slot with weekend shows that fit (same week if possible). */
+  function fill(ci, t, end, w) {
+    var pool = poolOf(ci), out = [], n = 0;
+    var cands = units[pool].filter(function (u) { return u.files && u.dur >= 600; });
+    while (end - t >= 600 && cands.length && n < 6) {
+      var rem = end - t, seed = (w % 9973) * 7 + ci * 13 + n * 31;
+      var fits = cands.filter(function (u) { return u.dur <= rem + 120; });
+      var same = fits.filter(function (u) { return weekOf(u.ref.k) === w; });
+      // nothing fits: use the shortest shows and cut in at the end of the slot
+      var shortest = cands.slice().sort(function (x, y) { return x.dur - y.dur; }).slice(0, 5);
+      var list = same.length ? same : fits.length ? fits : shortest;
+      if (!list.length) break;
+      var u = list[seed % list.length];
+      entriesFor(u, t, CHANNELS[pool].mins).forEach(function (e) {
+        if (e.s >= end) return;
+        e.e = Math.min(e.e, end); e.w = w; e.c = pool; e.f = 1;
+        out.push(e); t = e.e;
+      });
+      n++;
+    }
+    if (t < end) out.push({ s: t, e: end, g: 1, w: w, t: 'Back soon', l: '' });
+    return out;
   }
 
   /** Entries for one unit starting at t (each video of an episode in turn). */
@@ -265,19 +311,19 @@ var app = (function () {
   /** Plan forward from a point. Used to fix the schedule (with real lengths) and to sketch the guide further ahead. */
   function plan(ci, from, to, state) {
     var out = [], t = from, guard = 0;
-    if (paired(ci)) {
+    var P = pairOf(ci);
+    if (P) {
       var w = state.w;
       while (t < to && guard++ < 400) {
-        w = nextWeek(w);
+        w = nextWeek(P, w);
         if (!w) break;
-        var un = weekN[w], ur = weekR[w];
-        var slot = Math.max(un.dur, ur.dur);
-        var mine = ci === NITRO ? un : ur, other = ci === NITRO ? ur : un;
-        var es = entriesFor(mine, t, CHANNELS[ci].mins);
+        var ua = P.A[w], ub = P.B[w];
+        var slot = Math.max(ua.dur, ub.dur);
+        var es = entriesFor(ci === P.a ? ua : ub, t, CHANNELS[ci].mins);
         es.forEach(function (e) { e.w = w; });
         out = out.concat(es);
         var end = es[es.length - 1].e;
-        if (end < t + slot) out.push({ s: end, e: t + slot, g: 1, w: w, t: 'Back soon', l: '' });
+        if (end < t + slot - 60) out = out.concat(fill(ci, end, t + slot, w));
         t += slot;
       }
       return out;
@@ -300,27 +346,34 @@ var app = (function () {
   }
 
   /** Fix the schedule ahead with real lengths (looking inside uploads first where needed). */
-  var committing = {};
+  var committing = {}, poolTried = {};
   function commit(ci) {
     if (committing[ci]) return committing[ci];
     var p = (function loop(n) {
       var now = nowSec();
       // drop old entries
       tl[ci] = tl[ci].filter(function (e) { return e.e > now - 3600; });
-      if (paired(ci)) {                          // keep Nitro and Raw in step
-        var other = ci === NITRO ? RAW : NITRO;
+      var P = pairOf(ci);
+      if (P) {                                   // keep the two rival shows in step
+        var other = partner(ci);
         tl[other] = tl[other].filter(function (e) { return e.e > now - 3600; });
-        if (tlEnd(ci) !== tlEnd(other)) { tl[NITRO] = []; tl[RAW] = []; }
+        if (tlEnd(ci) !== tlEnd(other)) { tl[P.a] = []; tl[P.b] = []; }
       }
       var from = tlEnd(ci) || now;
       if (from >= now + COMMIT_AHEAD || n > 30) return Promise.resolve();
       var st = stateOf(ci);
       var need = [];
-      if (paired(ci)) {
-        var w = nextWeek(st.w);
+      if (P) {
+        var w = nextWeek(P, st.w);
         if (!w) return Promise.resolve();
-        if (!weekN[w].files) need.push(weekN[w].item);
-        if (!weekR[w].files) need.push(weekR[w].item);
+        if (!P.A[w].files) need.push(P.A[w].item);
+        if (!P.B[w].files) need.push(P.B[w].item);
+        // make sure some filler shows have known lengths
+        [poolOf(P.a), poolOf(P.b)].forEach(function (pool) {
+          if (poolTried[pool] || units[pool].filter(function (u) { return u.files; }).length >= 4) return;
+          poolTried[pool] = 1;
+          chItems[pool].filter(function (it) { return expandedOf(it) === undefined; }).slice(0, 6).forEach(function (it) { need.push(it); });
+        });
       } else {
         var u = nextUnit(ci, st.r);
         if (!u) return Promise.resolve();
@@ -329,19 +382,19 @@ var app = (function () {
       if (need.length) {
         return Promise.all(need.map(expand)).then(function () { buildUnits(); return loop(n + 1); });
       }
-      if (paired(ci)) {
-        var stN = stateOf(NITRO);
-        var addN = plan(NITRO, from, from + 1, stN), addR = plan(RAW, from, from + 1, stN);
-        tl[NITRO] = tl[NITRO].concat(addN);
-        tl[RAW] = tl[RAW].concat(addR);
+      if (P) {
+        var sA = stateOf(P.a);
+        var addA = plan(P.a, from, from + 1, sA), addB = plan(P.b, from, from + 1, sA);
+        tl[P.a] = tl[P.a].concat(addA);
+        tl[P.b] = tl[P.b].concat(addB);
       } else {
         tl[ci] = tl[ci].concat(plan(ci, from, from + 1, st));
       }
       saveSoon();
       return loop(n + 1);
-    })(0).then(function () { delete committing[ci]; if (paired(ci)) delete committing[ci === NITRO ? RAW : NITRO]; });
+    })(0).then(function () { delete committing[ci]; if (paired(ci)) delete committing[partner(ci)]; });
     committing[ci] = p;
-    if (paired(ci)) committing[ci === NITRO ? RAW : NITRO] = p;
+    if (paired(ci)) committing[partner(ci)] = p;
     return p;
   }
 
@@ -406,15 +459,53 @@ var app = (function () {
     renderGuide();
   }
 
+  /** Watch a later programme now, from the start. Back (or the end of it) returns to live TV. */
+  function watchEarly(ci, e) {
+    cur = ci;
+    try { localStorage.setItem('ch', String(cur)); } catch (x) {}
+    var seq = ++tuneSeq, src = e.c != null ? e.c : ci;
+    hideSlate();
+    status('Loading ' + esc(e.t) + '…');
+    function find() {
+      var us = units[src];
+      for (var i = 0; i < us.length; i++) if (us[i].ref.id === e.r.id && us[i].ref.k === e.r.k) return us[i];
+      return null;
+    }
+    var u = find();
+    if (!u) { toast('Can\'t find that programme'); tune(ci, true); return; }
+    (u.files ? Promise.resolve() : expand(u.item).then(buildUnits)).then(function () {
+      if (seq !== tuneSeq) return;
+      u = find();
+      if (!u || !u.files || !u.files.length) { toast('That programme won\'t play'); tune(ci, true); return; }
+      var i = 0;
+      for (var j = 0; j < u.files.length; j++) if (u.files[j].url === e.url) i = j;
+      playing = { ch: cur, seq: seq, od: { files: u.files, i: i, t: e.t, l: e.l }, e: { s: nowSec(), e: Infinity, t: e.t, l: e.l } };
+      playOd();
+    });
+  }
+  function playOd() {
+    var od = playing.od, f = od.files[od.i];
+    v.style.visibility = 'visible';
+    v.src = f.url;
+    v.dataset.start = '0';
+    v.load();
+    v.play().catch(function () {});
+    var seq = playing.seq;
+    clearTimeout(watchdog);
+    watchdog = setTimeout(function () { if (playing && playing.seq === seq && v.readyState < 2) failed(); }, 35000);
+    showBanner();
+  }
+
   function failed() {
     if (!playing) return;
+    if (playing.od) { playing = null; toast('That programme won\'t play – back to live TV'); tune(cur, true); return; }
     var e = playing.e, ci = playing.ch;
     bad[e.url] = 1;
     // re-plan this channel from the failed programme onwards
-    [ci].concat(paired(ci) ? [ci === NITRO ? RAW : NITRO] : []).forEach(function (c) {
+    [ci].concat(paired(ci) ? [partner(ci)] : []).forEach(function (c) {
       tl[c] = tl[c].filter(function (x) { return x.s < e.s; });
     });
-    if (paired(ci)) { var a = tlEnd(NITRO), b = tlEnd(RAW); if (a !== b) { tl[NITRO] = []; tl[RAW] = []; } }
+    if (paired(ci)) { var P = pairOf(ci); if (tlEnd(P.a) !== tlEnd(P.b)) { tl[P.a] = []; tl[P.b] = []; } }
     playing = null;
     buildUnits();
     saveSoon();
@@ -449,6 +540,11 @@ var app = (function () {
   v.addEventListener('error', function () { if (playing) failed(); });
   v.addEventListener('ended', function () {
     if (!playing) return;
+    if (playing.od) {
+      if (++playing.od.i < playing.od.files.length) playOd();
+      else { toast('Back to live TV'); tune(cur, false); }
+      return;
+    }
     if (nowSec() < playing.e.e - 10) slate(playing.e);   // finished early: wait for the next start time
     else tune(cur, false);
   });
@@ -467,7 +563,10 @@ var app = (function () {
     var ch = CHANNELS[cur], now = nowSec(), e = onAt(cur, now);
     $('bNum').textContent = 'CH ' + (ch.n < 10 ? '0' : '') + ch.n + '  ' + ch.call;
     $('bName').textContent = ch.name + (ch.sub ? '  ·  ' + ch.sub : '');
-    if (e) {
+    if (playing && playing.od) {
+      $('bNow').innerHTML = 'WATCHING EARLY: ' + esc(playing.od.t) + (playing.od.l ? ' · ' + esc(playing.od.l) : '') +
+        '<br>' + (TOUCH ? 'Tap the screen for the guide · Back' : 'Back') + ' returns to live TV';
+    } else if (e) {
       var nx = nextAfter(cur, e);
       $('bNow').innerHTML = 'NOW: ' + esc(e.g ? 'Back soon' : e.t) + (e.l ? ' · ' + esc(e.l) : '') + '<br>' +
         clock(e.s) + ' – ' + clock(e.e) + (nx ? '&nbsp;&nbsp; NEXT: ' + esc(nx.t) : '');
@@ -549,9 +648,9 @@ var app = (function () {
     var chs = CHANNELS[gRow];
     $('iChan').textContent = 'CH ' + (chs.n < 10 ? '0' : '') + chs.n + '  ·  ' + chs.name + (chs.sub ? '  ·  ' + chs.sub : '');
     if (fp && !fp.g) {
-      $('iTitle').textContent = fp.t + (fp.l ? ' (' + fp.l + ')' : '');
+      $('iTitle').textContent = fp.t + (fp.l ? ' (' + fp.l + ')' : '') + (fp.f ? ' – filling in' : '');
       var live = fp.s <= now && fp.e > now;
-      $('iWhen').textContent = clock(fp.s) + ' – ' + clock(fp.e) + (live ? (gRow === cur ? '   ▶ watching' : '   OK to watch') : '   starts ' + dayWord(fp.s) + ' at ' + clock(fp.s));
+      $('iWhen').textContent = clock(fp.s) + ' – ' + clock(fp.e) + (live ? (gRow === cur ? '   ▶ watching' : '   OK to watch') : '   starts ' + dayWord(fp.s) + ' at ' + clock(fp.s) + ' · OK to watch it now');
     } else { $('iTitle').textContent = fp ? 'Break – back at ' + clock(fp.e) : '—'; $('iWhen').textContent = ''; }
   }
   function dayWord(t) {
@@ -580,7 +679,10 @@ var app = (function () {
       else if (k === 'chdown') guideMove('up');
       else if (k === 'ok') {
         var fp = focused(), now = nowSec();
-        if (fp && fp.s > now) { toast('That starts ' + dayWord(fp.s) + ' at ' + clock(fp.s)); return true; }
+        if (fp && fp.s > now) {
+          if (fp.g) { toast('Nothing on then'); return true; }
+          closeGuide(); watchEarly(gRow, fp); return true;
+        }
         closeGuide();
         if (gRow !== cur || (!playing && !slateUntil)) tune(gRow);
       }
@@ -591,11 +693,11 @@ var app = (function () {
     else if (k === 'down' || k === 'chdown') tune(cur - 1);
     else if (k === 'ok' || k === 'guide') openGuide();
     else if (k === 'left' || k === 'right' || k === 'info') showBanner();
-    else if (k === 'playpause') { if (v.paused) tune(cur, true); else v.pause(); }
+    else if (k === 'playpause') { if (v.paused) { if (playing && playing.od) v.play(); else tune(cur, true); } else v.pause(); }
     else if (k === 'stop') { v.pause(); }
-    else if (k === 'resume') { tune(cur, true); }
+    else if (k === 'resume') { if (playing && playing.od) v.play().catch(function () {}); else tune(cur, true); }
     else if (k === 'refresh') search(true);
-    else if (k === 'back') return false;
+    else if (k === 'back') { if (playing && playing.od) { toast('Back to live TV'); tune(cur, false); return true; } return false; }
     return true;
   }
   document.addEventListener('keydown', function (e) {
@@ -666,7 +768,7 @@ var app = (function () {
   var pumping = 0;
   function pump() {
     if (pumping >= 2) return;
-    var it = null, order = [NITRO, RAW, MORE, 3, 4, 5, 6, 7, 8];
+    var it = null, order = [0, 1, 3, 4, 6, 7, 2, 5, 8, 9];
     for (var a = 0; a < order.length && !it; a++)
       for (var k = 0; k < chItems[order[a]].length && !it; k++)
         if (expandedOf(chItems[order[a]][k]) === undefined) it = chItems[order[a]][k];
@@ -689,5 +791,5 @@ var app = (function () {
   setTimeout(pump, 4000);
   setTimeout(pump, 6000);
 
-  return { key: key, back: back, _cb: _cb, _dbg: { onAt: onAt, tl: function () { return tl; }, weeks: function () { return weeks; }, units: function () { return units; } } };
+  return { key: key, back: back, _cb: _cb, _dbg: { onAt: onAt, tl: function () { return tl; }, weeks: function () { return PAIRS.map(function (P) { return P.weeks; }); }, units: function () { return units; } } };
 })();

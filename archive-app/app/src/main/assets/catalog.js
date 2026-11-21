@@ -25,8 +25,12 @@
     'ultimate collection', 'collection volume', 'gravest collection', 'dark match', 'netflix', 'highlights?',
     'recap', 'preview', 'predictions?', 'fantasy booking', 'compilation', 'mashup', 'parody',
     'funny', 'charity', 'basketball', 'twitch', 'nitro team', 'nitro ?circus', 'nitrous', 'nitro rc',
-    'freight train', 'american gladiators?'
+    'freight train', 'american gladiators?',
+    // podcasts and commentary uploads that are named after the episode they talk about
+    'chasing that w', 'worst year of our lives', 'raw vs\\.? nitro', 'tunes ?to ?tube', 'y ?2 ?mate', 'makes fun of',
+    'castellano', 'espa[nñ]ol', 'subtitulado', 'commentary', 'audio only', 'watch ?party', 'retro ?review', 'rewind'
   ].join('|'), 'i');
+  function junk(text) { return EXCLUDE.test(clean(text || '')); }
 
   var WCW_TOKEN = /\b(wcw|nwa|jcp|crockett|world championship wrestling)\b/i;
   var WWF_TOKEN = /\b(wwf|wwe|wwwf|titan sports)\b/i;
@@ -312,6 +316,6 @@
     };
   }
 
-  var api = { classify: classify, parseDate: parseDate, dateKey: dateKey, dateLabel: dateLabel, ORDER: ORDER, clean: clean };
+  var api = { junk: junk, classify: classify, parseDate: parseDate, dateKey: dateKey, dateLabel: dateLabel, ORDER: ORDER, clean: clean };
   if (typeof module !== 'undefined') module.exports = api; else root.Catalog = api;
 })(this);
