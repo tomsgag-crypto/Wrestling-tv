@@ -46,7 +46,7 @@ var app = (function () {
   // ---------- catalogue ----------
   var packs = {};            // pack id -> [{file, title, key, label, y}] once looked inside
   function build() {
-    var seen = {}, dups = {}, packList = [];
+    var seen = {}, dups = {}, packList = [], singles = [];
     PROMOS.forEach(function (p) {
       var cats = {};
       C.ORDER[p].forEach(function (n) { cats[n] = []; });
@@ -57,13 +57,33 @@ var app = (function () {
       seen[r.identifier] = 1;
       var it = C.classify(r);
       if (!it) return;
-      if (it.pack) { packList.push(it); return; }          // season packs are filed after the single episodes
+      if (it.pack) packList.push(it); else singles.push(it);
+    });
+    // A full-season pack wins its season: its episodes are used and the separate uploads for that season are hidden.
+    // If several packs cover the same season, the one with the most episodes is used.
+    var bestPack = {};                                   // "show|season" -> {id, n}
+    packList.forEach(function (pk) {
+      var counts = {};
+      (packs[pk.id] || []).forEach(function (e) {
+        if (C.foreign(e.title)) return;
+        var sk = pk.cat + '|' + Math.floor(e.key / 10000);
+        counts[sk] = (counts[sk] || 0) + 1;
+      });
+      Object.keys(counts).forEach(function (sk) {
+        if (counts[sk] >= 4 && (!bestPack[sk] || counts[sk] > bestPack[sk].n)) bestPack[sk] = { id: pk.id, n: counts[sk] };
+      });
+    });
+    singles.forEach(function (it) {
+      if (bestPack[it.cat + '|' + Math.floor(it.key / 10000)]) return;    // that season comes from a pack
       add(it);
     });
     packList.forEach(function (pk) {
       var eps = packs[pk.id];
       if (eps && eps.length) {
         eps.forEach(function (e) {
+          if (C.foreign(e.title)) return;
+          var sk = pk.cat + '|' + Math.floor(e.key / 10000), bp = bestPack[sk];
+          if (bp && bp.id !== pk.id) return;               // another pack covers this season better
           add({ id: pk.id, file: e.file, title: e.title, promo: pk.promo, cat: pk.cat, key: e.key, label: e.label,
             y: e.y, precise: true });
         });

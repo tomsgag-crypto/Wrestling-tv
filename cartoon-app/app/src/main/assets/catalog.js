@@ -5,7 +5,7 @@
   var CARTOON = /cartoon|animated|animation|episode|\bep\b|\bs\d{1,2}\s*e\d|\d{1,2}x\d{2}|season|series|serie|19[789]\d/i;
   var SHOWS = [
     ['Teenage Mutant Ninja Turtles', /teenage mutant (ninja|hero) turtles|\btmnt\b|ninja turtles|hero turtles/i, null, /rise of the|mutant mayhem|mutant chronicles|\b2003\b|\b2012\b|next mutation|out of the shadows|fast forward|back to the sewer|turtles forever|arcade|nes\b|snes|hyperstone|tournament fighters|turtles in time|shredder'?s revenge/i],
-    ['He-Man and the Masters of the Universe', /he[- ]?man|masters of the universe/i, null, /revelation|\b2002\b|\b2021\b|new adventures of he-man|motu ?c|origins|dolph|live action/i],
+    ['He-Man and the Masters of the Universe', /he[- ]?man|masters of the universe/i, null, /revelation|\b2002\b|\b2021\b|new adventures|\b1990\b|motu ?c|origins|dolph|live action/i],
     ['She-Ra: Princess of Power', /she[- ]?ra/i, null, /\b2018\b|netflix|princesses of power/i],
     ['ThunderCats', /thunder ?cats/i, null, /roar|\b2011\b|\b2020\b/i],
     ['Ulysses 31', /ulysses ?31/i],
@@ -128,7 +128,19 @@
     'korean', 'catal[aà]', 'euskera', 'galego', 'ulysse 31', 'cit[eé]s d.or'
   ].join('|'), 'i');
   var OTHER_SCRIPT = /[\u0370-\u03FF\u0400-\u04FF\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
+  // Titles written in another language even without saying so ("El Rayo Desaparecedor De Diamante")
+  var FOREIGN_WORDS = /^(el|la|los|las|del|de|un|una|unos|unas|y|en|con|por|para|que|su|sus|al|lo|le|les|des|du|et|au|aux|une|der|das|und|ein|eine|im|zum|zur|mit|von|il|di|della|dello|gli|nel|dos|em|ao|na|pela|pelo|entre|contra|sin|sobre|cuando|donde|pour|avec|sans|dans)$/;
+  var ENGLISH_WORDS = /^(the|of|and|a|an|to|in|on|is|it|for|with|from|at|by|vs|who|what|when|part|my|his|her|your|out|into|up)$/;
+  function foreign(t) {
+    var w = String(t || '').toLowerCase().replace(/[^a-záéíóúñüçàèìòùâêîôûäöß' ]/g, ' ').split(/\s+/).filter(Boolean);
+    var f = 0, e = 0;
+    w.forEach(function (x) { if (FOREIGN_WORDS.test(x)) f++; else if (ENGLISH_WORDS.test(x)) e++; });
+    if (/[ñ¿¡]/.test(t)) f += 2;
+    return f >= 2 && f > e;
+  }
+
   function notEnglish(item, text) {
+    if (foreign(item.title)) return true;
     if (NOT_ENGLISH.test(text) || OTHER_SCRIPT.test(String(item.title || ''))) return true;
     var lang = [].concat(item.language || []).join(' ').toLowerCase().trim();
     return !!lang && !/\b(en|eng|english|englisch|ingl[eé]s|anglais)\b/.test(lang);
@@ -274,6 +286,7 @@
       key = 9000000;
       if (!name) name = show[0];
     }
+    if (foreign(name)) return null;
     if (name.length > 90) name = name.slice(0, 88) + '…';
     return { id: item.identifier, title: name, promo: 'TOONS', cat: show[0], key: key, label: label, y: group, precise: true };
   }
@@ -285,7 +298,7 @@
     if (!show) return null;
     var parts = String(path).split('/'), base = parts.pop(), dir = parts.join(' ');
     var t = clean(declutter(base));
-    if (EXCLUDE.test(t) || NOT_ENGLISH.test(t) || OTHER_SCRIPT.test(t)) return null;
+    if (EXCLUDE.test(t) || NOT_ENGLISH.test(t) || OTHER_SCRIPT.test(t) || foreign(t)) return null;
     var ep = epInfo(t);
     if (!ep || ep.bundle) {
       var st = stripShow(t, show).replace(/\b(19[5-9]\d|20[0-2]\d)\b/g, ' ').trim();
@@ -314,6 +327,6 @@
   function dateLabel(dt) { return dt ? (dt.y ? 'S' + dt.y + ' · ' : '') + 'Ep ' + dt.d : ''; }
 
   var api = { classify: classify, parseDate: parseDate, dateKey: dateKey, dateLabel: dateLabel, ORDER: ORDER,
-    clean: clean, TERMS: TERMS, epInfo: epInfo, episodeFromFile: episodeFromFile };
+    clean: clean, TERMS: TERMS, epInfo: epInfo, episodeFromFile: episodeFromFile, foreign: foreign };
   if (typeof module !== 'undefined') module.exports = api; else root.Catalog = api;
 })(this);
