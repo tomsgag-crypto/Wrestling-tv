@@ -233,7 +233,16 @@ var app = (function () {
     get('https://archive.org/metadata/' + encodeURIComponent(id)).then(function (txt) {
       var md = JSON.parse(txt), files = md.files || [];
       var derivs = files.filter(function (f) { return f.source === 'derivative' && /\.mp4$/i.test(f.name); });
-      var origs = files.filter(function (f) { return f.source !== 'derivative' && VIDEO.test(f.name); });
+      derivs = derivs.filter(function (f) { var l = String(f.length || ''); return !l || l.indexOf(':') >= 0 || +l >= 240; });
+      // video length in seconds ("1324.5" or "22:04"); clips and intros under 4 minutes are left out
+      function secs(f) {
+        var l = String(f.length || '');
+        if (!l) return null;
+        if (l.indexOf(':') >= 0) return l.split(':').reduce(function (t, x) { return t * 60 + (+x || 0); }, 0);
+        return +l || null;
+      }
+      var longEnough = function (f) { var n = secs(f); return n === null || n >= 240; };
+      var origs = files.filter(function (f) { return f.source !== 'derivative' && VIDEO.test(f.name) && longEnough(f); });
       var list = origs.map(function (o) {
         var best = o.name;
         if (!DIRECT.test(o.name)) {

@@ -102,8 +102,22 @@
     'theme song', 'intro only', 'opening (theme|credits|sequence)', 'end credits', '\\bostb?\\b', 'soundtrack', '\\bmp3\\b',
     'read.?along', 'book and (tape|record)', 'storybook', 'audiobook', 'comic', 'colou?ring', 'fan ?art', '\\bamv\\b',
     '\\bmmd\\b', 'youtube poop', '\\bytp\\b', 'parody', 'remix', 'mashup', 'live action', 'cosplay', 'custom figure',
-    'top ?(10|ten|20)', 'tribute', 'karaoke', 'lyrics', 'piano', 'guitar cover', '\\bcover\\b', 'reboot', 'netflix'
+    'top ?(10|ten|20)', 'tribute', 'karaoke', 'lyrics', 'piano', 'guitar cover', '\\bcover\\b', 'reboot', 'netflix',
+    // extras, not episodes
+    '\\bclips?\\b', '\\bscenes?\\b', 'best of', '\\briffs?\\b', 'riffed', 'compilation', 'supercut', 'montage', 'moments',
+    'funniest', 'spanking', 'bumpers?', 'bloopers?', 'outtakes?', 'deleted', 'behind the scenes', 'making of', 'sneak peek',
+    'music video', '\\bsong\\b', 'sing.?along', 'preview', '\\bintro\\b', 'opening', 'credits', 'title sequence', '\\bident\\b',
+    'vhs (opening|closing)', 'tape (opening|closing)', 'fan ?dub', 'abridged', 're-?dub', '\\bedit\\b', 'fan ?edit', 'recut',
+    'analysis', 'explained', 'commentary', 'unboxing', 'figures?\\b', 'action figure', 'kids react', 'retro review',
+    'sound ?effects?', 'storyboard', 'animatic', 'pitch (reel|pilot)', 'test footage', 'promo reel', '\\bgif\\b', 'shorts?\\b(?! ?film)',
+    'mmd', 'meme', 'react', 'tiktok', 'stream', 'livestream', 'watch party'
   ].join('|'), 'i');
+
+  // Website clutter some uploads carry in their titles
+  function declutter(t) {
+    return String(t || '').replace(/\s*\|.*$/, '').replace(/watch (cartoons|anime) online.*$/i, '')
+      .replace(/\b(free|online|full hd|hd quality)\b/ig, ' ');
+  }
 
   var ORDER = { TOONS: ['All shows'].concat(SHOWS.map(function (s) { return s[0]; }).sort(function (a, b) {
     return a.replace(/^the /i, '').localeCompare(b.replace(/^the /i, ''));
@@ -193,7 +207,7 @@
 
   /** item: {identifier, title} -> {id, title, promo, cat, key, label, y (group heading)} or null */
   function classify(item) {
-    var title = clean(item.title || item.identifier);
+    var title = clean(declutter(item.title || item.identifier));
     var idText = clean(String(item.identifier || '').replace(/[-_]+/g, ' '));
     var text = title + ' ' + idText;
     if (EXCLUDE.test(text)) return null;
@@ -208,6 +222,10 @@
       if (m && +m[1] > 0 && +m[1] < 400 && !/^(19|20)\d\d/.test(m[1])) ep = { s: 0, e: +m[1], tok: m[0].trim() };
     }
     var name = epTitle(title, show, ep), label, group, key;
+    // Only proper episodes (numbered) or whole-season uploads
+    if (!ep) return null;
+    if (ep.bundle && !/season|series|complete|collection|volume|vol\b|dvd|disc|episodes/i.test(text)) return null;
+    if (name && (name.length < 4 || /^(complete|full|episode|part ?\d*|uncut|restored|hq|hd)$/i.test(name))) name = '';
     if (ep && !ep.bundle) {
       label = (ep.s ? 'S' + ep.s + ' · ' : '') + 'Ep ' + ep.e;
       group = ep.s ? 'Season ' + ep.s : 'Episodes';
