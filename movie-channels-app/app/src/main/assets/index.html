@@ -10,9 +10,10 @@
     font-family: "Roboto Condensed", Roboto, Arial, sans-serif; }
 
   /* the picture: full screen, original shape */
-  #v { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; object-fit: contain;
+  .tvv.standby { visibility: hidden !important; }
+  .tvv { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; object-fit: contain;
     transition: all .25s ease; z-index: 2; }
-  body.guide #v { top: 2.5vh; left: auto; right: 2vw; width: 40vw; height: 22.5vw; border: 3px solid #ffd400;
+  body.guide .tvv { top: 2.5vh; left: auto; right: 2vw; width: 40vw; height: 22.5vw; border: 3px solid #ffd400;
     border-radius: 6px; }
 
   /* channel banner */
@@ -72,14 +73,16 @@
 
   /* phone, held upright */
   @media (max-aspect-ratio: 1/1) {
-    body.guide #v { width: 46vw; height: 25.9vw; }
+    body.guide .tvv { width: 46vw; height: 25.9vw; }
     #gTop { width: 50vw; height: calc(25.9vw + 5vh); }
     .gch { width: 26%; }
   }
 </style>
 </head>
 <body>
-  <video id="v" playsinline preload="auto"></video>
+  <video id="v" class="tvv" playsinline preload="auto"></video>
+  <video class="tvv standby" playsinline muted preload="auto"></video>
+  <video class="tvv standby" playsinline muted preload="auto"></video>
   <div id="banner"><div id="bNum"></div><div id="bName"></div><div id="bNow"></div></div>
   <div id="status"></div>
   <div id="slate"></div>

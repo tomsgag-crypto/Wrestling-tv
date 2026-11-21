@@ -1,4 +1,4 @@
-/* Movie Archive - TV browsing UI for 80s, 90s and 2000s films on the Internet Archive, plus workprints and fan edits.
+/* Movie Archive - TV browsing UI for films from 1980 to today on the Internet Archive, plus workprints and fan edits.
  * The film list is built weekly by the catalogue job on GitHub: only uploads that hold the whole film in one video. */
 var app = (function () {
   var MV = window.Movies;
@@ -52,7 +52,9 @@ var app = (function () {
     data.GENRES = [{ name: 'All films', items: fl.slice().sort(byYear) }].concat(MV.GENRES.map(function (g) {
       return { name: g, items: fl.filter(function (x) { return x.f.g.indexOf(g) >= 0; }).sort(byYear) };
     })).filter(function (c) { return c.items.length || c.name === 'All films'; });
-    data.DECADES = ['1980s', '1990s', '2000s'].map(function (d) {
+    var decs = [];
+    for (var dc = 1980; dc <= MV.LAST_YEAR; dc += 10) decs.push(dc + 's');
+    data.DECADES = decs.map(function (d) {
       var a = +d.slice(0, 4);
       return { name: d, items: fl.filter(function (x) { return x.f.y >= a && x.f.y < a + 10; }).sort(byYear) };
     });

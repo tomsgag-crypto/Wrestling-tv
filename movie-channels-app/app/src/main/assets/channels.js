@@ -1,4 +1,4 @@
-/* Movie Channels – 24/7 channels of 80s, 90s and 2000s films from the Internet Archive, plus workprints and fan edits.
+/* Movie Channels – 24/7 channels of films from 1980 to today from the Internet Archive, plus workprints and fan edits.
  *
  * The film list is built weekly (by the catalogue job on GitHub) from Archive uploads that hold a whole film in one video.
  * The schedule works like real TV: the next few hours are fixed and saved, and the guide looks 48 hours ahead.
@@ -14,19 +14,31 @@ var app = (function () {
   var COMMIT_AHEAD = 6 * 3600, GUIDE_AHEAD = 48 * 3600;
   var $ = function (id) { return document.getElementById(id); };
   var v = $('v');
+  // Fast channel changes: the channels above and below are loaded in the background, paused at the right point,
+  // so changing channel just swaps players.
+  var vids = [].slice.call(document.querySelectorAll('video.tvv'));
+  function onV(type, fn) { vids.forEach(function (el) { el.addEventListener(type, function (ev) { if (el === v) fn(ev); }); }); }
+  vids.forEach(function (el) {
+    el.addEventListener('loadedmetadata', function () {
+      if (el === v || !el._e) return;
+      var off = Date.now() / 1000 - el._e.s + 2;
+      if (off > 0 && (!isFinite(el.duration) || off < el.duration - 10)) el.currentTime = off;
+    });
+    el.addEventListener('error', function () { if (el !== v) el._e = null; });
+  });
 
   // ---------------------------------------------------------------- channel line-up
   var CODES = { 'Action': 'ACTION', 'Adventure': 'ADVENTURE', 'Comedy': 'COMEDY', 'Drama': 'DRAMA', 'Horror': 'HORROR',
     'Sci-Fi & Fantasy': 'SCI-FI', 'Thriller & Crime': 'THRILLER', 'Family & Animation': 'FAMILY', 'Romance': 'ROMANCE',
-    'War & Western': 'WAR', 'Music & Musicals': 'MUSIC', 'Documentary': 'DOCS' };
+    'War & Western': 'WAR', 'Music & Musicals': 'MUSIC', 'Documentary': 'DOCS', 'Christmas': 'XMAS' };
   var CHANNELS = [];
   MV.GENRES.forEach(function (g) {
     CHANNELS.push({ call: CODES[g], name: g, pick: function (f) { return f.c === 'f' && f.g.indexOf(g) >= 0; } });
   });
-  ['1980s', '1990s', '2000s'].forEach(function (d, i) {
-    var a = 1980 + i * 10;
-    CHANNELS.push({ call: d.slice(2).toUpperCase(), name: d.slice(2) + ' Movies', pick: function (f) { return f.c === 'f' && f.y >= a && f.y < a + 10; } });
-  });
+  for (var dec = 1980; dec <= MV.LAST_YEAR; dec += 10) (function (a) {
+    var d = String(a).slice(2) + 's';
+    CHANNELS.push({ call: d.toUpperCase(), name: d + ' Movies', pick: function (f) { return f.c === 'f' && f.y >= a && f.y < a + 10; } });
+  })(dec);
   CHANNELS.push({ call: 'WORKPRINT', name: 'Workprints', sub: 'unfinished cuts', pick: function (f) { return f.c === 'w'; } });
   CHANNELS.push({ call: 'FAN EDIT', name: 'Fan Edits', sub: 'films re-cut by fans', pick: function (f) { return f.c === 'e'; } });
   CHANNELS.forEach(function (c, i) { c.n = i + 1; });
@@ -160,13 +172,18 @@ var app = (function () {
       playing = null; v.pause(); v.removeAttribute('src'); v.load();
       status(films.length ? 'Nothing on this channel yet' : 'Loading the film list…'); return;
     }
+    var prev = playing && !playing.od ? playing.e : null;
     playing = { ch: cur, e: e, seq: seq };
-    status('Tuning…');
-    v.style.visibility = 'visible';
-    v.src = e.url;
-    v.dataset.start = String(Math.max(0, now - e.s));
-    v.load();
-    v.play().catch(function () {});
+    if (!swapIn(e, now, prev)) {
+      status('Tuning…');
+      v.style.visibility = 'visible';
+      v.muted = false;
+      v._e = e;
+      v.src = e.url;
+      v.dataset.start = String(Math.max(0, now - e.s));
+      v.load();
+      v.play().catch(function () {});
+    }
     clearTimeout(watchdog);
     watchdog = setTimeout(function () { if (playing && playing.seq === seq && v.readyState < 2) failed(); }, 40000);
     showBanner();
@@ -207,6 +224,7 @@ var app = (function () {
     playing = { ch: cur, seq: seq, od: 1, e: { s: nowSec(), e: Infinity, t: e.t, l: e.l, id: e.id, url: e.url } };
     status('Loading ' + esc(e.t) + '…');
     v.style.visibility = 'visible';
+    v.muted = false; v._e = null;
     v.src = e.url;
     v.dataset.start = '0';
     v.load();
@@ -230,17 +248,17 @@ var app = (function () {
   }
   function hideSlate() { slateUntil = 0; $('slate').classList.remove('show'); v.style.visibility = 'visible'; }
 
-  v.addEventListener('loadedmetadata', function () {
+  onV('loadedmetadata', function () {
     if (!playing) return;
     if (!v.videoWidth && !v.videoHeight) { failed(); return; }
     var st = +v.dataset.start || 0;
     if (isFinite(v.duration) && st > v.duration - 5) { slate(playing.e); return; }   // this film already finished
     if (st > 5) v.currentTime = st;
   });
-  v.addEventListener('playing', function () { hideStatus(); clearTimeout(watchdog); });
-  v.addEventListener('waiting', function () { status('Tuning…'); });
-  v.addEventListener('error', function () { if (playing) failed(); });
-  v.addEventListener('ended', function () {
+  onV('playing', function () { hideStatus(); clearTimeout(watchdog); clearTimeout(preTimer); preTimer = setTimeout(preload, 2500); });
+  onV('waiting', function () { status('Tuning…'); });
+  onV('error', function () { if (playing) failed(); });
+  onV('ended', function () {
     if (!playing) return;
     if (playing.od) { toast('Back to live TV'); tune(cur, false); return; }
     if (nowSec() < playing.e.e - 20) slate(playing.e);
@@ -251,6 +269,52 @@ var app = (function () {
     if (slateUntil && now >= slateUntil) tune(cur, false);
     else if (playing && now >= playing.e.e) tune(cur, false);
   }, 3000);
+
+
+  // ---------------------------------------------------------------- players kept ready
+  var preTimer = null;
+  function swapIn(e, now, prev) {
+    for (var i = 0; i < vids.length; i++) {
+      var s = vids[i];
+      if (s === v || !s._e || s._e.url !== e.url || s._e.s !== e.s || s.readyState < 1) continue;
+      var old = v;
+      old.pause(); old.muted = true; old._e = prev; old.classList.add('standby');
+      if (!prev) { old.removeAttribute('src'); old.load(); }
+      s.classList.remove('standby'); s.style.visibility = 'visible'; s.muted = false;
+      v = s;
+      var off = Math.max(0, now - e.s);
+      if (isFinite(v.duration) && off > v.duration - 5) { slate(e); return true; }
+      if (Math.abs(v.currentTime - off) > 4) v.currentTime = off;
+      v.play().catch(function () {});
+      if (v.readyState >= 3) hideStatus(); else status('Tuning…');
+      return true;
+    }
+    return false;
+  }
+  function zap(ci, d) { return step(ci, d); }
+  function preload() {
+    if (!playing) return;
+    var now = nowSec(), want = [];
+    [zap(cur, 1), zap(cur, -1)].forEach(function (ci) {
+      if (ci === cur) return;
+      var e = onAt(ci, now + 5);
+      if (e && e.url && !e.g && e.e - now > 90 && !want.some(function (w) { return w.url === e.url; })) want.push(e);
+    });
+    var spare = vids.filter(function (x) { return x !== v; });
+    var same = function (x, e) { return x._e && x._e.url === e.url && x._e.s === e.s; };
+    want.forEach(function (e) {
+      var have = spare.filter(function (x) { return same(x, e); })[0];
+      if (have) {                                   // keep it near the live point
+        var off = now - e.s + 2;
+        if (have.readyState >= 1 && Math.abs(have.currentTime - off) > 30 && (!isFinite(have.duration) || off < have.duration - 10)) have.currentTime = off;
+        return;
+      }
+      var x = spare.filter(function (y) { return !want.some(function (w) { return same(y, w); }); })[0];
+      if (!x) return;
+      x._e = e; x.muted = true; x.src = e.url; x.load();
+    });
+  }
+  setInterval(preload, 60000);
 
   // ---------------------------------------------------------------- banner and status
   var bannerTimer = null;
@@ -422,7 +486,7 @@ var app = (function () {
       if (guideOpen()) renderGuide();
       return;
     }
-    if (e.target === v || e.target.closest('#slate')) { if (guideOpen()) closeGuide(); else openGuide(); }
+    if ((e.target.classList && e.target.classList.contains('tvv')) || e.target.closest('#slate')) { if (guideOpen()) closeGuide(); else openGuide(); }
   });
   function back() { return guideOpen() ? (closeGuide(), true) : false; }
 

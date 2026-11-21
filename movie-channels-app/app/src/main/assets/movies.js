@@ -4,7 +4,8 @@
 
   // Channel genres, in guide order
   var GENRES = ['Action', 'Adventure', 'Comedy', 'Drama', 'Horror', 'Sci-Fi & Fantasy', 'Thriller & Crime',
-    'Family & Animation', 'Romance', 'War & Western', 'Music & Musicals', 'Documentary'];
+    'Family & Animation', 'Christmas', 'Romance', 'War & Western', 'Music & Musicals', 'Documentary'];
+  var FIRST_YEAR = 1980, LAST_YEAR = new Date().getFullYear();
   var GENRE_RULES = [
     ['Action', /\baction|martial arts|disaster|spy film|kung fu|buddy cop|swashbuckler/],
     ['Adventure', /adventure|swashbuckler|treasure|survival/],
@@ -14,20 +15,24 @@
     ['Sci-Fi & Fantasy', /science fiction|sci.?fi|fantasy|cyberpunk|superhero|dystopi|space opera|post.apocalyptic|time travel|alien/],
     ['Thriller & Crime', /thriller|crime|mystery|noir|gangster|detective|heist|suspense|mafia|police/],
     ['Family & Animation', /family|children|animat|anime|fairy tale|christmas/],
+    ['Christmas', /christmas|xmas|yule|holiday film/],
     ['Romance', /romance|romantic/],
     ['War & Western', /\bwar\b|war film|western|military|vietnam|world war/],
     ['Music & Musicals', /musical|music film|dance film|rockumentary|concert/],
     ['Documentary', /documentary/]
   ];
-  function genres(list) {
+  var CHRISTMAS_TITLE = /\b(christmas|xmas|x-mas|santa|santa clause|grinch|scrooge|nutcracker|noel|jingle|sleigh|krampus|elf|nativity|mistletoe|north pole|reindeer|yuletide|holiday inn|polar express|home alone)\b/i;
+  /** Genres for the channels; a Christmas title counts as Christmas whatever its listed genres. */
+  function genres(list, title) {
     var out = [];
+    if (title && CHRISTMAS_TITLE.test(title)) out.push('Christmas');
     (list || []).forEach(function (g) {
       g = String(g).toLowerCase();
       GENRE_RULES.forEach(function (r) { if (r[1].test(g) && out.indexOf(r[0]) < 0) out.push(r[0]); });
     });
     return GENRES.filter(function (g) { return out.indexOf(g) >= 0; });
   }
-  function decade(y) { return y >= 1980 && y <= 2009 ? (Math.floor(y / 10) * 10) + 's' : ''; }
+  function decade(y) { return y >= FIRST_YEAR && y <= LAST_YEAR ? (Math.floor(y / 10) * 10) + 's' : ''; }
 
   // ---------------------------------------------------------------- titles
   var ROMAN = { ii: '2', iii: '3', iv: '4', v: '5', vi: '6', vii: '7', viii: '8', ix: '9', x: '10' };
@@ -121,7 +126,7 @@
     var cands = idx.get(k);
     if (!cands || !cands.length) return null;
     var y = p.year || (+String(it.year || '').slice(0, 4) || 0);
-    if (y >= 1979 && y <= 2010) {
+    if (y >= FIRST_YEAR - 1 && y <= LAST_YEAR + 1) {
       var best = null;
       cands.forEach(function (f) {
         var dy = Math.abs(f.y - y);
@@ -181,10 +186,10 @@
     var p = parse(String(it.title || '').replace(/\b(work ?print|rough cut|fan ?edit|fan[- ]cut|fan ?mix|fan restoration|fan reconstruction)\b/gi, ' '));
     var f = matchFilm({ title: p.name + (p.year ? ' (' + p.year + ')' : ''), year: it.year }, idx);
     var y = p.year || (f ? f.y : 0);
-    return { t: tidy(it.title), y: y, g: f ? genres(f.g) : [] };
+    return { t: tidy(it.title), y: y, g: f ? genres(f.g, f.t) : genres([], it.title) };
   }
 
-  var api = { GENRES: GENRES, genres: genres, decade: decade, norm: norm, parse: parse, tidy: tidy, foreign: foreign,
+  var api = { GENRES: GENRES, FIRST_YEAR: FIRST_YEAR, LAST_YEAR: LAST_YEAR, genres: genres, decade: decade, norm: norm, parse: parse, tidy: tidy, foreign: foreign,
     buildIndex: buildIndex, matchFilm: matchFilm, pickFile: pickFile, junkSpecial: junkSpecial, specialInfo: specialInfo, secs: secs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Movies = api;
 })(this);
