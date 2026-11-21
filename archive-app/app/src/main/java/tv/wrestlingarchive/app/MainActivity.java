@@ -162,7 +162,7 @@ public class MainActivity extends Activity {
                 it.putExtra("urls", urls);
                 it.putExtra("titles", titles);
                 it.putExtra("index", index);
-                ui.post(() -> startActivity(it));
+                ui.post(() -> startActivityForResult(it, 1));
             } catch (Exception ignored) { }
         }
 
@@ -176,6 +176,16 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void toast(String msg) {
             ui.post(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show());
+        }
+    }
+
+    /** The player asks for the next / previous show when you skip past the end of a video. */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 1 && resultCode == RESULT_OK && data != null) {
+            int dir = data.getIntExtra("dir", 0);
+            if (dir != 0) js("app.playAdjacent(" + dir + ")");
         }
     }
 

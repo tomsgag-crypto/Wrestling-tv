@@ -236,7 +236,7 @@ var app = (function () {
     return C.clean(file);
   }
 
-  function open(it, copy) {
+  function open(it, copy, auto) {
     copy = copy || 0;
     var id = (it.ids || [it.id])[copy];
     var more = it.ids && copy + 1 < it.ids.length;
@@ -256,7 +256,7 @@ var app = (function () {
       if (!list.length) list = derivs.map(function (d) {
         return { name: partName(d.name.split('/').pop(), it), file: d.name, dt: C.parseDate(d.name) };
       });
-      if (!list.length && more) { open(it, copy + 1); return; }
+      if (!list.length && more) { open(it, copy + 1, auto); return; }
       countStatus();
       if (!list.length) { if (window.Native) Native.toast('No playable video in this item'); return; }
 
@@ -267,7 +267,7 @@ var app = (function () {
       });
       list.forEach(function (p) { p.label = p.dt && p.dt.d ? C.dateLabel(p.dt) : ''; p.url = fileUrl(id, p.file); });
 
-      if (list.length === 1) { play(list, 0, it.title); return; }
+      if (list.length === 1 || auto) { play(list, auto && auto < 0 ? list.length - 1 : 0, (it.label ? it.label + ' – ' : '') + it.title); return; }
       parts = { item: it, list: list };
       st.part = 0;
       $('ovTitle').textContent = it.title;
@@ -275,7 +275,7 @@ var app = (function () {
       $('overlay').classList.add('show');
       renderParts();
     }).catch(function (e) {
-      if (more) { open(it, copy + 1); return; }
+      if (more) { open(it, copy + 1, auto); return; }
       countStatus();
       if (window.Native) Native.toast('Couldn\'t open this show: ' + e.message);
     });
@@ -330,6 +330,17 @@ var app = (function () {
     if (st.zone === 'list') { st.zone = 'cats'; render(); return true; }
     if (st.zone === 'tabs') { st.zone = 'cats'; render(); return true; }
     return false;
+  }
+
+  // Called by the player when you skip past the first/last video: play the previous/next show in the list.
+  function playAdjacent(dir) {
+    var its = items(), i = st.row + dir;
+    if (i < 0 || i >= its.length) { if (window.Native) Native.toast('No more shows in this list'); return; }
+    closeParts();
+    st.row = i; st.zone = 'list';
+    render();
+    if (window.Native) Native.toast((dir > 0 ? 'Next: ' : 'Previous: ') + its[i].label + ' – ' + its[i].title);
+    open(its[i], 0, dir);
   }
 
   function jumpYear(dir) {
@@ -397,5 +408,5 @@ var app = (function () {
   if (raw.length) countStatus();
   refresh(false);
 
-  return { back: back, refresh: refresh, jumpYear: jumpYear, page: page, _cb: _cb };
+  return { back: back, refresh: refresh, jumpYear: jumpYear, page: page, playAdjacent: playAdjacent, _cb: _cb };
 })();
