@@ -2,7 +2,10 @@ package tv.wrestlingarchive.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.UiModeManager;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -161,6 +164,13 @@ public class MainActivity extends Activity {
                 it.putExtra("index", index);
                 ui.post(() -> startActivity(it));
             } catch (Exception ignored) { }
+        }
+
+        @JavascriptInterface
+        public boolean isTV() {
+            UiModeManager m = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+            return (m != null && m.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
+                    || !getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
         }
 
         @JavascriptInterface

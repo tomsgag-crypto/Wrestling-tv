@@ -23,6 +23,7 @@ var app = (function () {
   var st = { promo: 0, zone: 'cats', cat: 0, row: 0, part: 0 };
   var parts = null;        // open item's video files
   var loading = false;
+  var TOUCH = window.Native && Native.isTV ? !Native.isTV() : ('ontouchstart' in window);
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -151,25 +152,28 @@ var app = (function () {
     var key = PROMOS[st.promo] + '|' + st.cat + '|' + items().length;
     if (key !== listCat) {
       listCat = key;
-      var h = '', lastY = null, its = items();
+      var h = '', lastY = null, its = items(), years = [];
       if (!its.length) {
         h = '<div id="empty">' + (loading || !raw.length
           ? '<span class="spinner"></span>Searching the Internet Archive for shows…<br>The first load can take a minute.'
           : 'Nothing found in this section yet.') + '</div>';
       }
       its.forEach(function (it, i) {
-        if (it.y !== lastY) { h += '<div class="yr">' + it.y + '</div>'; lastY = it.y; }
+        if (it.y !== lastY) { h += '<div class="yr" id="y' + it.y + '">' + it.y + '</div>'; lastY = it.y; years.push(it.y); }
         h += '<div class="row" id="r' + i + '"><span class="d">' + esc(it.label) + '</span><span class="t">' +
           esc(it.title) + '</span></div>';
       });
       $('list').innerHTML = h;
+      $('years').innerHTML = years.length > 1 ? years.map(function (y) {
+        return '<div class="ychip" data-y="' + y + '">' + y + '</div>'; }).join('') : '';
+      if (TOUCH) $('list').scrollTop = 0;
     }
     var old = $('list').querySelector('.row.sel');
     if (old) old.classList.remove('sel');
     var r = $('r' + st.row);
-    if (r) { r.classList.add('sel'); scrollTo($('list'), r); }
+    if (r) { r.classList.add('sel'); if (!TOUCH) scrollTo($('list'), r); }
     var c = $('c' + st.cat);
-    if (c) scrollTo($('cats'), c);
+    if (c && !TOUCH) scrollTo($('cats'), c);
   }
 
   function scrollTo(box, el) {
@@ -185,7 +189,7 @@ var app = (function () {
     });
     $('parts').innerHTML = h;
     var el = $('p' + st.part);
-    if (el) scrollTo($('parts'), el);
+    if (el && !TOUCH) scrollTo($('parts'), el);
   }
 
   // ---------- opening a show ----------
@@ -307,7 +311,39 @@ var app = (function () {
     render();
   }
 
+  // ---------- touch ----------
+  function tap(e) {
+    var t = e.target.closest('.tab, .cat, .row, .part, .ychip, #refresh, #ovClose');
+    if (!t) return;
+    if (t.id === 'refresh') { refresh(true); return; }
+    if (t.id === 'ovClose') { closeParts(); return; }
+    if (t.classList.contains('part')) { st.part = +t.id.slice(1); renderParts(); play(parts.list, st.part, parts.item.title); return; }
+    if (parts) return;
+    if (t.classList.contains('tab')) {
+      var p = PROMOS.indexOf(t.getAttribute('data-p'));
+      if (p !== st.promo) { st.promo = p; st.cat = 0; st.row = 0; listCat = null; countStatus(); }
+      st.zone = 'cats';
+    } else if (t.classList.contains('cat')) {
+      var c = +t.id.slice(1);
+      if (c !== st.cat) { st.cat = c; st.row = 0; }
+      st.zone = 'cats';
+      if (t.scrollIntoView && t.parentNode.scrollWidth > t.parentNode.clientWidth)
+        t.scrollIntoView({ inline: 'center', block: 'nearest' });
+    } else if (t.classList.contains('ychip')) {
+      var y = $('y' + t.getAttribute('data-y'));
+      if (y) $('list').scrollTop = y.offsetTop - $('list').offsetTop;
+      return;
+    } else if (t.classList.contains('row')) {
+      st.row = +t.id.slice(1); st.zone = 'list'; render();
+      open(items()[st.row]);
+      return;
+    }
+    render();
+  }
+
   // ---------- start ----------
+  document.body.classList.add(TOUCH ? 'touch' : 'tv');
+  document.addEventListener('click', tap);
   document.addEventListener('keydown', key, true);
   try {
     var cached = window.Native ? Native.loadCache() : '';

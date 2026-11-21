@@ -21,6 +21,7 @@
   ].join(',');
 
   var current = null;
+  var remote = false;   // becomes true once a remote/keyboard key is used; touch turns it off
 
   function visible(el) {
     if (!el.getClientRects().length) return false;
@@ -143,6 +144,7 @@
     var k = e.key;
     if (typing && (k === 'ArrowLeft' || k === 'ArrowRight')) return; // let cursor move in text
     var dir = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[k];
+    if (dir || ((k === 'Enter' || k === ' ' || e.keyCode === 23) && !typing)) remote = true;
     if (dir) { e.preventDefault(); e.stopPropagation(); if (typing) t.blur(); move(dir); return; }
     if ((k === 'Enter' || k === ' ' || e.keyCode === 23) && !typing) {
       e.preventDefault(); e.stopPropagation(); activate();
@@ -155,6 +157,7 @@
     if (pending) return;
     pending = setTimeout(function () {
       pending = null;
+      if (!remote) return;
       if (!current || !document.contains(current) || !visible(current)) {
         current = null;
         var list = candidates();
@@ -163,8 +166,15 @@
     }, 400);
   }).observe(document.documentElement, { childList: true, subtree: true });
 
+  // Touching the screen (phone/tablet) hides the remote highlight
+  document.addEventListener('touchstart', function () {
+    remote = false;
+    if (current) { current.classList.remove('tvnav-focus'); current = null; }
+  }, { passive: true, capture: true });
+
   window.__tvnav = {
-    refresh: function () { setTimeout(function () { if (!current || !document.contains(current)) { current = null; var l = candidates(); if (l.length) setFocus(firstInView(l)); } }, 600); },
+    setRemote: function (on) { remote = !!on; if (on) this.refresh(); },
+    refresh: function () { setTimeout(function () { if (!remote) return; if (!current || !document.contains(current)) { current = null; var l = candidates(); if (l.length) setFocus(firstInView(l)); } }, 600); },
     playPause: function () { playPause(); },
     seek: seek
   };

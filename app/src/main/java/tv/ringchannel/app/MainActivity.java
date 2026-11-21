@@ -3,6 +3,10 @@ package tv.ringchannel.app;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.app.UiModeManager;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -105,6 +109,8 @@ public class MainActivity extends Activity {
                 root.addView(view, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 webView.setVisibility(View.GONE);
+                // On phones, turn full-screen video sideways
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
                 view.requestFocus();
             }
 
@@ -123,6 +129,14 @@ public class MainActivity extends Activity {
     private void injectNav() {
         if (navScript.isEmpty()) return;
         webView.evaluateJavascript(navScript, null);
+        // On a TV, show the remote highlight straight away; on phones it waits for a key press
+        if (isTv()) webView.evaluateJavascript("window.__tvnav && window.__tvnav.setRemote(true)", null);
+    }
+
+    private boolean isTv() {
+        UiModeManager m = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+        return (m != null && m.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
+                || !getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
     }
 
     private void exitFullscreen() {
@@ -130,6 +144,7 @@ public class MainActivity extends Activity {
         root.removeView(customView);
         customView = null;
         webView.setVisibility(View.VISIBLE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         if (customViewCallback != null) customViewCallback.onCustomViewHidden();
         customViewCallback = null;
         webView.requestFocus();
