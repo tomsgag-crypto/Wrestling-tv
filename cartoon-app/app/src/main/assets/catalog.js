@@ -9,7 +9,10 @@
     ['She-Ra: Princess of Power', /she[- ]?ra/i, null, /\b2018\b|netflix|princesses of power/i],
     ['ThunderCats', /thunder ?cats/i, null, /roar|\b2011\b|\b2020\b/i],
     ['Ulysses 31', /ulysses ?31|ulysse ?31/i],
-    ['Dungeons & Dragons', /dungeons ?(and|&|n'?) ?dragons/i, CARTOON, /honor among|actual play|campaign|5e|one[- ]shot|session|dnd\b|baldur|neverwinter|game ?play|board ?game|movie 2000|wrath of the dragon/i],
+    // the 1983 CBS cartoon only – the name is shared with the tabletop game, so it needs a sign it's the cartoon
+    ['Dungeons & Dragons', /dungeons ?(and|&|n'?) ?dragons/i,
+      /cartoon|animated|animation|1983|1984|1985|\bcbs\b|marvel|saturday morning|venger|tiamat|presto|\bhank\b|bobby the barbarian|night of no tomorrow|eye of the beholder|valley of the unicorns|dragon'?s graveyard|requiem/i,
+      /honor among|actual play|campaign|5e|one[- ]shot|session|\bdnd\b|d&d (game|podcast)|baldur|neverwinter|game ?play|board ?game|tabletop|table ?top|funhaus|giant ?bomb|critical role|dimension 20|high rollers|acquisitions|dungeon master'?s guide|player'?s handbook|monster manual|unplugged|podcast|live play|stream|movie 2000|wrath of the dragon|book of vile/i],
     ['Jayce and the Wheeled Warriors', /jayce/i],
     ['Heathcliff', /heathcliff?e?/i],
     ['Muppet Babies', /muppet babies/i, null, /\b2018\b|disney junior/i],
@@ -167,7 +170,7 @@
   }
 
   // Longer forms of show names, removed when working out an episode's own title
-  var SUBTITLES = /\b(and the masters of the universe|masters of the universe|princess of power|and the wheeled warriors|wheeled warriors|and the catillac cats|catillac cats|knights of the magical light|and the holograms|and his amazing friends|and the planeteers|and the star sheriffs|the u\.?s\.? space force|the force of freedom|and the three muskehounds|and the golden lance|the game master|g1|generation (1|one)|1980s|80s|'?n'? friends|and friends|the animated series|animated series|cartoon series|tv series|the series)\b/ig;
+  var SUBTITLES = /\b(and the masters of the universe|masters of the universe|princess of power|and the wheeled warriors|wheeled warriors|and the catillac cats|catillac cats|knights of the magical light|and the holograms|and his amazing friends|and the planeteers|and the star sheriffs|the u\.?s\.? space force|the force of freedom|and the three muskehounds|and the golden lance|the game master|g1|generation (1|one)|1980s|80s|'?n'? friends|and friends|the animated series|animated series|cartoon series|tv series|the series|cartoons?|animated)\b/ig;
 
   function stripShow(title, show) {
     var t0 = clean(title).replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ');
