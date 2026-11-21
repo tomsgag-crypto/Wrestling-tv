@@ -10,12 +10,12 @@
     font-family: "Roboto Condensed", Roboto, Arial, sans-serif; font-size: 17px; }
   #top { height: 58px; display: flex; align-items: center; padding: 0 28px; gap: 22px;
     background: linear-gradient(#1b1b28, #12121b); border-bottom: 3px solid #2bb3ff; }
-  #logo { font-weight: 800; letter-spacing: 2px; font-size: 20px; color: #f2b705; text-transform: uppercase; }
-  .tab { padding: 6px 22px; border-radius: 6px; font-weight: 700; font-size: 18px; color: #9a9aac;
+  #logo { white-space: nowrap; font-weight: 800; letter-spacing: 2px; font-size: 20px; color: #f2b705; text-transform: uppercase; }
+  .tab { white-space: nowrap; padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 18px; color: #9a9aac;
     border: 2px solid transparent; }
   .tab.on { color: #fff; background: #2a2a3a; }
   .zone-tabs .tab.on { border-color: #f2b705; box-shadow: 0 0 14px rgba(242,183,5,.5); }
-  #status { margin-left: auto; color: #9a9aac; font-size: 14px; }
+  #status { white-space: nowrap; margin-left: auto; color: #9a9aac; font-size: 14px; }
   #main { position: absolute; top: 58px; bottom: 34px; left: 0; right: 0; display: flex; }
   #cats { width: 30%; max-width: 330px; overflow: hidden; padding: 12px 0; border-right: 1px solid #22222f; }
   .cat { padding: 9px 22px; display: flex; justify-content: space-between; color: #b9b9c8;
@@ -104,7 +104,9 @@
     <div id="logo">Movie Archive</div>
     <div class="tab" data-p="GENRES">Genres</div>
     <div class="tab" data-p="DECADES">Decades</div>
-    <div class="tab" data-p="CUTS">Workprints &amp; Edits</div>
+    <div class="tab" data-p="DIRECTORS">Directors</div>
+    <div class="tab" data-p="STARS">Stars</div>
+    <div class="tab" data-p="CUTS">Rare cuts</div>
     <div id="status"></div>
     <div id="refresh" title="Refresh">&#x21bb;</div>
   </div>

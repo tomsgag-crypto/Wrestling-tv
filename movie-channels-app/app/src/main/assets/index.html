@@ -59,6 +59,11 @@
   .num { font-size: 2.4vh; font-weight: 800; color: #ffd400; }
   .call { font-size: 1.6vh; font-weight: 700; color: #7fe0ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .watch { color: #7fffa0; }
+  .gsec { height: 3.4vh; line-height: 3.4vh; padding-left: 1.5vw; font-size: 1.6vh; font-weight: 800; letter-spacing: .15vw;
+    text-transform: uppercase; color: #ffd400; background: rgba(0,0,0,.35); }
+  #num { position: absolute; top: 4vh; right: 4vw; z-index: 5; display: none; font-size: 8vh; font-weight: 800; color: #ffd400;
+    background: rgba(0,0,0,.7); padding: .5vh 2vw; border-radius: 10px; }
+  #num.show { display: block; }
 
   /* "Back at …" card */
   #slate { position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; z-index: 3; display: none; text-align: center;
@@ -86,6 +91,7 @@
   <div id="banner"><div id="bNum"></div><div id="bName"></div><div id="bNow"></div></div>
   <div id="status"></div>
   <div id="slate"></div>
+  <div id="num"></div>
   <div id="guide">
     <div id="gTop">
       <div id="gBrand">MOVIE CHANNELS</div>

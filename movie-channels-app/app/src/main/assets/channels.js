@@ -31,17 +31,49 @@ var app = (function () {
   var CODES = { 'Action': 'ACTION', 'Adventure': 'ADVENTURE', 'Comedy': 'COMEDY', 'Drama': 'DRAMA', 'Horror': 'HORROR',
     'Sci-Fi & Fantasy': 'SCI-FI', 'Thriller & Crime': 'THRILLER', 'Family & Animation': 'FAMILY', 'Romance': 'ROMANCE',
     'War & Western': 'WAR', 'Music & Musicals': 'MUSIC', 'Documentary': 'DOCS', 'Christmas': 'XMAS' };
+  // Channels are made from the film list: genres, sub-genres, decades, collections, directors, stars and rare cuts.
   var CHANNELS = [];
-  MV.GENRES.forEach(function (g) {
-    CHANNELS.push({ call: CODES[g], name: g, pick: function (f) { return f.c === 'f' && f.g.indexOf(g) >= 0; } });
-  });
-  for (var dec = 1980; dec <= MV.LAST_YEAR; dec += 10) (function (a) {
-    var d = String(a).slice(2) + 's';
-    CHANNELS.push({ call: d.toUpperCase(), name: d + ' Movies', pick: function (f) { return f.c === 'f' && f.y >= a && f.y < a + 10; } });
-  })(dec);
-  CHANNELS.push({ call: 'WORKPRINT', name: 'Workprints', sub: 'unfinished cuts', pick: function (f) { return f.c === 'w'; } });
-  CHANNELS.push({ call: 'FAN EDIT', name: 'Fan Edits', sub: 'films re-cut by fans', pick: function (f) { return f.c === 'e'; } });
-  CHANNELS.forEach(function (c, i) { c.n = i + 1; });
+  function short(name) { return name.replace(/^The /, '').split(/[ &:]/)[0].toUpperCase().slice(0, 10); }
+  function lastName(n) { var w = n.split(' '); return w[w.length - 1]; }
+  function makeChannels() {
+    var out = [], F = films.filter(function (f) { return !bad[f.i]; });
+    var isF = function (f) { return f.c === 'f'; };
+    function add(sec, name, pick, extra) {
+      var n = F.filter(pick).length;
+      if (n >= (extra && extra.min || 4)) out.push(Object.assign({ sec: sec, name: name, call: (extra && extra.call) || short(name), pick: pick }, extra || {}));
+    }
+    MV.GENRES.forEach(function (g) { add('Genres', g, function (f) { return isF(f) && f.g.indexOf(g) >= 0; }, { call: CODES[g] }); });
+    MV.SUBGENRES.forEach(function (t) { add('More genres', t, function (f) { return isF(f) && (f.s || []).indexOf(t) >= 0; }, { min: 8 }); });
+    for (var dec = 1980; dec <= MV.LAST_YEAR; dec += 10) (function (a) {
+      var d = String(a).slice(2) + 's';
+      add('Decades', d + ' Movies', function (f) { return isF(f) && f.y >= a && f.y < a + 10; }, { call: d.toUpperCase() });
+    })(dec);
+    add('Collections', 'Blockbusters', function (f) { return isF(f) && f.p >= 70; }, { sub: 'the big ones' });
+    add('Collections', 'Hidden Gems', function (f) { return isF(f) && f.p && f.p < 12; }, { sub: 'lesser-known films' });
+    add('Collections', 'Cult Classics', function (f) { return isF(f) && f.n >= 20000 && (!f.p || f.p < 60); }, { call: 'CULT' });
+    add('Collections', 'Epics', function (f) { return isF(f) && f.d >= 150 * 60; }, { sub: '2½ hours and up' });
+    add('Collections', 'Under 90 Minutes', function (f) { return isF(f) && f.d < 90 * 60; }, { call: 'SHORT' });
+    add('Collections', 'Sequels', function (f) { return isF(f) && /\b(2|3|4|5|6|ii|iii|iv|v|part \w+)\b|: the next|returns\b|revenge of/i.test(f.t.replace(/^\d+/, '')); }, { call: 'SEQUELS' });
+    add('Collections', 'Movie Mix', isF, { call: 'MIX', sub: 'anything goes' });
+    var dn = {}, sn = {};
+    F.forEach(function (f) { (f.dr || []).forEach(function (d) { dn[d] = (dn[d] || 0) + 1; }); (f.st || []).forEach(function (x) { sn[x] = (sn[x] || 0) + 1; }); });
+    Object.keys(dn).filter(function (d) { return dn[d] >= 6; }).sort(function (a, b) { return lastName(a).localeCompare(lastName(b)); }).forEach(function (d) {
+      add('Directors', d, function (f) { return isF(f) && (f.dr || []).indexOf(d) >= 0; }, { call: lastName(d).toUpperCase().slice(0, 10), sub: 'director' });
+    });
+    Object.keys(sn).filter(function (x) { return sn[x] >= 10; }).sort(function (a, b) { return lastName(a).localeCompare(lastName(b)); }).forEach(function (x) {
+      add('Stars', x, function (f) { return isF(f) && (f.st || []).indexOf(x) >= 0; }, { call: lastName(x).toUpperCase().slice(0, 10), sub: 'starring' });
+    });
+    add('Rare cuts', 'Workprints', function (f) { return f.c === 'w'; }, { call: 'WORKPRINT', sub: 'unfinished cuts', min: 1 });
+    add('Rare cuts', 'Fan Edits', function (f) { return f.c === 'e'; }, { call: 'FAN EDIT', sub: 'films re-cut by fans', min: 1 });
+    out.forEach(function (c, i) { c.n = i + 1; });
+    // schedules follow their channel by name
+    var keep = {}; CHANNELS.forEach(function (c, i) { if (tl[i]) keep[c.name] = tl[i]; });
+    var curName = CHANNELS[cur] ? CHANNELS[cur].name : savedName;
+    CHANNELS = out;
+    tl = CHANNELS.map(function (c) { return keep[c.name] || tlSaved[c.name] || []; });
+    cur = 0;
+    CHANNELS.forEach(function (c, i) { if (c.name === curName) cur = i; });
+  }
 
   // ---------------------------------------------------------------- native bridge
   var cbs = {}, cbN = 0;
@@ -59,21 +91,23 @@ var app = (function () {
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   // ---------------------------------------------------------------- saved state
-  var films = [], fetchedAt = 0, bad = {}, tl = [];
+  var films = [], fetchedAt = 0, bad = {}, tl = [], tlSaved = {}, savedName = '';
   var cur = 0;
-  try { cur = Math.max(0, Math.min(CHANNELS.length - 1, +localStorage.getItem('ch') || 0)); } catch (e) {}
+  try { savedName = localStorage.getItem('chName') || ''; } catch (e) {}
   var saveTimer = null;
   function saveSoon() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
-      try { Native.saveCache(JSON.stringify({ v: 1, t: fetchedAt, films: films, bad: bad, tl: tl })); } catch (e) {}
+      var byName = {};
+      CHANNELS.forEach(function (c, i) { if (tl[i] && tl[i].length) byName[c.name] = tl[i]; });
+      try { Native.saveCache(JSON.stringify({ v: 2, t: fetchedAt, films: films, bad: bad, tl: byName })); } catch (e) {}
     }, 2000);
   }
   try {
     var cj = JSON.parse(window.Native ? Native.loadCache() || '{}' : '{}');
-    if (cj.v === 1) { films = cj.films || []; fetchedAt = cj.t || 0; bad = cj.bad || {}; tl = cj.tl || []; }
+    if (cj.v === 1 || cj.v === 2) { films = cj.films || []; fetchedAt = cj.t || 0; bad = cj.bad || {}; }
+    if (cj.v === 2) tlSaved = cj.tl || {};
   } catch (e) {}
-  CHANNELS.forEach(function (c, ci) { if (!tl[ci]) tl[ci] = []; });
 
   // ---------------------------------------------------------------- what each channel shows, in a fixed shuffled order
   var lists = [];
@@ -82,6 +116,7 @@ var app = (function () {
     return 'https://archive.org/download/' + encodeURIComponent(f.i) + '/' + String(f.f).split('/').map(encodeURIComponent).join('/');
   }
   function build() {
+    makeChannels();
     lists = CHANNELS.map(function (ch) {
       return films.filter(function (f) { return !bad[f.i] && ch.pick(f); })
         .map(function (f) { return { f: f, h: hash(ch.name + '|' + f.i) }; })
@@ -160,9 +195,11 @@ var app = (function () {
     return ci;
   }
   function tune(ci, quiet) {
+    if (!CHANNELS.length) { status('Loading the film list…'); return; }
     cur = (ci + CHANNELS.length) % CHANNELS.length;
     if (!has(cur)) cur = step(cur, 1);
-    try { localStorage.setItem('ch', String(cur)); } catch (e) {}
+    try { localStorage.setItem('chName', CHANNELS[cur].name); } catch (e) {}
+    hideNum();
     var seq = ++tuneSeq;
     hideSlate();
     commit(cur);
@@ -218,7 +255,7 @@ var app = (function () {
   /** Watch a later film now, from the start. Back (or the end of it) returns to live TV. */
   function watchEarly(ci, e) {
     cur = ci;
-    try { localStorage.setItem('ch', String(cur)); } catch (x) {}
+    try { localStorage.setItem('chName', CHANNELS[cur].name); } catch (x) {}
     var seq = ++tuneSeq;
     hideSlate();
     playing = { ch: cur, seq: seq, od: 1, e: { s: nowSec(), e: Infinity, t: e.t, l: e.l, id: e.id, url: e.url } };
@@ -380,6 +417,7 @@ var app = (function () {
     $('gTimes').innerHTML = th;
     var h = '', fp = focused();
     if (!has(gRow)) gRow = step(gRow, 1);
+    var lastSec = null;
     CHANNELS.forEach(function (ch, ci) {
       if (!has(ci)) return;
       var ps = programmes(ci, ws, ws + SPAN), blocks = '';
@@ -392,6 +430,7 @@ var app = (function () {
           '<div class="bt">' + esc(p.t) + '</div><div class="bl">' + esc(p.l || '') + '</div></div>';
       });
       if (!blocks) blocks = '<div class="blk gap" style="left:0;width:100%"><div class="bt">' + (films.length ? 'No films yet' : 'Loading…') + '</div></div>';
+      if (ch.sec !== lastSec) { h += '<div class="gsec">' + esc(ch.sec) + '</div>'; lastSec = ch.sec; }
       h += '<div class="grow' + (ci === gRow ? ' selrow' : '') + '" id="g' + ci + '">' +
         '<div class="gch"><div class="num">' + (ch.n < 10 ? '0' : '') + ch.n + (ci === cur ? ' <span class="watch">▶</span>' : '') + '</div>' +
         '<div class="call">' + esc(ch.name) + '</div></div><div class="gline">' + blocks +
@@ -414,6 +453,32 @@ var app = (function () {
     } else { $('iTitle').textContent = '—'; $('iWhen').textContent = ''; }
   }
   setInterval(function () { if (guideOpen()) renderGuide(); }, 30000);
+  /** First channel of the next / previous section. */
+  function secJump(ci, dir) {
+    var start = function (i) { var sec = CHANNELS[i].sec; while (i > 0 && CHANNELS[i - 1].sec === sec) i--; return i; };
+    var i = start(ci);
+    if (dir > 0) {
+      var sec = CHANNELS[i].sec;
+      while (i < CHANNELS.length && CHANNELS[i].sec === sec) i++;
+      if (i >= CHANNELS.length) i = 0;
+    } else {
+      if (i === ci) i = start(i === 0 ? CHANNELS.length - 1 : i - 1);
+    }
+    return i;
+  }
+  // typing a channel number
+  var numBuf = '', numTimer = null;
+  function digit(d) {
+    numBuf = (numBuf + d).slice(-3);
+    $('num').textContent = numBuf; $('num').classList.add('show');
+    clearTimeout(numTimer);
+    numTimer = setTimeout(function () {
+      var n = +numBuf; numBuf = ''; hideNum();
+      if (n >= 1 && n <= CHANNELS.length) { if (guideOpen()) { gRow = n - 1; gT = nowSec(); renderGuide(); } else tune(n - 1); }
+      else toast('No channel ' + n);
+    }, 1400);
+  }
+  function hideNum() { var el = $('num'); if (el) el.classList.remove('show'); }
   function guideMove(k) {
     var now = nowSec(), fp = focused();
     if (k === 'up') gRow = step(gRow, -1);
@@ -427,8 +492,9 @@ var app = (function () {
   function key(k) {
     if (guideOpen()) {
       if (k === 'up' || k === 'down' || k === 'left' || k === 'right') guideMove(k);
-      else if (k === 'chup') guideMove('down');
-      else if (k === 'chdown') guideMove('up');
+      else if (k === 'chup') { gRow = secJump(gRow, 1); gT = nowSec(); renderGuide(); }
+      else if (k === 'chdown') { gRow = secJump(gRow, -1); gT = nowSec(); renderGuide(); }
+      else if (/^\d$/.test(k)) digit(k);
       else if (k === 'ok') {
         var fp = focused(), now = nowSec();
         if (fp && fp.s > now) { closeGuide(); watchEarly(gRow, fp); return true; }
@@ -440,6 +506,7 @@ var app = (function () {
       return true;
     }
     if (k === 'hold') { removeProg(playing ? playing.e : onAt(cur, nowSec())); return true; }
+    if (/^\d$/.test(k)) { digit(k); return true; }
     if (k === 'up' || k === 'chup') tune(step(cur, 1));
     else if (k === 'down' || k === 'chdown') tune(step(cur, -1));
     else if (k === 'ok' || k === 'guide') openGuide();
@@ -454,7 +521,7 @@ var app = (function () {
   var okTimer = null, okHeld = false;
   document.addEventListener('keydown', function (e) {
     var map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok' };
-    var k = map[e.key] || (e.keyCode === 23 ? 'ok' : null);
+    var k = map[e.key] || (e.keyCode === 23 ? 'ok' : null) || (/^\d$/.test(e.key) ? e.key : null);
     if (!k) return;
     e.preventDefault();
     if (k === 'ok') {
@@ -518,6 +585,7 @@ var app = (function () {
   document.body.classList.add(TOUCH ? 'touch' : 'tv');
   build();
   if (films.length) { commitAll(); tune(cur); }
+  else status('Loading the film list…');
   if (!films.length || Date.now() - fetchedAt > 86400000) load(false);
   setInterval(commitAll, 10 * 60 * 1000);
 

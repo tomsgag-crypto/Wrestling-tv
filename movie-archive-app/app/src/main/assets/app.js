@@ -3,7 +3,7 @@
 var app = (function () {
   var MV = window.Movies;
   var CATALOGUE = 'https://raw.githubusercontent.com/tomsgag-crypto/Wrestling-tv/movie-data/movies.json';
-  var PROMOS = ['GENRES', 'DECADES', 'CUTS'];
+  var PROMOS = ['GENRES', 'DECADES', 'DIRECTORS', 'STARS', 'CUTS'];
 
   var films = [];          // [{i,f,t,y,g,d,c,n}]
   var data = {};           // tab -> [{name, items}]
@@ -51,7 +51,19 @@ var app = (function () {
     var fl = ok.filter(function (x) { return x.f.c === 'f'; });
     data.GENRES = [{ name: 'All films', items: fl.slice().sort(byYear) }].concat(MV.GENRES.map(function (g) {
       return { name: g, items: fl.filter(function (x) { return x.f.g.indexOf(g) >= 0; }).sort(byYear) };
-    })).filter(function (c) { return c.items.length || c.name === 'All films'; });
+    })).concat(MV.SUBGENRES.map(function (t) {
+      return { name: t, items: fl.filter(function (x) { return (x.f.s || []).indexOf(t) >= 0; }).sort(byYear) };
+    }).filter(function (c) { return c.items.length >= 5; })).filter(function (c) { return c.items.length || c.name === 'All films'; });
+    function people(key, min) {
+      var n = {};
+      fl.forEach(function (x) { (x.f[key] || []).forEach(function (p) { (n[p] = n[p] || []).push(x); }); });
+      var last = function (s) { var w = s.split(' '); return w[w.length - 1]; };
+      return Object.keys(n).filter(function (p) { return n[p].length >= min; })
+        .sort(function (a, b) { return last(a).localeCompare(last(b)) || a.localeCompare(b); })
+        .map(function (p) { return { name: p, items: n[p].slice().sort(byYear) }; });
+    }
+    data.DIRECTORS = people('dr', 3);
+    data.STARS = people('st', 5);
     var decs = [];
     for (var dc = 1980; dc <= MV.LAST_YEAR; dc += 10) decs.push(dc + 's');
     data.DECADES = decs.map(function (d) {
