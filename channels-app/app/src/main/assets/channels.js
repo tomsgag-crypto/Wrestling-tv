@@ -110,7 +110,7 @@ var app = (function () {
   // ---------------------------------------------------------------- saved state
   var raw = [], exp = {}, bad = {}, tl = [], searchedAt = 0;
   // uploads known to hold the wrong video
-  var WRONG = { 'https://archive.org/download/jan.-2000/JAN.%2031%2C%202000.mp4': 1 };
+  var WRONG = {};
   var cur = 0;
   try { cur = Math.max(0, Math.min(CHANNELS.length - 1, +localStorage.getItem('ch') || 0)); } catch (e) {}
   var saveTimer = null;
