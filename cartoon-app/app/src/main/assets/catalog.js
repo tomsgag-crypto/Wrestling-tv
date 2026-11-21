@@ -8,7 +8,7 @@
     ['He-Man and the Masters of the Universe', /he[- ]?man|masters of the universe/i, null, /revelation|\b2002\b|\b2021\b|new adventures of he-man|motu ?c|origins|dolph|live action/i],
     ['She-Ra: Princess of Power', /she[- ]?ra/i, null, /\b2018\b|netflix|princesses of power/i],
     ['ThunderCats', /thunder ?cats/i, null, /roar|\b2011\b|\b2020\b/i],
-    ['Ulysses 31', /ulysses ?31|ulysse ?31/i],
+    ['Ulysses 31', /ulysses ?31/i],
     // the 1983 CBS cartoon only – the name is shared with the tabletop game, so it needs a sign it's the cartoon
     ['Dungeons & Dragons', /dungeons ?(and|&|n'?) ?dragons/i,
       /cartoon|animated|animation|1983|1984|1985|\bcbs\b|marvel|saturday morning|venger|tiamat|presto|\bhank\b|bobby the barbarian|night of no tomorrow|eye of the beholder|valley of the unicorns|dragon'?s graveyard|requiem/i,
@@ -27,7 +27,7 @@
     ['Centurions', /centurions/i, /power xtreme|cartoon|episode|1986|ace mccloud|doc terror/i],
     ['Jem and the Holograms', /jem and the holograms|\bjem\b.{0,20}(truly outrageous|episode|cartoon|1985|1986|1987)/i, null, /\b2015\b|movie 2015/i],
     ['Defenders of the Earth', /defenders of the earth/i],
-    ['The Mysterious Cities of Gold', /mysterious cities of gold|cit[eé]s d'or/i, null, /\b2012\b|season 2|season 3|season 4/i],
+    ['The Mysterious Cities of Gold', /mysterious cities of gold/i, null, /\b2012\b|season 2|season 3|season 4/i],
     ['Danger Mouse', /danger ?mouse/i, null, /\b2015\b|\b2016\b|\b2017\b|\b2018\b|\b2019\b/i],
     ['Count Duckula', /count duckula/i],
     ['Bananaman', /bananaman/i],
@@ -115,6 +115,24 @@
     'sound ?effects?', 'storyboard', 'animatic', 'pitch (reel|pilot)', 'test footage', 'promo reel', '\\bgif\\b', 'shorts?\\b(?! ?film)',
     'mmd', 'meme', 'react', 'tiktok', 'stream', 'livestream', 'watch party'
   ].join('|'), 'i');
+
+  // Not in English: language words in the title, other alphabets, or the Archive's language tag
+  var NOT_ENGLISH = new RegExp([
+    'castellano', 'espa[ñn]ol', 'latino', 'latinoam[eé]rica', 'spanish', 'doblaje', 'doblado', 'audio latino', 'cap[ií]tulo', 'temporada',
+    'episodio', 'subtitulad', '\\bvf\\b', '\\bvostfr\\b', '\\bvost\\b', 'fran[cç]ais', 'french', 'épisode', '\\bsaison\\b',
+    'german', 'deutsch', '\\bfolge\\b', '\\bstaffel\\b', 'synchro', 'italian', 'italiano', 'puntata', 'portugu[eê]s', 'portuguese',
+    'dublado', 'legendado', 'epis[oó]dio', 'brasil', 'russian', 'polish', 'polski', 'lektor', 'odcinek', 'dubbing pl', '\\bpl\\b',
+    'dutch', 'nederlands', 'aflevering', 'swedish', 'svenska', 'norsk', 'norwegian', 'dansk', 'danish', 'suomi', 'finnish', 'jakso',
+    't[üu]rk[çc]e', 'turkish', 'b[öo]l[üu]m', 'arabic', 'hebrew', 'hindi', 'greek', 'magyar', 'hungarian', 'cesky', 'česky', 'czech',
+    'slovak', 'romanian', 'rom[aâ]n[aă]', 'croatian', 'hrvatski', 'serbian', 'srpski', 'japanese', 'chinese', 'mandarin', 'cantonese',
+    'korean', 'catal[aà]', 'euskera', 'galego', 'ulysse 31', 'cit[eé]s d.or'
+  ].join('|'), 'i');
+  var OTHER_SCRIPT = /[\u0370-\u03FF\u0400-\u04FF\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
+  function notEnglish(item, text) {
+    if (NOT_ENGLISH.test(text) || OTHER_SCRIPT.test(String(item.title || ''))) return true;
+    var lang = [].concat(item.language || []).join(' ').toLowerCase().trim();
+    return !!lang && !/\b(en|eng|english|englisch|ingl[eé]s|anglais)\b/.test(lang);
+  }
 
   // Website clutter some uploads carry in their titles
   function declutter(t) {
@@ -214,6 +232,7 @@
     var idText = clean(String(item.identifier || '').replace(/[-_]+/g, ' '));
     var text = title + ' ' + idText;
     if (EXCLUDE.test(text)) return null;
+    if (notEnglish(item, text)) return null;
     var show = findShow(title) || findShow(text);
     if (!show) return null;
     var yr = text.match(/\b(19[5-9]\d|20[0-2]\d)\b/g);

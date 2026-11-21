@@ -81,7 +81,7 @@ var app = (function () {
   function fetchQuery(q) {
     var out = [], pages = 0;
     function page(cursor) {
-      var url = 'https://archive.org/services/search/v1/scrape?fields=identifier,title,date,year&count=5000&q=' +
+      var url = 'https://archive.org/services/search/v1/scrape?fields=identifier,title,date,year,language&count=5000&q=' +
         encodeURIComponent(q) + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
       return get(url).then(function (txt) {
         var j = JSON.parse(txt);
@@ -112,7 +112,7 @@ var app = (function () {
     Promise.all(PROMOS.map(fetchPromo)).then(function (res) {
       var keep = currentId();
       raw = [].concat.apply([], res).map(function (r) {
-        return { identifier: r.identifier, title: r.title, date: r.date, year: r.year };
+        return { identifier: r.identifier, title: r.title, date: r.date, year: r.year, language: r.language };
       });
       try { Native.saveCache(JSON.stringify({ t: Date.now(), raw: raw })); } catch (e) {}
       build();
