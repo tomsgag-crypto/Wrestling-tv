@@ -3,16 +3,31 @@ var app = (function () {
   var C = window.Catalog;
   var PROMOS = ['WCW', 'WWF'];
 
-  var QUERY = {
-    WCW: 'title:(wcw OR nwa OR nitro OR starrcade OR "halloween havoc" OR "great american bash" OR superbrawl ' +
-      'OR "clash of the champions" OR "bash at the beach" OR "fall brawl" OR slamboree OR "spring stampede" ' +
-      'OR uncensored OR "souled out" OR "world war 3" OR "road wild" OR "hog wild" OR "new blood rising" ' +
-      'OR "beach blast" OR "chi-town rumble" OR wrestlewar OR "capital combat" OR "world championship wrestling")' +
-      ' AND mediatype:(movies)',
-    WWF: 'title:(wwf OR wwe OR wrestlemania OR summerslam OR "royal rumble" OR "survivor series" OR "king of the ring" ' +
-      'OR "in your house" OR smackdown OR "saturday night\'s main event" OR "shotgun saturday night" ' +
-      'OR "tuesday night titans")' +
-      ' AND mediatype:(movies)'
+  // Several searches per promotion: names on the Archive vary a lot ("WWF.Monday.Night.RAW.06.09.97" etc.)
+  var M = ' AND mediatype:(movies)';
+  var YEARS = '(1985 OR 1986 OR 1987 OR 1988 OR 1989 OR 1990 OR 1991 OR 1992 OR 1993 OR 1994 OR 1995 OR 1996 ' +
+    'OR 1997 OR 1998 OR 1999 OR 2000 OR 2001)';
+  var QUERIES = {
+    WCW: [
+      'title:(wcw OR nwa OR "monday nitro" OR starrcade OR "halloween havoc" OR "great american bash" OR superbrawl ' +
+        'OR "clash of the champions" OR "bash at the beach" OR "fall brawl" OR slamboree OR "spring stampede" ' +
+        'OR "souled out" OR "road wild" OR "hog wild" OR "new blood rising" OR "beach blast" OR "chi-town rumble" ' +
+        'OR wrestlewar OR "capital combat" OR "world championship wrestling")' + M,
+      '("monday nitro" OR "wcw nitro" OR "wcw thunder" OR "wcw saturday night" OR "wcw worldwide" OR "wcw main event" ' +
+        'OR "wcw power hour" OR "wcw pro" OR "nwa world championship wrestling")' + M,
+      'identifier:(wcw* OR nwa* OR monday-nitro* OR mondaynitro* OR starrcade* OR halloween-havoc* OR clash-of-the-champions*)' + M
+    ],
+    WWF: [
+      'title:(wwf OR wrestlemania OR summerslam OR "royal rumble" OR "survivor series" OR "king of the ring" ' +
+        'OR "in your house" OR "saturday night\'s main event" OR "shotgun saturday night" OR "tuesday night titans" ' +
+        'OR "raw is war" OR "monday night raw")' + M,
+      '("raw is war" OR "monday night raw" OR "wwf raw" OR "wwf smackdown" OR "sunday night heat" ' +
+        'OR "superstars of wrestling" OR "wrestling challenge" OR "prime time wrestling" OR "wwf superstars" ' +
+        'OR "all american wrestling" OR "wwf championship wrestling")' + M,
+      'identifier:(wwf* OR monday-night-raw* OR mondaynightraw* OR raw-is-war* OR rawiswar* OR wrestlemania* ' +
+        'OR summerslam* OR royal-rumble* OR survivor-series*)' + M,
+      'title:(wwe AND (raw OR smackdown OR heat OR wrestlemania OR summerslam OR "royal rumble")) AND title:' + YEARS + M
+    ]
   };
 
   var VIDEO = /\.(mp4|m4v|mkv|webm|avi|mpe?g|mov|ogv|flv|ts|vob)$/i;
@@ -45,7 +60,7 @@ var app = (function () {
 
   // ---------- catalogue ----------
   function build() {
-    var seen = {};
+    var seen = {}, dups = {};
     PROMOS.forEach(function (p) {
       var cats = {};
       C.ORDER[p].forEach(function (n) { cats[n] = []; });
@@ -56,6 +71,10 @@ var app = (function () {
       seen[r.identifier] = 1;
       var it = C.classify(r);
       if (!it) return;
+      var dk = it.promo + '|' + it.cat + '|' + it.key + '|' + it.title.toLowerCase();
+      if (dups[dk]) { dups[dk].ids.push(it.id); return; }     // another copy of the same show
+      it.ids = [it.id];
+      dups[dk] = it;
       data[it.promo][it.cat].push(it);
       data[it.promo]['All shows'].push(it);
     });
@@ -70,20 +89,31 @@ var app = (function () {
     });
   }
 
-  function fetchPromo(p) {
+  function fetchQuery(q) {
     var out = [], pages = 0;
     function page(cursor) {
       var url = 'https://archive.org/services/search/v1/scrape?fields=identifier,title,date,year&count=5000&q=' +
-        encodeURIComponent(QUERY[p]) + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+        encodeURIComponent(q) + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
       return get(url).then(function (txt) {
         var j = JSON.parse(txt);
         out = out.concat(j.items || []);
         pages++;
-        if (j.cursor && pages < 30) return page(j.cursor);
+        if (j.cursor && pages < 20) return page(j.cursor);
         return out;
       });
     }
     return page(null);
+  }
+
+  // Runs all of a promotion's searches; one failing search doesn't lose the others.
+  function fetchPromo(p) {
+    var failed = 0;
+    return Promise.all(QUERIES[p].map(function (q) {
+      return fetchQuery(q).catch(function (e) { failed++; return []; });
+    })).then(function (lists) {
+      if (failed === QUERIES[p].length) throw new Error('search failed');
+      return [].concat.apply([], lists);
+    });
   }
 
   function refresh(manual) {
@@ -198,9 +228,20 @@ var app = (function () {
       name.split('/').map(encodeURIComponent).join('/');
   }
 
-  function open(it) {
-    status('<span class="spinner"></span>Opening ' + esc(it.title) + '…');
-    get('https://archive.org/metadata/' + encodeURIComponent(it.id)).then(function (txt) {
+  function partName(file, it) {
+    var c = C.classify({ identifier: file, title: file });
+    if (c && c.cat === it.cat) return c.title;
+    var dt = C.parseDate(file);
+    if (dt && dt.d && it.cat !== 'Other') return it.title.replace(/ – .*$/, '');   // e.g. one episode of a month
+    return C.clean(file);
+  }
+
+  function open(it, copy) {
+    copy = copy || 0;
+    var id = (it.ids || [it.id])[copy];
+    var more = it.ids && copy + 1 < it.ids.length;
+    status('<span class="spinner"></span>Opening ' + esc(it.title) + (copy ? ' (copy ' + (copy + 1) + ')' : '') + '…');
+    get('https://archive.org/metadata/' + encodeURIComponent(id)).then(function (txt) {
       var md = JSON.parse(txt), files = md.files || [];
       var derivs = files.filter(function (f) { return f.source === 'derivative' && /\.mp4$/i.test(f.name); });
       var origs = files.filter(function (f) { return f.source !== 'derivative' && VIDEO.test(f.name); });
@@ -210,11 +251,12 @@ var app = (function () {
           var d = derivs.filter(function (x) { return x.original === o.name; })[0];
           if (d) best = d.name;
         }
-        return { name: C.clean(o.name.split('/').pop()), file: best, dt: C.parseDate(o.name) };
+        return { name: partName(o.name.split('/').pop(), it), file: best, dt: C.parseDate(o.name) };
       });
       if (!list.length) list = derivs.map(function (d) {
-        return { name: C.clean(d.name.split('/').pop()), file: d.name, dt: C.parseDate(d.name) };
+        return { name: partName(d.name.split('/').pop(), it), file: d.name, dt: C.parseDate(d.name) };
       });
+      if (!list.length && more) { open(it, copy + 1); return; }
       countStatus();
       if (!list.length) { if (window.Native) Native.toast('No playable video in this item'); return; }
 
@@ -223,7 +265,7 @@ var app = (function () {
         if (dated) { var k = C.dateKey(a.dt) - C.dateKey(b.dt); if (k) return k; }
         return a.name.localeCompare(b.name, undefined, { numeric: true });
       });
-      list.forEach(function (p) { p.label = p.dt && p.dt.d ? C.dateLabel(p.dt) : ''; p.url = fileUrl(it.id, p.file); });
+      list.forEach(function (p) { p.label = p.dt && p.dt.d ? C.dateLabel(p.dt) : ''; p.url = fileUrl(id, p.file); });
 
       if (list.length === 1) { play(list, 0, it.title); return; }
       parts = { item: it, list: list };
@@ -233,6 +275,7 @@ var app = (function () {
       $('overlay').classList.add('show');
       renderParts();
     }).catch(function (e) {
+      if (more) { open(it, copy + 1); return; }
       countStatus();
       if (window.Native) Native.toast('Couldn\'t open this show: ' + e.message);
     });
