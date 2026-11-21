@@ -1,7 +1,7 @@
 /* Cartoon Archive - TV browsing UI */
 var app = (function () {
   var C = window.Catalog;
-  var PROMOS = ['TOONS'];
+  var PROMOS = ['TOONS', 'PACKS'];        // tabs: everything, or full-season packs only
 
   // Several searches per promotion: names on the Archive vary a lot ("WWF.Monday.Night.RAW.06.09.97" etc.)
   var M = ' AND mediatype:(movies)';
@@ -21,6 +21,8 @@ var app = (function () {
   var raw = [];            // [{identifier,title,date,year}]
   var data = {};           // promo -> [{name, items}]
   var st = { promo: 0, zone: 'cats', cat: 0, row: 0, part: 0 };
+  try { if (localStorage.getItem('tab') === '1') st.promo = 1; } catch (e) {}
+  function rememberTab() { try { localStorage.setItem('tab', String(st.promo)); } catch (e) {} }
   var parts = null;        // open item's video files
   var loading = false;
   var TOUCH = window.Native && Native.isTV ? !Native.isTV() : ('ontouchstart' in window);
@@ -59,7 +61,7 @@ var app = (function () {
     var seen = {}, dups = {}, packList = [], singles = [];
     PROMOS.forEach(function (p) {
       var cats = {};
-      C.ORDER[p].forEach(function (n) { cats[n] = []; });
+      C.ORDER.TOONS.forEach(function (n) { cats[n] = []; });
       data[p] = cats;
     });
     raw.forEach(function (r) {
@@ -94,11 +96,24 @@ var app = (function () {
           if (C.foreign(e.title)) return;
           var sk = pk.cat + '|' + Math.floor(e.key / 10000), bp = bestPack[sk];
           if (bp && bp.id !== pk.id) return;               // another pack covers this season better
-          add({ id: pk.id, file: e.file, title: e.title, promo: pk.promo, cat: pk.cat, key: e.key, label: e.label,
-            y: e.y, precise: true });
+          var item = { id: pk.id, file: e.file, title: e.title, promo: pk.promo, cat: pk.cat, key: e.key, label: e.label,
+            y: e.y, precise: true };
+          add(item);
+          addPack(item);
         });
-      } else if (!eps) add(pk);       // not looked inside yet: show the pack itself for now
+      } else if (!eps) { add(pk); addPack(pk); }      // not looked inside yet: show the pack itself for now
     });
+    function addPack(src) {
+      if (broken[src.id + '|' + (src.file || '')]) return;
+      var it = Object.assign({}, src, { promo: 'PACKS' });
+      var dk = 'P|' + it.cat + '|' + it.key + '|' + (it.pack ? it.title.toLowerCase() : '');
+      if (dups[dk]) return;
+      it.ids = [it.id];
+      it.uid = it.id + '|' + (it.file || '');
+      dups[dk] = it;
+      data.PACKS[it.cat].push(it);
+      data.PACKS['All shows'].push(Object.assign({}, it, { y: it.cat }));
+    }
     function add(it) {
       if (broken[it.id + '|' + (it.file || '')]) return;        // failed to play before
       var ep = it.key < 8000000 && !it.pack;
@@ -112,7 +127,7 @@ var app = (function () {
     }
     PROMOS.forEach(function (p) {
       var list = [];
-      C.ORDER[p].forEach(function (n) {
+      C.ORDER.TOONS.forEach(function (n) {
         var items = data[p][n];
         var noThe = function (x) { return x.replace(/^the /i, ''); };
         items.sort(function (a, b) {
@@ -156,7 +171,7 @@ var app = (function () {
     if (loading) return;
     loading = true;
     status('<span class="spinner"></span>Updating from the Internet Archive…');
-    Promise.all(PROMOS.map(fetchPromo)).then(function (res) {
+    Promise.all([fetchPromo('TOONS')]).then(function (res) {
       var keep = currentId();
       raw = [].concat.apply([], res).map(function (r) {
         return { identifier: r.identifier, title: r.title, date: r.date, year: r.year, language: r.language, item_size: r.item_size };
@@ -423,6 +438,7 @@ var app = (function () {
     if (st.zone === 'tabs') {
       if (k === 'ArrowLeft' || k === 'ArrowRight') {
         st.promo = (st.promo + (k === 'ArrowRight' ? 1 : PROMOS.length - 1)) % PROMOS.length;
+        rememberTab();
         st.cat = 0; st.row = 0; listCat = null; countStatus();
       }
       if (k === 'ArrowDown' || k === 'OK') st.zone = 'cats';
@@ -489,7 +505,7 @@ var app = (function () {
     if (parts) return;
     if (t.classList.contains('tab')) {
       var p = PROMOS.indexOf(t.getAttribute('data-p'));
-      if (p !== st.promo) { st.promo = p; st.cat = 0; st.row = 0; listCat = null; countStatus(); }
+      if (p !== st.promo) { st.promo = p; st.cat = 0; st.row = 0; listCat = null; countStatus(); rememberTab(); }
       st.zone = 'cats';
     } else if (t.classList.contains('cat')) {
       var c = +t.id.slice(1);
