@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wrestling Channels</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden;
+    font-family: "Roboto Condensed", Roboto, Arial, sans-serif; }
+
+  /* the picture: full screen, original shape */
+  #v { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; object-fit: contain;
+    transition: all .25s ease; z-index: 2; }
+  body.guide #v { top: 2.5vh; left: auto; right: 2vw; width: 40vw; height: 22.5vw; border: 3px solid #ffd400;
+    border-radius: 6px; }
+
+  /* channel banner */
+  #banner { position: absolute; top: 4vh; left: 3vw; max-width: 52vw; z-index: 5; background: rgba(10,26,122,.93);
+    border: 2px solid #ffd400; border-radius: 10px; padding: 1.4vh 1.6vw 1.6vh; display: none; }
+  #banner.show { display: block; }
+  #bNum { font-size: 3.6vh; font-weight: 800; color: #ffd400; }
+  #bName { font-size: 2.4vh; font-weight: 700; margin-top: .2vh; }
+  #bNow { font-size: 2.2vh; color: #dde4ff; margin-top: .8vh; line-height: 1.35; }
+
+  #status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; display: none;
+    background: rgba(0,0,0,.8); padding: 1.4vh 2vw; border-radius: 8px; font-size: 2.6vh; font-weight: 700; text-align: center; }
+  #status.show { display: block; }
+
+  /* the guide */
+  #guide { position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; background: #0a1a7a; z-index: 1; display: none; }
+  body.guide #guide { display: block; }
+  #gTop { height: calc(22.5vw + 5vh); padding: 2.5vh 2vw 1vh 2.5vw; width: 56vw; }
+  #gBrand { font-size: 3.2vh; font-weight: 800; color: #ffd400; letter-spacing: .1vw; }
+  #gClock { font-size: 2.2vh; font-weight: 700; margin-bottom: 1.4vh; }
+  #iChan { font-size: 2.3vh; font-weight: 700; color: #7fe0ff; }
+  #iTitle { font-size: 3.2vh; font-weight: 800; margin: .4vh 0; line-height: 1.2; }
+  #iWhen { font-size: 2.2vh; color: #ffd400; }
+  #gHead { display: flex; background: #1030c8; padding: .8vh 2vw; font-size: 1.9vh; font-weight: 800; color: #ffd400; }
+  #rows { position: absolute; left: 0; right: 0; bottom: 0; overflow: hidden; padding: .6vh 1vw 2vh; }
+  .row { display: flex; padding: 1vh 1vw; margin: .4vh 0; border-radius: 6px; border: 2px solid transparent;
+    border-bottom-color: rgba(80,110,255,.35); }
+  .row.sel { background: #1838e0; border-color: #ffd400; }
+  .c1 { width: 24%; } .c2 { width: 44%; padding-right: 1vw; } .c3 { width: 32%; }
+  .num { font-size: 2.8vh; font-weight: 800; color: #ffd400; }
+  .call { font-size: 1.8vh; font-weight: 700; color: #7fe0ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t { font-size: 2.3vh; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s { font-size: 1.8vh; color: #c8d2ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .c3 .t { font-weight: 400; color: #e6ebff; }
+  .watch { color: #7fffa0; }
+
+  /* phone, held upright */
+  @media (max-aspect-ratio: 1/1) {
+    body.guide #v { width: 46vw; height: 25.9vw; }
+    #gTop { width: 50vw; height: calc(25.9vw + 5vh); }
+    .c3 { display: none; } .c1 { width: 30%; } .c2 { width: 70%; }
+  }
+</style>
+</head>
+<body>
+  <video id="v" playsinline preload="auto"></video>
+  <div id="banner"><div id="bNum"></div><div id="bName"></div><div id="bNow"></div></div>
+  <div id="status"></div>
+  <div id="guide">
+    <div id="gTop">
+      <div id="gBrand">WRESTLING CHANNELS</div>
+      <div id="gClock"></div>
+      <div id="iChan"></div>
+      <div id="iTitle"></div>
+      <div id="iWhen"></div>
+    </div>
+    <div id="gHead"><div class="c1">CHANNEL</div><div class="c2">ON NOW</div><div class="c3">NEXT</div></div>
+    <div id="rows"></div>
+  </div>
+  <script src="catalog.js"></script>
+  <script src="channels.js"></script>
+</body>
+</html>
