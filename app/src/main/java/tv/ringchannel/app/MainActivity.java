@@ -8,6 +8,16 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.Rect;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.TypedValue;
+import android.view.GestureDetector;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -47,6 +57,11 @@ public class MainActivity extends Activity {
     private volatile boolean fsWanted = false;   // user turned full-screen video on
     private volatile boolean fsShowing = false;  // video is full screen right now
     private boolean okLong = false;
+    private FrameLayout shield;          // phone: catches taps while zoomed in on the player
+    private LinearLayout fsButtons;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable hideButtons = () -> { if (fsButtons != null) fsButtons.setVisibility(View.GONE); };
+    private int fsHints = 0;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -62,6 +77,7 @@ public class MainActivity extends Activity {
         root.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
+        buildShield();
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -83,7 +99,10 @@ public class MainActivity extends Activity {
             @JavascriptInterface public void setFullscreen(boolean on) { fsWanted = on; }
             @JavascriptInterface public void setShowing(boolean on) {
                 fsShowing = on;
-                runOnUiThread(() -> phoneFullscreen(on));
+                runOnUiThread(() -> onShowingChanged(on));
+            }
+            @JavascriptInterface public void zoomTo(float l, float t, float w, float h, float iw, float ih) {
+                runOnUiThread(() -> applyZoom(l, t, w, h, iw, ih));
             }
             @JavascriptInterface public boolean isTv() { return MainActivity.this.isTv(); }
         }, "RingApp");
@@ -91,7 +110,7 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                fsShowing = false;
+                if (fsShowing) { fsShowing = false; onShowingChanged(false); }
             }
 
             @Override
@@ -171,6 +190,103 @@ public class MainActivity extends Activity {
         if (now - lastBackPress < 2000) { finish(); return; }
         lastBackPress = now;
         Toast.makeText(this, "Press Back again to exit", Toast.LENGTH_SHORT).show();
+    }
+
+    // ---------- full screen: zoom the app's view in on the player, leaving the page untouched ----------
+
+    private void onShowingChanged(boolean on) {
+        if (on) {
+            phoneFullscreen(true);
+            if (!isTv()) { shield.setVisibility(View.VISIBLE); showButtons(); }
+            if (fsHints++ < 2) Toast.makeText(this, isTv()
+                    ? "Full screen – hold OK to exit, ▼ or Menu for the TV guide"
+                    : "Tap the screen for buttons – double-tap or Back to exit", Toast.LENGTH_LONG).show();
+        } else {
+            resetZoom();
+            phoneFullscreen(false);
+            shield.setVisibility(View.GONE);
+        }
+    }
+
+    /** Player rectangle in page (CSS) pixels -> scale and move the WebView so it fills the screen. */
+    private void applyZoom(float l, float t, float w, float h, float iw, float ih) {
+        if (!fsShowing || iw <= 0 || w < 20 || h < 20 || webView.getWidth() == 0) return;
+        float k = webView.getWidth() / iw;
+        float x = l * k, y = t * k, ww = w * k, hh = h * k;
+        float rw = root.getWidth(), rh = root.getHeight();
+        float sc = Math.min(rw / ww, rh / hh);                 // keep the picture's shape
+        webView.setPivotX(0);
+        webView.setPivotY(0);
+        webView.setScaleX(sc);
+        webView.setScaleY(sc);
+        webView.setTranslationX(rw / 2f - sc * (x + ww / 2f));
+        webView.setTranslationY(rh / 2f - sc * (y + hh / 2f));
+        webView.setClipBounds(new Rect(Math.round(x), Math.round(y), Math.round(x + ww), Math.round(y + hh)));
+    }
+
+    private void resetZoom() {
+        webView.setScaleX(1f);
+        webView.setScaleY(1f);
+        webView.setTranslationX(0f);
+        webView.setTranslationY(0f);
+        webView.setClipBounds(null);
+    }
+
+    private int dp(float v) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics()));
+    }
+
+    private TextView pill(String text, Runnable action) {
+        TextView b = new TextView(this);
+        b.setText(text);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        b.setTypeface(b.getTypeface(), android.graphics.Typeface.BOLD);
+        b.setPadding(dp(16), dp(10), dp(16), dp(10));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xE60F0F19);
+        bg.setCornerRadius(dp(22));
+        bg.setStroke(dp(2), 0xFFFFD400);
+        b.setBackground(bg);
+        b.setOnClickListener(v -> action.run());
+        return b;
+    }
+
+    /** Phone only: a clear layer over the zoomed player. Tap = show buttons, double-tap = exit. */
+    private void buildShield() {
+        shield = new FrameLayout(this);
+        shield.setVisibility(View.GONE);
+        GestureDetector gd = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDown(MotionEvent e) { return true; }
+            @Override public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (fsButtons.getVisibility() == View.VISIBLE) hideButtons.run(); else showButtons();
+                return true;
+            }
+            @Override public boolean onDoubleTap(MotionEvent e) { nav("toggleFullscreen()"); return true; }
+        });
+        shield.setOnTouchListener((v, e) -> { gd.onTouchEvent(e); return true; });
+
+        fsButtons = new LinearLayout(this);
+        fsButtons.setOrientation(LinearLayout.HORIZONTAL);
+        TextView exit = pill("\u2715  Exit full screen", () -> nav("toggleFullscreen()"));
+        TextView guide = pill("\u2630  Guide", () -> nav("guide()"));
+        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gap.setMarginStart(dp(10));
+        fsButtons.addView(exit);
+        fsButtons.addView(guide, gap);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+        lp.setMargins(dp(16), dp(16), dp(20), dp(20));
+        shield.addView(fsButtons, lp);
+        root.addView(shield, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void showButtons() {
+        fsButtons.setVisibility(View.VISIBLE);
+        handler.removeCallbacks(hideButtons);
+        handler.postDelayed(hideButtons, 4000);
     }
 
     /** On phones: turn sideways and hide the status/navigation bars while the video is full screen. */

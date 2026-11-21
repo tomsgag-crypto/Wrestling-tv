@@ -11,26 +11,13 @@
     'box-shadow:0 0 18px 6px rgba(255,212,0,.65) !important;border-radius:6px;' +
     'position:relative;z-index:2147483000;transition:outline .08s}' +
     'html{scroll-behavior:smooth}' +
-    /* full-screen video: fills the screen, keeps its shape (black bars where needed) */
-    'html.rc-fs,html.rc-fs body{overflow:hidden !important}' +
-    '.rc-anc{transform:none !important;filter:none !important;perspective:none !important;contain:none !important;' +
-    'will-change:auto !important;z-index:auto !important;opacity:1 !important;isolation:auto !important;' +
-    'mix-blend-mode:normal !important;backdrop-filter:none !important;clip-path:none !important;mask:none !important}' +
-    '.rc-fs-el{position:fixed !important;top:0 !important;left:0 !important;right:auto !important;bottom:auto !important;' +
-    'width:100vw !important;height:100vh !important;max-width:none !important;max-height:none !important;' +
-    'min-width:0 !important;min-height:0 !important;margin:0 !important;padding:0 !important;border:0 !important;' +
-    'border-radius:0 !important;transform:none !important;object-fit:contain !important;background:#000 !important;' +
-    'z-index:2147483647 !important;outline:none !important;box-shadow:none !important}' +
-    /* hide the rest of the page rather than covering it (covers can end up on top of the video) */
-    'html.rc-fs,html.rc-fs body{background:#000 !important}' +
-    'html.rc-fs body *{visibility:hidden !important}' +
-    'html.rc-fs .rc-fs-el,html.rc-fs .rc-fs-el *{visibility:visible !important}' +
+    /* full screen is done by the app zooming in on the player; the page itself is left alone */
+    'html.rc-fs #rc-bar,html.rc-fs #rc-msg{display:none !important}' +
     '#rc-msg{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);background:rgba(10,10,20,.92);color:#fff;' +
     'font:600 20px/1.3 sans-serif;padding:12px 22px;border-radius:10px;border:2px solid #ffd400;' +
     'z-index:2147483647;pointer-events:none;transition:opacity .4s;max-width:80vw;text-align:center}' +
     /* phone button bar */
     '#rc-bar{position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;gap:8px;opacity:.9}' +
-    'html.rc-fs #rc-bar{opacity:.6}' +
     '#rc-bar button{font:600 15px/1 sans-serif;color:#fff;background:rgba(15,15,25,.88);border:2px solid #ffd400;' +
     'border-radius:22px;padding:10px 14px;margin:0;-webkit-tap-highlight-color:transparent}' +
     '#rc-bar button:active{background:#ffd400;color:#111}';
@@ -208,25 +195,34 @@
     return best;
   }
 
+  // Tell the app where the player is on screen; it zooms its view to fill the screen with it.
+  function report() {
+    if (!fsOn) return;
+    if (!fsEl || !document.contains(fsEl) || !visible(fsEl)) {      // site swapped its player
+      var e = pickVideo(); if (!e) return; fsEl = e;
+    }
+    var r = fsEl.getBoundingClientRect();
+    if (window.RingApp && RingApp.zoomTo) RingApp.zoomTo(r.left, r.top, r.width, r.height, innerWidth, innerHeight);
+  }
+  var fsTimer = null;
+  window.addEventListener('resize', function () { setTimeout(report, 150); setTimeout(report, 600); });
+  window.addEventListener('scroll', function () { report(); }, { passive: true, capture: true });
+
   function fsEnter(quiet) {
     var el = pickVideo();
     if (!el) { if (!quiet) message('No video on this page to show full screen'); return false; }
-    fsEl = el;
-    for (var a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) a.classList.add('rc-anc');
-    el.classList.add('rc-fs-el');
+    fsEl = el; fsOn = true; guideFromFs = false;
     document.documentElement.classList.add('rc-fs');
     if (current) { current.classList.remove('tvnav-focus'); }
-    fsOn = true; guideFromFs = false;
     if (window.RingApp) { RingApp.setFullscreen(true); RingApp.setShowing(true); }
-    if (!quiet) message(TOUCH ? 'Full screen – double-tap the video or press Back to exit'
-                              : 'Full screen – hold OK to exit, press ▼ or Menu for the TV guide');
+    report();
+    clearInterval(fsTimer); fsTimer = setInterval(report, 500);
     updateBar();
     return true;
   }
 
   function fsExit(keepWanted) {
-    Array.prototype.forEach.call(document.querySelectorAll('.rc-anc'), function (a) { a.classList.remove('rc-anc'); });
-    if (fsEl) fsEl.classList.remove('rc-fs-el');
+    clearInterval(fsTimer);
     document.documentElement.classList.remove('rc-fs');
     fsOn = false; fsEl = null;
     if (window.RingApp) { RingApp.setShowing(false); if (!keepWanted) RingApp.setFullscreen(false); }
@@ -271,12 +267,6 @@
     } else lastTap = now;
   }, { passive: false, capture: true });
 
-  // keep full screen working if the site swaps its player element
-  var fsWatch = null;
-  function fsCheck() {
-    if (fsOn && (!fsEl || !document.contains(fsEl))) { fsExit(true); fsEnter(true); }
-  }
-
   // called by the app after a page load when full screen was left on
   function fsRestore(tries) {
     if (fsOn) return;
@@ -298,8 +288,25 @@
       '[id*="schedule" i],[class*="schedule" i],[data-testid*="schedule" i],[id*="prevue" i],[class*="prevue" i]');
     if (sec && visible(sec)) return { section: sec };
     var heads = document.querySelectorAll('h1,h2,h3,h4');
-    for (i = 0; i < heads.length; i++) if (GUIDE.test(heads[i].innerText || '') && visible(heads[i])) return { section: heads[i].parentElement || heads[i] };
+    for (i = 0; i < heads.length; i++) if (GUIDE.test(heads[i].innerText || '') && visible(heads[i])) return { heading: heads[i] };
+    // any short bit of text that says "... guide" (e.g. a styled banner rather than a real heading)
+    var all = document.body.getElementsByTagName('*');
+    for (i = 0; i < all.length; i++) {
+      el = all[i];
+      if (el.children.length > 2 || el.closest('#rc-bar,#rc-msg')) continue;
+      txt = (el.innerText || '').trim();
+      if (txt.length > 3 && txt.length < 50 && /guide|prevue|schedule|listings/i.test(txt) && visible(el)) return { heading: el };
+    }
     return null;
+  }
+
+  function focusAfter(h) {
+    var list = candidates().filter(function (el) {
+      return h.contains(el) || (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    remote = true;
+    if (list.length) setFocus(list[0]);
+    h.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
 
   function focusIn(box) {
@@ -317,7 +324,10 @@
       setTimeout(function () {
         var again = findGuide();
         if (again && again.section) { again.section.scrollIntoView({ block: 'start', behavior: 'smooth' }); focusIn(again.section); }
+        else if (again && again.heading) focusAfter(again.heading);
       }, 700);
+    } else if (g.heading) {
+      focusAfter(g.heading);
     } else {
       g.section.scrollIntoView({ block: 'start', behavior: 'smooth' });
       setTimeout(function () { focusIn(g.section); }, 500);
@@ -355,7 +365,6 @@
   // Keep a highlight on screen when the page changes (SPA route changes, new content).
   var pending = null, barTimer = null;
   new MutationObserver(function () {
-    if (fsOn) { clearTimeout(fsWatch); fsWatch = setTimeout(fsCheck, 300); }
     if (TOUCH) { clearTimeout(barTimer); barTimer = setTimeout(updateBar, 500); }
     if (pending) return;
     pending = setTimeout(function () {
