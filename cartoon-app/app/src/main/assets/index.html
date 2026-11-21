@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartoon Archive</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0b12; color: #e8e8ee; overflow: hidden;
+    font-family: "Roboto Condensed", Roboto, Arial, sans-serif; font-size: 17px; }
+  #top { height: 58px; display: flex; align-items: center; padding: 0 28px; gap: 22px;
+    background: linear-gradient(#1b1b28, #12121b); border-bottom: 3px solid #2bb3ff; }
+  #logo { font-weight: 800; letter-spacing: 2px; font-size: 20px; color: #f2b705; text-transform: uppercase; }
+  .tab { padding: 6px 22px; border-radius: 6px; font-weight: 700; font-size: 18px; color: #9a9aac;
+    border: 2px solid transparent; }
+  .tab.on { color: #fff; background: #2a2a3a; }
+  .zone-tabs .tab.on { border-color: #f2b705; box-shadow: 0 0 14px rgba(242,183,5,.5); }
+  #status { margin-left: auto; color: #9a9aac; font-size: 14px; }
+  #main { position: absolute; top: 58px; bottom: 34px; left: 0; right: 0; display: flex; }
+  #cats { width: 30%; max-width: 330px; overflow: hidden; padding: 12px 0; border-right: 1px solid #22222f; }
+  .cat { padding: 9px 22px; display: flex; justify-content: space-between; color: #b9b9c8;
+    border-left: 4px solid transparent; }
+  .cat .n { color: #6f6f82; font-size: 14px; }
+  .cat.sel { background: #1d1d2a; color: #fff; border-left-color: #6f6f82; }
+  .zone-cats .cat.sel { background: #d81e2c; border-left-color: #f2b705; color: #fff; }
+  .zone-cats .cat.sel .n { color: #ffd9dc; }
+  #right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #list { flex: 1; overflow: hidden; padding: 8px 0 40px; }
+  .yr { padding: 14px 26px 4px; color: #f2b705; font-weight: 800; font-size: 15px; letter-spacing: 2px; }
+  .row { display: flex; padding: 7px 26px; gap: 18px; color: #c9c9d6; border-left: 4px solid transparent; }
+  .row .d { width: 150px; flex: none; white-space: nowrap; color: #8a8a9e; font-variant-numeric: tabular-nums; }
+  .row .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.sel { background: #1d1d2a; color: #fff; }
+  .zone-list .row.sel { background: #f2b705; color: #111; border-left-color: #d81e2c; font-weight: 700; }
+  .zone-list .row.sel .d { color: #3a2c00; }
+  #empty { padding: 40px 26px; color: #8a8a9e; line-height: 1.6; }
+  #help { position: absolute; bottom: 0; left: 0; right: 0; height: 34px; line-height: 34px; padding: 0 28px;
+    font-size: 13px; color: #7a7a8e; background: #0f0f18; border-top: 1px solid #22222f; white-space: nowrap; overflow: hidden; }
+  #help b { color: #c9c9d6; }
+  #overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5,5,10,.92); display: none; padding: 40px 10%; }
+  #overlay.show { display: block; }
+  #ovTitle { font-size: 22px; font-weight: 800; color: #f2b705; margin-bottom: 6px; }
+  #ovSub { color: #9a9aac; margin-bottom: 18px; font-size: 14px; }
+  #parts { position: absolute; top: 120px; bottom: 40px; left: 10%; right: 10%; overflow: hidden; }
+  .part { padding: 9px 18px; border-radius: 6px; color: #c9c9d6; display: flex; gap: 16px; }
+  .part .d { width: 130px; flex: none; white-space: nowrap; color: #8a8a9e; }
+  .part.sel { background: #f2b705; color: #111; font-weight: 700; }
+  .part.sel .d { color: #3a2c00; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #555; border-top-color: #f2b705;
+    border-radius: 50%; animation: s .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+
+  /* ---------- phone / touch ---------- */
+  #refresh, #ovClose, #years { display: none; }
+  body.touch { display: flex; flex-direction: column; }
+  .touch #top { flex: none; }
+  .touch #main { position: relative; top: auto; bottom: auto; flex: 1; min-height: 0; }
+  .touch #help { display: none; }
+  .touch #right, .touch #list, .touch #cats { min-height: 0; }
+  .touch #list, .touch #cats, .touch #parts { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .touch .cat { padding: 12px 22px; }
+  .touch .cat.sel { background: #d81e2c; border-left-color: #f2b705; color: #fff; }
+  .touch .cat.sel .n { color: #ffd9dc; }
+  .touch .row { padding: 12px 20px; }
+  .touch .row.sel { background: #f2b705; color: #111; border-left-color: #d81e2c; font-weight: 700; }
+  .touch .row.sel .d { color: #3a2c00; }
+  .touch .part { padding: 13px 16px; }
+  .touch #refresh { display: block; font-size: 24px; color: #f2b705; padding: 4px 10px; }
+  .touch #ovClose { display: block; position: absolute; top: 14px; right: 16px; font-size: 22px; color: #fff;
+    padding: 8px 14px; border-radius: 8px; background: #2a2a3a; z-index: 2; }
+  .touch #years { display: flex; flex: none; gap: 6px; padding: 8px 12px; overflow-x: auto;
+    border-bottom: 1px solid #22222f; -webkit-overflow-scrolling: touch; }
+  .ychip { flex: none; padding: 6px 12px; border-radius: 14px; background: #1d1d2a; color: #f2b705;
+    font-weight: 700; font-size: 14px; }
+  .ychip:active { background: #f2b705; color: #111; }
+
+  /* narrow screens (phone held upright) */
+  @media (max-width: 700px) {
+    html, body { font-size: 15px; }
+    #top { height: auto; flex-wrap: wrap; padding: 8px 12px; gap: 8px 10px; }
+    #logo { font-size: 13px; letter-spacing: .5px; }
+    .tab { padding: 4px 10px; font-size: 15px; }
+    #status { order: 10; width: 100%; margin-left: 0; font-size: 12px; }
+    #refresh { margin-left: auto; }
+    #main { flex-direction: column; }
+    #cats { width: 100%; max-width: none; display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto;
+      overflow-y: hidden !important; border-right: none; border-bottom: 1px solid #22222f; flex: none; }
+    .cat, .touch .cat { flex: none; border-left: none; border-radius: 16px; padding: 7px 14px; gap: 8px;
+      background: #1d1d2a; white-space: nowrap; }
+    .row, .touch .row { padding: 11px 14px; gap: 12px; }
+    .row .d { width: 100px; font-size: 13px; }
+    .row .t { white-space: normal; }
+    .yr { padding: 12px 14px 4px; }
+    #overlay { padding: 18px 5%; }
+    #ovTitle, #ovSub { padding-right: 60px; }
+    #ovTitle { font-size: 18px; }
+    #parts { left: 5%; right: 5%; top: 110px; bottom: 16px; }
+    .part .d { width: 96px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+  <div id="top" class="">
+    <div id="logo">Cartoon Archive</div>
+    <div class="tab" data-p="TOONS">80s Cartoons</div>
+    <div id="status"></div>
+    <div id="refresh" title="Refresh">&#x21bb;</div>
+  </div>
+  <div id="main">
+    <div id="cats"></div>
+    <div id="right">
+      <div id="years"></div>
+      <div id="list"></div>
+    </div>
+  </div>
+  <div id="help">
+    <b>▲▼</b> move &nbsp; <b>◀▶</b> switch panel &nbsp; <b>OK</b> select &nbsp;
+    <b>⏪ ⏩</b> or <b>CH −/+</b> jump a season &nbsp; <b>Menu</b> refresh list &nbsp; <b>Back</b> go back
+  </div>
+  <div id="overlay">
+    <div id="ovClose">&#x2715;</div>
+    <div id="ovTitle"></div>
+    <div id="ovSub"></div>
+    <div id="parts"></div>
+  </div>
+  <script src="catalog.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
