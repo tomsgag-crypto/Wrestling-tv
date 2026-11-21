@@ -7,7 +7,7 @@
     ['Teenage Mutant Ninja Turtles', /teenage mutant (ninja|hero) turtles|\btmnt\b|ninja turtles|hero turtles/i, null, /rise of the|mutant mayhem|mutant chronicles|\b2003\b|\b2012\b|next mutation|out of the shadows|fast forward|back to the sewer|turtles forever|arcade|nes\b|snes|hyperstone|tournament fighters|turtles in time|shredder'?s revenge/i],
     ['He-Man and the Masters of the Universe', /he[- ]?man|masters of the universe/i, null, /revelation|\b2002\b|\b2021\b|new adventures|\b1990\b|motu ?c|origins|dolph|live action/i],
     ['She-Ra: Princess of Power', /she[- ]?ra/i, null, /\b2018\b|netflix|princesses of power/i],
-    ['ThunderCats', /thunder ?cats/i, null, /roar|\b2011\b|\b2020\b/i],
+    ['ThunderCats', /thunder ?cats/i, null, /roar|\b2011\b|\b2020\b|\b2024\b|lego|fortnite|vinyl|figure|funko|toy|remix|cover|fan film|live action|game|trailer|tribute|reboot|anime|cinematic|unboxing|evolution|lion-?o vs|tygra vs|ho!? remix|theme/i],
     ['Ulysses 31', /ulysses ?31/i],
     // the 1983 CBS cartoon only – the name is shared with the tabletop game, so it needs a sign it's the cartoon
     ['Dungeons & Dragons', /dungeons ?(and|&|n'?) ?dragons/i,
@@ -18,7 +18,7 @@
     ['Muppet Babies', /muppet babies/i, null, /\b2018\b|disney junior/i],
     ['Transformers', /transformers/i, null, /prime\b|cyberverse|rescue bots|earthspark|bumblebee|beast (wars|machines)|armada|energon|cybertron|robots in disguise|war for|fall of|devastation|dark of the moon|revenge of the fallen|age of extinction|last knight|rise of the beasts|\bone\b|combiner wars|power of the primes|siege|kingdom|war ?within|animated \(2007\)|\b2007\b|\b2010\b|\b2015\b|\b2019\b|\b2023\b|\b2024\b/i],
     ['G.I. Joe', /g\.? ?i\.? ?joe/i, null, /renegades|sigma ?6|resolute|extreme|retaliation|rise of cobra|snake eyes|spy troops|valor vs|ninja battles/i],
-    ['Inspector Gadget', /inspector gadget/i, null, /\b2015\b|\b1999\b|live action|gadget and the gadgetinis|gadget boy/i],
+    ['Inspector Gadget', /inspector gadget/i, null, /\b2015\b|\b1999\b|\b2003\b|live action|gadgetinis|gadget boy|field trip|saves christmas|last case|inspector gadget 2|biggest caper|movie|film|mad'?s? (holiday|world)|game|french|anime|\bmad\b vs|reboot|netflix|broderick/i],
     ['The Smurfs', /smurfs?/i, null, /\b2011\b|\b2013\b|\b2017\b|\b2021\b|\b2025\b|lost village/i],
     ['M.A.S.K.', /m\.a\.s\.k|\bmask\b.{0,40}(matt trakker|venom|cartoon|1985|1986|episode|kenner)/i],
     ['Visionaries', /visionaries.{0,30}(knights|magical light|cartoon|episode|1987)|visionaries/i, CARTOON],
@@ -53,7 +53,7 @@
     ['Garfield and Friends', /garfield and friends/i],
     ['Dennis the Menace', /dennis the menace/i, /cartoon|animated|1986|1987|1988|episode/i, /\b1993\b|\b1998\b|live action|beano/i],
     ['Kidd Video', /kidd video/i],
-    ['Rambo: The Force of Freedom', /force of freedom|rambo.{0,20}(cartoon|animated)/i],
+    ['Rambo: The Force of Freedom', /force of freedom|rambo.{0,20}(cartoon|animated|episode|\bep\b|1986)/i],
     ['Starcom: The U.S. Space Force', /starcom/i],
     ['Sectaurs', /sectaurs/i],
     ['Robotech', /robotech/i, null, /shadow chronicles|love live alive|\b2006\b|game/i],
@@ -84,7 +84,11 @@
     ['Pole Position', /pole position/i, /cartoon|animated|1984|episode/i, /arcade|atari|game/i],
     ['The Adventures of Sonic the Hedgehog', /adventures of sonic|sonic the hedgehog.{0,20}(satam|1993|cartoon|aosth)/i, null, /game|\b2020\b|\b2022\b|\b2024\b|prime|boom/i],
     ['Captain N: The Game Master', /captain n\b/i],
-    ['The Super Mario Bros. Super Show!', /super mario bros\.? super show|super show!?/i],
+    ['The Super Mario Bros. Super Show!', /super show/i, null, /game|movie|film|speedrun|nintendo direct/i],
+    ['The Adventures of Super Mario Bros. 3', /(adventures of )?super mario bros\.? ?3/i, /cartoon|animated|episode|\bep\b|\bs\d|\d+x\d|1990|adventures/i,
+      /game|nes\b|speedrun|playthrough|world [1-8]|level|glitch|any%|longplay|warp|switch|remake/i],
+    ['Super Mario World (cartoon)', /super mario world/i, /cartoon|animated|episode|\bep\b|\bs\d|\d+x\d|1991/i,
+      /game|snes|speedrun|playthrough|level|glitch|any%|longplay|switch|romhack|kaizo|star road|special zone|yoshi'?s island|exit/i],
     ['Turbo Teen', /turbo teen/i],
     ['Spiral Zone', /spiral zone/i],
     ['Bionic Six', /bionic six/i],
@@ -93,24 +97,30 @@
     ['The Biskitts', /biskitts/i],
     ['The Shirt Tales', /shirt tales/i],
     ['Ghostbusters: Slimer!', /slimer!/i],
-    ['Police Academy: The Animated Series', /police academy.{0,20}(animated|cartoon)/i],
+    ['Police Academy: The Animated Series', /police academy/i, /animated|cartoon|1988|1989/i, /the series|1997|1998|live action|movie|film|mission to moscow|citizens on patrol|back in training|city under siege|their first assignment|assignment miami/i],
+
+    ['RoboCop: Alpha Commando', /robo ?cop.{0,6}alpha commando/i, null, /game|trailer/i],
+    ['RoboCop: The Animated Series (1988)', /robo ?cop/i, /animated|cartoon|1988|marvel productions|episode|\bep\b|\bs\d|\d+x\d/i,
+      /alpha commando|1987 film|movie|film|2014|robocop 2|robocop 3|prime directives|rogue city|vs\.? terminator|game|nes\b|arcade|the series|1994|live action|weller|trailer/i],
+    ['Around the World with Willy Fog', /willy fog/i, null, /\b2008\b|game|spanish|castellano/i],
+    ['Potsworth & Co.', /potsworth/i],
 
     // ---------- 90s Marvel and DC (5th value: latest year allowed in a title) ----------
-    ['X-Men: The Animated Series', /x-?men/i, /animated|\btas\b|1992|1993|1994|1995|1996|1997|fox kids|season|episode|\bs\d|\d+x\d|\bep\b|pryde/i,
+    ['X-Men: The Animated Series', /x-?men/i, /animated series|\btas\b|199[2-7]|fox kids|night of the sentinels|enter magneto|deadly reunions|captive hearts|phoenix saga|dark phoenix saga|days of future past|out of the past|beyond good and evil|graduation day/i,
       /\b97\b|'97|x-?men 97|2024|evolution|wolverine and the|first class|apocalypse 2016|days of future|dark phoenix|last stand|origins|\\bgame\\b|arcade|snes|genesis|legends|children of the atom|mutant academy|marvel anime|2011|xmen 97/i, 1997],
     ['Spider-Man Unlimited', /spider-?man unlimited/i, null, /\\bgame\\b|ps\d|dreamcast/i, 2001],
-    ['Spider-Man: The Animated Series', /spider-?man/i, /animated|\btas\b|1994|1995|1996|1997|1998|fox kids|season|episode|\bs\d|\d+x\d|\bep\b/i,
+    ['Spider-Man: The Animated Series', /spider-?man/i, /animated series|\btas\b|199[4-8]|fox kids|night of the lizard|neogenic|kraven|hobgoblin|insidious six|sins of the fathers|secret wars|spider wars|enter the punisher|doctor octopus.{0,20}armed|venom returns/i,
       /amazing friends|\b1967\b|\b1981\b|unlimited|spectacular|ultimate|2017|2003|mtv|homecoming|far from home|no way home|into the spider|across the spider|miles morales|ps\d|\\bgame\\b|web of shadows|shattered|friendly neighborhood|spidey|tom holland|tobey|garfield|2002 movie|spider-man 2\b|spider-man 3\b/i, 1998],
-    ['Fantastic Four (1994)', /fantastic (four|4)/i, /animated|1994|1995|1996|episode|season|\bs\d|\d+x\d|\bep\b|cartoon/i,
+    ['Fantastic Four (1994)', /fantastic (four|4)/i, /199[4-6]|animated series|marvel action hour/i,
       /\b1967\b|\b1978\b|world'?s greatest heroes|2005|2007|2015|2025|first steps|rise of the silver|\\bgame\\b/i, 1996],
-    ['Iron Man (1994)', /iron ?man/i, /animated|1994|1995|1996|episode|season|\bs\d|\d+x\d|\bep\b|cartoon/i,
+    ['Iron Man (1994)', /iron ?man/i, /199[4-6]|animated series|marvel action hour/i,
       /armored adventures|2008|2010|2013|anime|\\bgame\\b|\b1966\b|robert downey/i, 1996],
-    ['The Incredible Hulk (1996)', /incredible hulk/i, /animated|1996|1997|1998|episode|season|\bs\d|\d+x\d|\bep\b|cartoon/i,
+    ['The Incredible Hulk (1996)', /incredible hulk/i, /199[6-8]|animated series|cartoon|she-hulk/i,
       /\b1966\b|\b1982\b|\b1977\b|lou ferrigno|bill bixby|2008|\\bgame\\b/i, 1998],
     ['Silver Surfer', /silver surfer/i, /animated|1998|episode|\bs\d|\d+x\d|\bep\b|cartoon/i, /\\bgame\\b|nes\b|rise of/i, 1999],
     ['The New Batman Adventures', /new batman adventures/i, null, /\\bgame\\b/i, 1999],
     ['Batman Beyond', /batman beyond/i, null, /return of the joker|\\bgame\\b|ps\d|2000 movie/i, 2001],
-    ['Batman: The Animated Series', /batman/i, /animated series|\btas\b|\bbtas\b|1992|1993|1994|1995|fox kids|season|episode|\bs\d|\d+x\d|\bep\b/i,
+    ['Batman: The Animated Series', /batman/i, /animated series|\btas\b|\bbtas\b|199[2-5]|fox kids|on leather wings|heart of ice|two-?face|joker'?s favor|almost got 'im|robin'?s reckoning|the laughing fish|feat of clay|the man who killed batman/i,
       /beyond|new batman adventures|brave and the bold|the batman\b|arkham|lego|\\bgame\\b|\b1966\b|adam west|beware the batman|caped crusader|2022|2024|dark knight|begins|batman returns|batman forever|batman & robin|batman and robin|keaton|bale|pattinson|affleck|batman v|vs superman|harley quinn|ps\d|mask of the phantasm|subzero|mystery of the batwoman|gotham|telltale/i, 1995],
     ['Superman: The Animated Series', /superman/i, /animated series|\btas\b|\bstas\b|1996|1997|1998|1999|season|episode|\bs\d|\d+x\d|\bep\b/i,
       /man of steel|superman returns|\b2023\b|\b2025\b|my adventures|lois|smallville|christopher reeve|\b1978\b|\b1941\b|fleischer|\\bgame\\b|\b1988\b|batman v|vs batman|doomsday|legacy/i, 2000]
@@ -172,28 +182,33 @@
       .replace(/\b(free|online|full hd|hd quality)\b/ig, ' ');
   }
 
+  var KEEP = ['Bananaman', 'Batman: The Animated Series', 'Beetlejuice (cartoon)', "Bucky O'Hare",
+    'Captain Planet and the Planeteers', 'Centurions', "Chip 'n Dale Rescue Rangers", 'Defenders of the Earth',
+    "Disney's Adventures of the Gummi Bears", 'Dogtanian and the Three Muskehounds', 'Around the World with Willy Fog',
+    'DuckTales', 'Dungeons & Dragons', 'Fantastic Four (1994)', 'He-Man and the Masters of the Universe', 'Heathcliff',
+    'Inspector Gadget', 'Iron Man (1994)', 'Jayce and the Wheeled Warriors', 'Muppet Babies',
+    'The Mysterious Cities of Gold', 'Police Academy: The Animated Series', 'RoboCop: The Animated Series (1988)', 'RoboCop: Alpha Commando', 'Popeye and Son',
+    'Potsworth & Co.', 'The Raccoons', 'Rambo: The Force of Freedom', 'The Real Ghostbusters', 'Silver Surfer',
+    'The Incredible Hulk (1996)', 'Spider-Man: The Animated Series', 'Star Wars: Droids', 'Star Wars: Ewoks',
+    'The Super Mario Bros. Super Show!', 'The Adventures of Super Mario Bros. 3', 'Super Mario World (cartoon)', 'ThunderCats', 'Transformers', 'Ulysses 31', 'X-Men: The Animated Series',
+    'Teenage Mutant Ninja Turtles'];
+  SHOWS = SHOWS.filter(function (sh) { return KEEP.indexOf(sh[0]) >= 0; });
+
   var ORDER = { TOONS: ['All shows'].concat(SHOWS.map(function (s) { return s[0]; }).sort(function (a, b) {
     return a.replace(/^the /i, '').localeCompare(b.replace(/^the /i, ''));
   })) };
 
   // Search terms for the Internet Archive (split into a few searches)
   var TERMS = [
-    '"teenage mutant ninja turtles"', '"teenage mutant hero turtles"', '"he-man"', '"masters of the universe"', '"she-ra"',
-    'thundercats', '"ulysses 31"', '"dungeons and dragons"', '"dungeons & dragons"', 'jayce', 'heathcliff', '"muppet babies"',
-    'transformers', '"g.i. joe"', '"gi joe"', '"inspector gadget"', 'smurfs', '"m.a.s.k"', 'visionaries', 'bravestarr',
-    'silverhawks', 'centurions', '"jem and the holograms"', '"defenders of the earth"', '"mysterious cities of gold"',
-    '"danger mouse"', 'dangermouse', '"count duckula"', 'bananaman', '"real ghostbusters"', '"care bears"', '"my little pony"',
-    '"rainbow brite"', 'snorks', '"alvin and the chipmunks"', '"get along gang"', '"galaxy rangers"', 'thundarr',
-    '"amazing friends"', 'ducktales', '"rescue rangers"', '"gummi bears"', 'dogtanian', '"willo the wisp"', '"mighty orbots"',
-    'ewoks', 'droids', '"garfield and friends"', '"dennis the menace"', '"kidd video"', '"force of freedom"', 'starcom',
-    'sectaurs', 'robotech', 'voltron', '"battle of the planets"', '"pac-man"', '"mister t"', '"saber rider"', '"bucky o\'hare"',
-    '"captain planet"', '"teddy ruxpin"', 'wuzzles', 'superted', 'raccoons', '"henry\'s cat"', '"trap door"', '"jimbo and the jet-set"',
-    '"family-ness"', '"button moon"', '"fraggle rock"', 'gobots', 'inhumanoids', 'dinosaucers', '"dino-riders"', 'beetlejuice',
-    '"the littles"', '"popeye and son"', '"pole position"', '"adventures of sonic"', '"captain n"', '"super mario bros. super show"',
-    '"turbo teen"', '"spiral zone"', '"bionic six"', 'galtar', 'biskitts', '"shirt tales"', '"police academy"',
-    '"x-men"', 'xmen', '"spider-man"', 'spiderman', '"fantastic four"', '"iron man"', '"incredible hulk"', '"silver surfer"',
-    '"batman the animated series"', '"batman: the animated series"', 'btas', '"batman animated"', '"new batman adventures"',
-    '"batman beyond"', '"superman the animated series"', '"superman: the animated series"', '"superman animated"'
+    'bananaman', '"batman the animated series"', '"batman: the animated series"', 'btas', '"batman animated"', 'beetlejuice',
+    '"bucky o\'hare"', '"captain planet"', 'centurions', '"rescue rangers"', '"chip n dale"', '"defenders of the earth"',
+    '"gummi bears"', 'dogtanian', '"willy fog"', 'ducktales', '"duck tales"', '"dungeons and dragons"', '"dungeons & dragons"',
+    '"fantastic four"', '"he-man"', '"masters of the universe"', 'heathcliff', '"inspector gadget"', '"iron man"', 'jayce',
+    '"muppet babies"', '"mysterious cities of gold"', '"police academy"', 'robocop', '"popeye and son"', 'potsworth',
+    'raccoons', '"force of freedom"', 'rambo', '"real ghostbusters"', '"silver surfer"', '"incredible hulk"',
+    '"spider-man"', 'spiderman', '"star wars droids"', 'droids', 'ewoks', '"super mario"', '"mario bros"', '"super show"',
+    'thundercats', 'transformers', '"ulysses 31"', '"x-men"', 'xmen', '"teenage mutant ninja turtles"',
+    '"teenage mutant hero turtles"', '"ninja turtles"'
   ];
 
   function clean(s) {
@@ -223,7 +238,7 @@
   }
 
   // Longer forms of show names, removed when working out an episode's own title
-  var SUBTITLES = /\b(and the masters of the universe|masters of the universe|princess of power|and the wheeled warriors|wheeled warriors|and the catillac cats|catillac cats|knights of the magical light|and the holograms|and his amazing friends|and the planeteers|and the star sheriffs|the u\.?s\.? space force|the force of freedom|and the three muskehounds|and the golden lance|the game master|g1|generation (1|one)|1980s|80s|'?n'? friends|and friends|the animated series|animated series|cartoon series|tv series|the series|cartoons?|animated|tas|btas|stas)\b/ig;
+  var SUBTITLES = /\b(and the masters of the universe|masters of the universe|princess of power|and the wheeled warriors|wheeled warriors|and the catillac cats|catillac cats|knights of the magical light|and the holograms|and his amazing friends|and the planeteers|and the star sheriffs|the u\.?s\.? space force|the force of freedom|and the three muskehounds|and the golden lance|the game master|g1|generation (1|one)|1980s|80s|'?n'? friends|and friends|the animated series|animated series|cartoon series|tv series|the series|cartoons?|animated|tas|btas|stas|(the )?super mario bros\.?|super mario|mario bros\.?|bros\.? super show!?|super show!?|alpha commando|and co\.?|& co\.?|around the world with|force of freedom)\b/ig;
 
   function stripShow(title, show) {
     var t0 = clean(title).replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ');
@@ -244,7 +259,7 @@
     t = t.replace(/\b(19[5-9]\d|20[0-2]\d)\b/g, ' ')
       .replace(/\b(the )?(animated|cartoon|tv)? ?(series|cartoon|show)\b/ig, ' ')
       .replace(/\b(full|complete|whole) (episode|season|series)s?\b|\bfull episodes?\b|\bepisodes?\b/ig, ' ')
-      .replace(/\b(hd|sd|hq|vhs ?rip|dvd ?rip|web ?rip|tv ?rip|xvid|divx|x26[45]|h ?26[45]|aac|ac3|1080p|720p|576p|480p|360p|uk|usa?|english|eng|dub(bed)?|remastered|original)\b/ig, ' ')
+      .replace(/\b(hd|sd|hq|vhs ?rip|dvd ?rip|web ?rip|tv ?rip|xvid|divx|x26[45]|h ?26[45]|aac|ac3|1080p|720p|576p|480p|360p|uk|usa|english|eng|dub(bed)?|remastered|original)\b/ig, ' ')
       .replace(/\b(season|series|s)\s*\d{1,2}\b/ig, ' ')
       .replace(/^[\s\-–:|.,#]+|[\s\-–:|.,#]+$/g, '')
       .replace(/^(the|and)\s*[-–:]\s*/i, '')
