@@ -10,7 +10,21 @@
     '.tvnav-focus{outline:4px solid #ffd400 !important;outline-offset:3px !important;' +
     'box-shadow:0 0 18px 6px rgba(255,212,0,.65) !important;border-radius:6px;' +
     'position:relative;z-index:2147483000;transition:outline .08s}' +
-    'html{scroll-behavior:smooth}';
+    'html{scroll-behavior:smooth}' +
+    /* full-screen video: fills the screen, keeps its shape (black bars where needed) */
+    'html.rc-fs,html.rc-fs body{overflow:hidden !important}' +
+    '.rc-anc{transform:none !important;filter:none !important;perspective:none !important;contain:none !important;' +
+    'will-change:auto !important;z-index:auto !important;opacity:1 !important;isolation:auto !important;' +
+    'mix-blend-mode:normal !important;backdrop-filter:none !important;clip-path:none !important;mask:none !important}' +
+    '.rc-fs-el{position:fixed !important;top:0 !important;left:0 !important;right:auto !important;bottom:auto !important;' +
+    'width:100vw !important;height:100vh !important;max-width:none !important;max-height:none !important;' +
+    'min-width:0 !important;min-height:0 !important;margin:0 !important;padding:0 !important;border:0 !important;' +
+    'border-radius:0 !important;transform:none !important;object-fit:contain !important;background:#000 !important;' +
+    'z-index:2147483647 !important;outline:none !important;box-shadow:none !important}' +
+    '#rc-fs-bg{position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:2147483646}' +
+    '#rc-msg{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);background:rgba(10,10,20,.92);color:#fff;' +
+    'font:600 20px/1.3 sans-serif;padding:12px 22px;border-radius:10px;border:2px solid #ffd400;' +
+    'z-index:2147483647;pointer-events:none;transition:opacity .4s;max-width:80vw;text-align:center}';
   (document.head || document.documentElement).appendChild(style);
 
   var SELECTOR = [
@@ -139,7 +153,131 @@
     if (v && isFinite(v.duration)) v.currentTime = Math.max(0, v.currentTime + sec);
   }
 
+  // ---------- on-screen message ----------
+  var msgTimer = null;
+  function message(text, ms) {
+    var m = document.getElementById('rc-msg');
+    if (!m) { m = document.createElement('div'); m.id = 'rc-msg'; document.documentElement.appendChild(m); }
+    m.textContent = text; m.style.opacity = '1';
+    clearTimeout(msgTimer);
+    msgTimer = setTimeout(function () { m.style.opacity = '0'; }, ms || 2500);
+  }
+
+  // ---------- full-screen video ----------
+  var fsOn = false, fsEl = null, guideFromFs = false;
+
+  function area(el) { var r = el.getBoundingClientRect(); return r.width * r.height; }
+  function pickVideo() {
+    var best = null, bestA = 0;
+    ['video', 'iframe', 'canvas'].some(function (sel) {
+      Array.prototype.forEach.call(document.querySelectorAll(sel), function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.width < 160 || r.height < 90 || !visible(el)) return;
+        var a = area(el) * (sel === 'video' && !el.paused ? 2 : 1);
+        if (a > bestA) { bestA = a; best = el; }
+      });
+      return !!best;                       // prefer <video>, then <iframe>, then <canvas>
+    });
+    return best;
+  }
+
+  function fsEnter(quiet) {
+    var el = pickVideo();
+    if (!el) { if (!quiet) message('No video on this page to show full screen'); return false; }
+    fsEl = el;
+    for (var a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) a.classList.add('rc-anc');
+    el.classList.add('rc-fs-el');
+    document.documentElement.classList.add('rc-fs');
+    if (!document.getElementById('rc-fs-bg')) {
+      var bg = document.createElement('div'); bg.id = 'rc-fs-bg'; document.body.appendChild(bg);
+    }
+    if (current) { current.classList.remove('tvnav-focus'); }
+    fsOn = true; guideFromFs = false;
+    if (window.RingApp) { RingApp.setFullscreen(true); RingApp.setShowing(true); }
+    if (!quiet) message('Full screen – hold OK to exit, press ▼ or Menu for the TV guide');
+    return true;
+  }
+
+  function fsExit(keepWanted) {
+    Array.prototype.forEach.call(document.querySelectorAll('.rc-anc'), function (a) { a.classList.remove('rc-anc'); });
+    if (fsEl) fsEl.classList.remove('rc-fs-el');
+    document.documentElement.classList.remove('rc-fs');
+    var bg = document.getElementById('rc-fs-bg'); if (bg) bg.remove();
+    fsOn = false; fsEl = null;
+    if (window.RingApp) { RingApp.setShowing(false); if (!keepWanted) RingApp.setFullscreen(false); }
+    if (current && remote) current.classList.add('tvnav-focus');
+  }
+
+  // keep full screen working if the site swaps its player element
+  var fsWatch = null;
+  function fsCheck() {
+    if (fsOn && (!fsEl || !document.contains(fsEl))) { fsExit(true); fsEnter(true); }
+  }
+
+  // called by the app after a page load when full screen was left on
+  function fsRestore(tries) {
+    if (fsOn) return;
+    if (fsEnter(true)) return;
+    if ((tries || 0) < 20) setTimeout(function () { fsRestore((tries || 0) + 1); }, 500);
+  }
+
+  // ---------- TV guide ----------
+  var GUIDE = /\b(tv\s*)?guide\b|schedule|listings|prevue|what'?s on|line-?up/i;
+  function findGuide() {
+    var els = candidates(), i, el, txt;
+    for (i = 0; i < els.length; i++) {
+      el = els[i];
+      txt = [(el.innerText || ''), el.getAttribute('aria-label') || '', el.getAttribute('title') || '',
+        el.getAttribute('href') || '', el.id || ''].join(' ');
+      if (GUIDE.test(txt) && (el.innerText || '').length < 60) return { click: el };
+    }
+    var sec = document.querySelector('[id*="guide" i],[class*="guide" i],[data-testid*="guide" i],' +
+      '[id*="schedule" i],[class*="schedule" i],[data-testid*="schedule" i],[id*="prevue" i],[class*="prevue" i]');
+    if (sec && visible(sec)) return { section: sec };
+    var heads = document.querySelectorAll('h1,h2,h3,h4');
+    for (i = 0; i < heads.length; i++) if (GUIDE.test(heads[i].innerText || '') && visible(heads[i])) return { section: heads[i].parentElement || heads[i] };
+    return null;
+  }
+
+  function focusIn(box) {
+    var list = candidates().filter(function (el) { return box.contains(el); });
+    if (list.length) { remote = true; setFocus(firstInView(list)); }
+  }
+
+  function showGuide() {
+    if (fsOn) { fsExit(true); guideFromFs = true; }
+    else if (guideFromFs) { fsEnter(true); return; }       // pressing again goes back to the video
+    var g = findGuide();
+    if (!g) { message('Couldn\'t find the TV guide on this page'); return; }
+    if (g.click) {
+      setFocus(g.click); current.click();
+      setTimeout(function () {
+        var again = findGuide();
+        if (again && again.section) { again.section.scrollIntoView({ block: 'start', behavior: 'smooth' }); focusIn(again.section); }
+      }, 700);
+    } else {
+      g.section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      setTimeout(function () { focusIn(g.section); }, 500);
+    }
+  }
+
+  function back() {
+    if (fsOn) { fsExit(false); return true; }
+    if (guideFromFs && pickVideo()) { fsEnter(true); return true; }
+    return false;
+  }
+
   document.addEventListener('keydown', function (e) {
+    if (fsOn) {                                   // keys while the video is full screen
+      var fk = e.key;
+      if (fk === 'ArrowUp' || fk === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); showGuide(); return; }
+      if (fk === 'ArrowLeft' || fk === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); return; }
+      if (fk === 'Enter' || e.keyCode === 23 || fk === ' ') {
+        e.preventDefault(); e.stopPropagation();
+        if (fsEl && fsEl.tagName === 'VIDEO') playPause(fsEl);
+        return;
+      }
+    }
     var t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     var k = e.key;
     if (typing && (k === 'ArrowLeft' || k === 'ArrowRight')) return; // let cursor move in text
@@ -154,6 +292,7 @@
   // Keep a highlight on screen when the page changes (SPA route changes, new content).
   var pending = null;
   new MutationObserver(function () {
+    if (fsOn) { clearTimeout(fsWatch); fsWatch = setTimeout(fsCheck, 300); }
     if (pending) return;
     pending = setTimeout(function () {
       pending = null;
@@ -175,7 +314,11 @@
   window.__tvnav = {
     setRemote: function (on) { remote = !!on; if (on) this.refresh(); },
     refresh: function () { setTimeout(function () { if (!remote) return; if (!current || !document.contains(current)) { current = null; var l = candidates(); if (l.length) setFocus(firstInView(l)); } }, 600); },
-    playPause: function () { playPause(); },
+    playPause: function () { if (fsOn && fsEl && fsEl.tagName === 'VIDEO') playPause(fsEl); else playPause(); },
+    toggleFullscreen: function () { if (fsOn) fsExit(false); else fsEnter(false); },
+    restoreFullscreen: function () { fsRestore(0); },
+    guide: showGuide,
+    back: back,
     seek: seek
   };
   window.__tvnav.refresh();

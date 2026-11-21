@@ -14,6 +14,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.graphics.Bitmap;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -42,6 +44,9 @@ public class MainActivity extends Activity {
     private WebChromeClient.CustomViewCallback customViewCallback;
     private String navScript = "";
     private long lastBackPress = 0;
+    private volatile boolean fsWanted = false;   // user turned full-screen video on
+    private volatile boolean fsShowing = false;  // video is full screen right now
+    private boolean okLong = false;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -74,7 +79,17 @@ public class MainActivity extends Activity {
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
 
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void setFullscreen(boolean on) { fsWanted = on; }
+            @JavascriptInterface public void setShowing(boolean on) { fsShowing = on; }
+        }, "RingApp");
+
         webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                fsShowing = false;
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -91,12 +106,14 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 injectNav();
+                restoreFullscreen(url);
             }
 
             @Override
             public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
                 // The site is a single-page app; re-inject on in-app route changes too.
                 injectNav();
+                restoreFullscreen(url);
             }
         });
 
@@ -133,6 +150,25 @@ public class MainActivity extends Activity {
         if (isTv()) webView.evaluateJavascript("window.__tvnav && window.__tvnav.setRemote(true)", null);
     }
 
+    /** Back on the live channel page with full screen left on: put the video back full screen. */
+    private void restoreFullscreen(String url) {
+        if (!fsWanted || fsShowing || url == null) return;
+        String path = Uri.parse(url).getPath();
+        if (path == null || path.isEmpty() || path.equals("/")) nav("restoreFullscreen()");
+    }
+
+    private void nav(String call) {
+        webView.evaluateJavascript("window.__tvnav && window.__tvnav." + call, null);
+    }
+
+    private void goBackOrExit() {
+        if (webView.canGoBack()) { webView.goBack(); return; }
+        long now = System.currentTimeMillis();
+        if (now - lastBackPress < 2000) { finish(); return; }
+        lastBackPress = now;
+        Toast.makeText(this, "Press Back again to exit", Toast.LENGTH_SHORT).show();
+    }
+
     private boolean isTv() {
         UiModeManager m = (UiModeManager) getSystemService(UI_MODE_SERVICE);
         return (m != null && m.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION)
@@ -152,26 +188,71 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+
+        // OK button: short press = select (or pause when full screen), hold = full-screen video on/off
+        boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
+                || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (ok && customView == null) {
+            long held = event.getEventTime() - event.getDownTime();
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) { okLong = false; return true; }
+                if (!okLong && held >= 600) { okLong = true; nav("toggleFullscreen()"); }
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                if (!okLong && held >= 600) { nav("toggleFullscreen()"); }
+                else if (!okLong) {
+                    if (fsShowing) nav("playPause()");
+                    else {
+                        webView.dispatchKeyEvent(new KeyEvent(event.getDownTime(), event.getEventTime(),
+                                KeyEvent.ACTION_DOWN, code, 0, event.getMetaState(), event.getDeviceId(),
+                                event.getScanCode(), event.getFlags(), event.getSource()));
+                        webView.dispatchKeyEvent(event);
+                    }
+                }
+                okLong = false;
+                return true;
+            }
+        }
+
         if (event.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event);
 
-        switch (event.getKeyCode()) {
+        // While the video is full screen: up/down bring up the guide, left/right do nothing
+        if (fsShowing && customView == null) {
+            switch (code) {
+                case KeyEvent.KEYCODE_DPAD_UP:
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    nav("guide()"); return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    return true;
+            }
+        }
+
+        switch (code) {
             case KeyEvent.KEYCODE_BACK:
                 if (customView != null) { exitFullscreen(); return true; }
-                if (webView.canGoBack()) { webView.goBack(); return true; }
-                long now = System.currentTimeMillis();
-                if (now - lastBackPress < 2000) { finish(); return true; }
-                lastBackPress = now;
-                Toast.makeText(this, "Press Back again to exit", Toast.LENGTH_SHORT).show();
+                webView.evaluateJavascript("(window.__tvnav && window.__tvnav.back()) || false", r -> {
+                    if (!"true".equals(r)) goBackOrExit();
+                });
                 return true;
 
-            case KeyEvent.KEYCODE_MENU:        // Menu: jump to On Demand / back to Live
-                String url = webView.getUrl();
-                webView.loadUrl(url != null && url.contains("/on-demand") ? HOME_URL : ON_DEMAND_URL);
-                return true;
+            case KeyEvent.KEYCODE_MENU:        // TV guide
+            case KeyEvent.KEYCODE_GUIDE:
+            case KeyEvent.KEYCODE_INFO:
+            case KeyEvent.KEYCODE_PROG_BLUE:
+                nav("guide()"); return true;
+
+            case KeyEvent.KEYCODE_WINDOW:      // dedicated full-screen / zoom buttons on some remotes
+            case KeyEvent.KEYCODE_TV_ZOOM_MODE:
+                nav("toggleFullscreen()"); return true;
 
             case KeyEvent.KEYCODE_PROG_RED:    // Coloured buttons, if the remote has them
+            case KeyEvent.KEYCODE_CHANNEL_UP:
                 webView.loadUrl(HOME_URL); return true;
             case KeyEvent.KEYCODE_PROG_GREEN:
+            case KeyEvent.KEYCODE_CHANNEL_DOWN:
                 webView.loadUrl(ON_DEMAND_URL); return true;
             case KeyEvent.KEYCODE_PROG_YELLOW:
                 webView.reload(); return true;
