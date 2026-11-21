@@ -24,7 +24,13 @@
     '#rc-fs-bg{position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:2147483646}' +
     '#rc-msg{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);background:rgba(10,10,20,.92);color:#fff;' +
     'font:600 20px/1.3 sans-serif;padding:12px 22px;border-radius:10px;border:2px solid #ffd400;' +
-    'z-index:2147483647;pointer-events:none;transition:opacity .4s;max-width:80vw;text-align:center}';
+    'z-index:2147483647;pointer-events:none;transition:opacity .4s;max-width:80vw;text-align:center}' +
+    /* phone button bar */
+    '#rc-bar{position:fixed;right:12px;bottom:12px;z-index:2147483647;display:flex;gap:8px;opacity:.9}' +
+    'html.rc-fs #rc-bar{opacity:.6}' +
+    '#rc-bar button{font:600 15px/1 sans-serif;color:#fff;background:rgba(15,15,25,.88);border:2px solid #ffd400;' +
+    'border-radius:22px;padding:10px 14px;margin:0;-webkit-tap-highlight-color:transparent}' +
+    '#rc-bar button:active{background:#ffd400;color:#111}';
   (document.head || document.documentElement).appendChild(style);
 
   var SELECTOR = [
@@ -61,7 +67,10 @@
       }
     }
     var out = [];
-    set.forEach(function (el) { if (visible(el)) out.push(el); });
+    set.forEach(function (el) {
+      if (el.closest && el.closest('#rc-bar,#rc-msg')) return;   // our own phone buttons
+      if (visible(el)) out.push(el);
+    });
     // skip elements nested inside another candidate (keep the outer card)
     return out.filter(function (el) {
       for (var p = el.parentElement; p; p = p.parentElement) {
@@ -153,6 +162,8 @@
     if (v && isFinite(v.duration)) v.currentTime = Math.max(0, v.currentTime + sec);
   }
 
+  var TOUCH = window.RingApp && RingApp.isTv ? !RingApp.isTv() : ('ontouchstart' in window);
+
   // ---------- on-screen message ----------
   var msgTimer = null;
   function message(text, ms) {
@@ -194,7 +205,9 @@
     if (current) { current.classList.remove('tvnav-focus'); }
     fsOn = true; guideFromFs = false;
     if (window.RingApp) { RingApp.setFullscreen(true); RingApp.setShowing(true); }
-    if (!quiet) message('Full screen – hold OK to exit, press ▼ or Menu for the TV guide');
+    if (!quiet) message(TOUCH ? 'Full screen – double-tap the video or press Back to exit'
+                              : 'Full screen – hold OK to exit, press ▼ or Menu for the TV guide');
+    updateBar();
     return true;
   }
 
@@ -206,7 +219,45 @@
     fsOn = false; fsEl = null;
     if (window.RingApp) { RingApp.setShowing(false); if (!keepWanted) RingApp.setFullscreen(false); }
     if (current && remote) current.classList.add('tvnav-focus');
+    updateBar();
   }
+
+  // ---------- phone buttons ----------
+  function updateBar() {
+    if (!TOUCH || !document.body) return;
+    var bar = document.getElementById('rc-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'rc-bar';
+      bar.innerHTML = '<button data-act="fs"></button><button data-act="guide">&#9776; Guide</button>';
+      bar.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        e.preventDefault(); e.stopPropagation();
+        if (b.getAttribute('data-act') === 'fs') { if (fsOn) fsExit(false); else fsEnter(false); }
+        else showGuide();
+      }, true);
+      document.documentElement.appendChild(bar);
+    }
+    var fsBtn = bar.querySelector('[data-act=fs]');
+    fsBtn.innerHTML = fsOn ? '&#10005; Exit full screen' : '&#x26F6; Full screen';
+    fsBtn.style.display = (fsOn || pickVideo()) ? '' : 'none';
+  }
+
+  // double-tap the video to go full screen / back
+  var lastTap = 0;
+  document.addEventListener('touchend', function (e) {
+    if (!TOUCH || !e.changedTouches.length) return;
+    if (e.target.closest && e.target.closest('#rc-bar')) return;
+    var t = e.changedTouches[0], v = fsOn ? fsEl : pickVideo();
+    if (!v) { lastTap = 0; return; }
+    var r = v.getBoundingClientRect();
+    if (t.clientX < r.left || t.clientX > r.right || t.clientY < r.top || t.clientY > r.bottom) { lastTap = 0; return; }
+    var now = Date.now();
+    if (now - lastTap < 350) {
+      lastTap = 0; e.preventDefault();
+      if (fsOn) fsExit(false); else fsEnter(false);
+    } else lastTap = now;
+  }, { passive: false, capture: true });
 
   // keep full screen working if the site swaps its player element
   var fsWatch = null;
@@ -290,9 +341,10 @@
   }, true);
 
   // Keep a highlight on screen when the page changes (SPA route changes, new content).
-  var pending = null;
+  var pending = null, barTimer = null;
   new MutationObserver(function () {
     if (fsOn) { clearTimeout(fsWatch); fsWatch = setTimeout(fsCheck, 300); }
+    if (TOUCH) { clearTimeout(barTimer); barTimer = setTimeout(updateBar, 500); }
     if (pending) return;
     pending = setTimeout(function () {
       pending = null;
@@ -322,4 +374,5 @@
     seek: seek
   };
   window.__tvnav.refresh();
+  setTimeout(updateBar, 800);
 })();

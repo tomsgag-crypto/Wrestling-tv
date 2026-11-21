@@ -81,7 +81,11 @@ public class MainActivity extends Activity {
 
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface public void setFullscreen(boolean on) { fsWanted = on; }
-            @JavascriptInterface public void setShowing(boolean on) { fsShowing = on; }
+            @JavascriptInterface public void setShowing(boolean on) {
+                fsShowing = on;
+                runOnUiThread(() -> phoneFullscreen(on));
+            }
+            @JavascriptInterface public boolean isTv() { return MainActivity.this.isTv(); }
         }, "RingApp");
 
         webView.setWebViewClient(new WebViewClient() {
@@ -167,6 +171,20 @@ public class MainActivity extends Activity {
         if (now - lastBackPress < 2000) { finish(); return; }
         lastBackPress = now;
         Toast.makeText(this, "Press Back again to exit", Toast.LENGTH_SHORT).show();
+    }
+
+    /** On phones: turn sideways and hide the status/navigation bars while the video is full screen. */
+    @SuppressWarnings("deprecation")
+    private void phoneFullscreen(boolean on) {
+        if (isTv()) return;
+        setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                   : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        View d = getWindow().getDecorView();
+        d.setSystemUiVisibility(on
+                ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                  | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                  | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                : 0);
     }
 
     private boolean isTv() {
