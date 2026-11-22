@@ -337,7 +337,16 @@ public class MainActivity extends Activity {
         /** The device's own search (Google TV / Google): finds a title across all your apps and can play it. */
         @JavascriptInterface
         public boolean search(String q) {
-            String[] actions = {"android.search.action.GLOBAL_SEARCH", Intent.ACTION_SEARCH, Intent.ACTION_WEB_SEARCH};
+            // Google TV's own search first (named directly, so Android doesn't ask which app to use)
+            String[] pkgs = {"com.google.android.katniss", "com.google.android.apps.tv.launcherx", "com.google.android.googlequicksearchbox"};
+            String[] tvActions = {"android.search.action.GLOBAL_SEARCH", Intent.ACTION_SEARCH};
+            for (String p : pkgs) for (String a : tvActions) {
+                try {
+                    Intent i = new Intent(a).setPackage(p).putExtra(android.app.SearchManager.QUERY, q).putExtra("query", q).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    if (i.resolveActivity(getPackageManager()) != null) { startActivity(i); return true; }
+                } catch (Exception ignored) { }
+            }
+            String[] actions = {"android.search.action.GLOBAL_SEARCH", Intent.ACTION_SEARCH};
             for (String a : actions) {
                 try {
                     Intent i = new Intent(a).putExtra(android.app.SearchManager.QUERY, q).putExtra("query", q).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
