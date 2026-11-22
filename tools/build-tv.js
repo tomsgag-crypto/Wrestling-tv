@@ -63,21 +63,52 @@ function epTitle(path, show, ep) {
   return t.length > 70 ? t.slice(0, 70).trim() + '…' : t;
 }
 
+// How many seasons each show really had: anything numbered beyond this belongs to a different show with a similar name
+const SEASONS = { 'Friends': 10, 'Seinfeld': 9, 'Boy Meets World': 7, 'The Fresh Prince of Bel-Air': 6, 'Frasier': 11, 'Cheers': 11,
+  'Married... with Children': 11, 'Family Matters': 9, 'Saved by the Bell': 4, 'Full House': 8, 'The Wonder Years': 6, 'Roseanne': 10,
+  'Home Improvement': 8, '3rd Rock from the Sun': 6, 'The Golden Girls': 7, 'Malcolm in the Middle': 7, "That '70s Show": 8, 'Scrubs': 9,
+  'ALF': 4, 'Growing Pains': 7, 'Step by Step': 7, 'Everybody Loves Raymond': 9, 'The Nanny': 6, 'Night Court': 9, "Who's the Boss?": 8,
+  'The Office (US)': 9, 'How I Met Your Mother': 9, 'Arrested Development': 5, 'Sister, Sister': 6, 'Only Fools and Horses': 7, 'Blackadder': 4,
+  'Red Dwarf': 12, 'Mr. Bean': 1, 'The Young Ones': 2, 'Bottom': 3, 'Father Ted': 3, 'Men Behaving Badly': 7, 'Absolutely Fabulous': 6,
+  'Keeping Up Appearances': 5, 'One Foot in the Grave': 6, 'The Vicar of Dibley': 3, "Allo 'Allo!": 9, 'Porridge': 3, 'The Office (UK)': 2, 'Spaced': 2,
+  'The X-Files': 11, 'Star Trek: The Next Generation': 7, 'Star Trek: Deep Space Nine': 7, 'Star Trek: Voyager': 7, 'Star Trek: Enterprise': 4,
+  'Star Trek': 3, 'Babylon 5': 5, 'Quantum Leap': 5, 'Sliders': 5, 'Stargate SG-1': 10, 'Stargate Atlantis': 5, 'Firefly': 1, 'Farscape': 4,
+  'Battlestar Galactica': 4, 'Lost': 6, 'Terminator: The Sarah Connor Chronicles': 2, 'Heroes': 4, 'Smallville': 10,
+  'Lois & Clark: The New Adventures of Superman': 4, 'seaQuest DSV': 3, 'Dark Angel': 2, 'Buffy the Vampire Slayer': 7, 'Angel': 5, 'Charmed': 8,
+  'Hercules: The Legendary Journeys': 6, 'Xena: Warrior Princess': 6, 'Highlander: The Series': 6, 'Twin Peaks': 3, 'Millennium': 3, 'Fringe': 5,
+  'V': 1, 'Max Headroom': 2, 'Alien Nation': 1, 'Space: Above and Beyond': 1, 'Earth: Final Conflict': 5, 'Andromeda': 5, 'The Outer Limits': 7,
+  'Tales from the Crypt': 7, 'Are You Afraid of the Dark?': 7, 'Goosebumps': 4, 'Eerie, Indiana': 1, 'Mighty Morphin Power Rangers': 3,
+  'The Adventures of Pete & Pete': 3, 'Clarissa Explains It All': 5, 'Kenan & Kel': 4, 'Lizzie McGuire': 2, 'Sabrina the Teenage Witch': 7,
+  'Knight Rider': 4, 'The A-Team': 5, 'MacGyver': 7, 'Airwolf': 4, 'Miami Vice': 5, 'Magnum, P.I.': 8, 'Baywatch': 11, 'Walker, Texas Ranger': 9,
+  '24': 9, 'Prison Break': 5, 'Alias': 5, 'Murder, She Wrote': 12, 'Moonlighting': 5, 'Street Hawk': 1, 'The Fall Guy': 5, 'The Dukes of Hazzard': 7,
+  'CHiPs': 6, 'ER': 15, 'The Sopranos': 6, 'Columbo': 10, 'Futurama': 12, 'King of the Hill': 14, 'Beavis and Butt-Head': 9, 'Daria': 5,
+  'The Ren & Stimpy Show': 5, 'Rugrats': 9, 'Hey Arnold!': 5, 'Animaniacs': 5, 'Tiny Toon Adventures': 3, "Rocko's Modern Life": 4,
+  'Gargoyles': 3, 'Doug': 7, 'The Powerpuff Girls': 6, "Dexter's Laboratory": 4, 'Courage the Cowardly Dog': 4, 'Ed, Edd n Eddy': 6,
+  'Invader Zim': 2, 'Batman Beyond': 3, 'Justice League': 5, 'Avatar: The Last Airbender': 3, 'Grange Hill': 30, 'Byker Grove': 18 };
+// Typical episode length, used when an upload doesn't say how long a video is
+const TYPICAL = { 'Sitcoms': 23, 'British TV': 30, 'Animated TV': 23, 'Kids & Teen TV': 24, 'Sci-Fi TV': 44, 'Action & Drama TV': 46, 'Horror & Mystery TV': 26 };
+
 const VIDEO = /\.(mp4|m4v|mkv|webm|avi|mpe?g|mov|ogv|wmv|flv|vob|ts)$/i;
 const secs = M.secs;
 /** Episode-length videos in an upload, with the file to play for each. */
-function videos(files) {
+function videos(files, typical) {
   const derivs = files.filter((f) => f.source === 'derivative' && /\.mp4$/i.test(f.name));
   const out = [];
   files.filter((f) => f.source !== 'derivative' && VIDEO.test(f.name) && !/sample|trailer|promo|extras?\/|featurette|bonus/i.test(f.name)).forEach((o) => {
     const d = derivs.find((x) => x.original === o.name);
-    const len = secs(o) || secs(d);
+    let len = secs(o) || secs(d), est = false;
+    if (!len) {
+      // no running time listed: judge by file size (a TV episode is usually 60 MB to 2.5 GB) and assume a typical length
+      const size = +o.size || 0;
+      if (size < 60e6 || size > 2.5e9) return;
+      len = typical * 60; est = true;
+    }
     if (len < 15 * 60 || len > 100 * 60) return;
     let play = null;
     if (/\.(mp4|m4v)$/i.test(o.name) && (!o.format || /h\.?264|mpeg4/i.test(o.format))) play = o.name;
     else if (d) play = d.name;
     else if (/\.webm$/i.test(o.name)) play = o.name;
-    if (play) out.push({ path: o.name, play, d: Math.round(len), mp4: /\.mp4$/i.test(o.name) });
+    if (play) out.push({ path: o.name, play, d: Math.round(len), mp4: /\.mp4$/i.test(o.name), est });
   });
   return out;
 }
@@ -110,7 +141,7 @@ function videos(files) {
     await pool(items, 16, async (it) => {
       let j;
       try { j = await getJSON('https://archive.org/metadata/' + encodeURIComponent(it.identifier) + '/files', 2); } catch (e) { return; }
-      const vids = videos(j.result || j.files || []);
+      const vids = videos(j.result || j.files || [], TYPICAL[cat] || 30);
       const titleSeason = seasonOf(it.title);
       vids.forEach((v) => {
         if (NOT_EPISODE.test(v.path.replace(/[._]+/g, ' ')) || (exclude && exclude.test(v.path))) return;
@@ -118,9 +149,9 @@ function videos(files) {
         const folderSeason = seasonOf(v.path.split('/').slice(0, -1).join(' '));
         let ep = epNo(v.path, folderSeason || titleSeason);
         if (!ep && vids.length === 1) ep = epNo(it.title, titleSeason);
-        if (!ep || ep.s < 1 || ep.s > 40 || ep.e < 1 || ep.e > 400) return;
+        if (!ep || ep.s < 1 || ep.s > (SEASONS[name] || 40) || ep.e < 1 || ep.e > 400) return;
         const key = ep.s + '|' + ep.e;
-        const score = (it.downloads || 0) + (v.mp4 ? 500 : 0) - (vids.length === 1 ? 0 : 50);
+        const score = (it.downloads || 0) + (v.mp4 ? 500 : 0) - (vids.length === 1 ? 0 : 50) - (v.est ? 2000 : 0);
         const prev = eps.get(key);
         let title = epTitle(v.path, show, ep);
         if (!title && vids.length === 1) title = epTitle(it.title, show, epNo(it.title, titleSeason));
