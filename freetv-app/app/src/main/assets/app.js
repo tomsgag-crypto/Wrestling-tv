@@ -72,7 +72,7 @@ var app = (function () {
   }
 
   // Freeview channel -> service and live link
-  var BBC_APP = { bbcone: 'bbc_one_london', bbctwo: 'bbc_two_england', bbcthree: 'bbc_three', bbcfour: 'bbc_four', bbcnews: 'bbc_news24',
+  var BBC_APP = { bbcone: 'bbc_one', bbctwo: 'bbc_two', bbcthree: 'bbc_three', bbcfour: 'bbc_four', bbcnews: 'bbc_news24',
     bbcparliament: 'bbc_parliament', cbbc: 'cbbc', cbeebies: 'cbeebies', bbcscotland: 'bbc_scotland', bbcalba: 'bbc_alba' };
   function bbcLive(id) { return 'bbciplayer://www.bbc.co.uk/iplayer/mobile/channels/' + BBC_APP[id] + '\nhttps://www.bbc.co.uk/iplayer/live/' + id; }
   function bbcEpisode(pid) { return 'bbciplayer://www.bbc.co.uk/iplayer/mobile/episode/' + pid + '\nhttps://www.bbc.co.uk/iplayer/episode/' + pid; }
@@ -147,7 +147,7 @@ var app = (function () {
           c.events.forEach(function (e) {
             var s = isoSec(e.start_time);
             out[c.service_id].events.push({ s: s, e: s + dur(e.duration), t: e.main_title, sub: e.secondary_title || '', img: e.image_url || e.fallback_image_url || '',
-              od: catchUp(e.on_demand), odUntil: e.on_demand && e.on_demand.end_of_availability ? isoSec(e.on_demand.end_of_availability) : 0 });
+              od: e.on_demand && e.on_demand.start_of_availability && isoSec(e.on_demand.start_of_availability) > nowSec() ? '' : catchUp(e.on_demand), odUntil: e.on_demand && e.on_demand.end_of_availability ? isoSec(e.on_demand.end_of_availability) : 0 });
           });
         });
       });
@@ -159,7 +159,7 @@ var app = (function () {
     var a = new Date((nowSec() - 3600) * 1000).toISOString(), b = new Date((nowSec() + 12 * 3600) * 1000).toISOString();
     return getJSON('https://api.pluto.tv/v2/channels?start=' + encodeURIComponent(a) + '&stop=' + encodeURIComponent(b)).then(function (list) {
       pluto = list.filter(function (c) { return c.visibility !== 'hidden' && c.timelines && c.timelines.length; }).map(function (c) {
-        return { name: c.name, slug: c.slug, num: c.number, cat: c.category, logo: c.colorLogoPNG && c.colorLogoPNG.path,
+        return { id: c._id, name: c.name, slug: c.slug, num: c.number, cat: c.category, logo: c.colorLogoPNG && c.colorLogoPNG.path,
           events: c.timelines.map(function (t) {
             var ep = t.episode || {}, series = ep.series && ep.series.name;
             return { s: Date.parse(t.start) / 1000, e: Date.parse(t.stop) / 1000, t: t.title || series || ep.name || '',
@@ -184,7 +184,7 @@ var app = (function () {
       out.push({ sec: 'Freeview channels', id: 'f' + id, name: name, svc: info.svc, live: info.live, events: c.events });
     });
     pluto.forEach(function (c) {
-      out.push({ sec: 'Pluto TV', id: 'p' + c.slug, name: c.name, svc: 'pluto', live: 'https://pluto.tv/live-tv/' + c.slug, events: c.events, cat: c.cat });
+      out.push({ sec: 'Pluto TV', id: 'p' + c.slug, name: c.name, svc: 'pluto', live: 'https://pluto.tv/en/live-tv/' + c.id + '\nhttps://pluto.tv/live-tv/' + c.slug, events: c.events, cat: c.cat });
     });
     // favourites at the top (or on their own)
     var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
@@ -221,7 +221,7 @@ var app = (function () {
     var img = (p.images && (p.images.standard || p.images.promotional) || '').replace('{recipe}', '432x243');
     return { src: 'bbc', svc: 'bbc', title: p.title, sub: (p.labels && p.labels.category || '') + (p.count > 1 ? ' · ' + p.count + ' episodes' : ''),
       desc: p.synopses && (p.synopses.small || p.synopses.medium) || '', img: img,
-      url: one && child ? bbcEpisode(child.id) : bbcBrand(p.id) };
+      url: child ? bbcEpisode(child.id) : bbcBrand(p.id) };
   }
   function loadBBCCat(c) {
     if (c.items || c.loading) return Promise.resolve();
@@ -255,7 +255,7 @@ var app = (function () {
             var year = x.clip && x.clip.originalReleaseDate ? x.clip.originalReleaseDate.slice(0, 4) : '';
             return { src: 'pluto', svc: 'pluto', title: x.name, sub: [x.genre, year, x.rating, x.type === 'movie' && mins ? mins + ' mins' : x.type === 'series' ? 'Series' : ''].filter(Boolean).join(' · '),
               desc: x.summary || x.description || '', img: cover ? cover.url : (x.featuredImage && x.featuredImage.path) || '',
-              url: 'https://pluto.tv/on-demand/' + (x.type === 'series' ? 'series/' : 'movies/') + x.slug };
+              url: 'https://pluto.tv/en/on-demand/' + (x.type === 'series' ? 'series/' + (x.seriesID || x._id) : 'movies/' + x._id) + '\nhttps://pluto.tv/on-demand/' + (x.type === 'series' ? 'series/' : 'movies/') + x.slug };
           }) };
         });
       }).catch(function () { plutoCats = plutoCats || []; });
