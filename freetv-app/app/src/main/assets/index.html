@@ -50,6 +50,10 @@
   .blk.sel.listed::after { color: #0a5a37; }
   .bt { font-size: 1.8vh; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bl { font-size: 1.4vh; color: #b9c2d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #tNav { position: absolute; right: .6vw; top: 0; display: flex; gap: 1.6vw; background: #142039; padding-left: 1vw; }
+  #tNav span { color: #19c37d; font-weight: 900; padding: 0 1vw; cursor: pointer; }
+  body.touch #rows { overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+  body.touch #gHead { height: 4.4vh; line-height: 4.4vh; font-size: 1.6vh; }
   .nowline { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff4d6d; z-index: 2; }
 
   /* ---------------- two-panel lists ---------------- */
@@ -121,6 +125,8 @@
     .cols { flex-direction: column; }
     .left { width: 100%; height: 30%; border-right: 0; border-bottom: 1px solid #1f2a44; }
     .gch { width: 28%; }
+    #gInfo { height: 15vh; }
+    #rows { top: 19.4vh; }
     #gImg { display: none; }
     .app { width: 44vw; }
     .setting { width: 92vw; }

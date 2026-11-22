@@ -28,7 +28,20 @@ var app = (function () {
     stv: { name: 'STV Player', app: 'stv', store: 'q:STV Player', cls: '', desc: 'STV live and on demand' },
     rakuten: { name: 'Rakuten TV', app: 'rakuten', store: 'tv.wuaki', cls: '', desc: 'Free films with ads' },
     plex: { name: 'Plex', app: '^plex', store: 'com.plexapp.android', cls: '', desc: 'Free films and live channels' },
-    youtube: { name: 'YouTube', app: 'youtube', store: 'com.google.android.youtube.tv', cls: '', desc: 'Free films with ads and more' }
+    youtube: { name: 'YouTube', app: 'youtube', store: 'com.google.android.youtube.tv', cls: '', desc: 'Free films with ads and more' },
+    // subscriptions
+    netflix: { name: 'Netflix', app: 'netflix', store: 'q:Netflix', cls: '', desc: 'Subscription', paid: 1 },
+    prime: { name: 'Prime Video', app: 'prime video|amazon (prime )?video|amazon\\.avod', store: 'q:Prime Video', cls: '', desc: 'Subscription (some free with ads)', paid: 1 },
+    disney: { name: 'Disney+', app: 'disney', store: 'q:Disney+', cls: '', desc: 'Subscription', paid: 1 },
+    appletv: { name: 'Apple TV', app: '^apple tv|com\\.apple\\.atve', store: 'q:Apple TV', cls: '', desc: 'Subscription', paid: 1 },
+    now: { name: 'NOW', app: '^now$|^now tv|nowtv', store: 'q:NOW TV', cls: '', desc: 'Subscription – Sky channels and films', paid: 1 },
+    skysports: { name: 'Sky Sports', app: 'sky sports', store: 'q:Sky Sports', cls: '', desc: 'Subscription', paid: 1 },
+    paramount: { name: 'Paramount+', app: 'paramount', store: 'q:Paramount+', cls: '', desc: 'Subscription', paid: 1 },
+    discovery: { name: 'discovery+', app: 'discovery', store: 'q:discovery+', cls: '', desc: 'Subscription (some free)', paid: 1 },
+    britbox: { name: 'BritBox', app: 'britbox', store: 'q:BritBox', cls: '', desc: 'Subscription – now part of ITVX Premium', paid: 1 },
+    mubi: { name: 'MUBI', app: 'mubi', store: 'q:MUBI', cls: '', desc: 'Subscription – arthouse and classic films', paid: 1 },
+    crunchyroll: { name: 'Crunchyroll', app: 'crunchyroll', store: 'q:Crunchyroll', cls: '', desc: 'Anime (some free)', paid: 1 },
+    spotify: { name: 'Spotify', app: 'spotify', store: 'q:Spotify', cls: '', desc: 'Music and podcasts', paid: 1 }
   };
   var MINE = [
     ['Movie Channels', 'movie channels', 'Your 24/7 film and TV channels'], ['Movie Archive', 'movie archive', 'Your film and TV archive'],
@@ -346,19 +359,22 @@ var app = (function () {
     var now = nowSec();
     if (!gT || gT < now) gT = now;
     if (!ws || gT < ws) ws = floor30(gT);
-    if (gT >= ws + SPAN) ws = floor30(gT - SPAN / 3);
+    if (gT >= ws + SPAN) ws = TOUCH ? floor30(gT) : floor30(gT - SPAN / 3);
     if (ws < floor30(now)) ws = floor30(now);
     var th = '';
     for (var t = ws; t < ws + SPAN; t += 1800) th += '<div class="tick" style="left:' + ((t - ws) / SPAN * 100) + '%">' + clock(t) + '</div>';
     $('gTimes').innerHTML = th;
+    if (TOUCH) $('gTimes').innerHTML += '<div id="tNav"><span data-tn="-1">◀</span><span data-tn="0">Now</span><span data-tn="1">▶</span></div>';
     if (!chans.length) {
       $('rows').innerHTML = '<div class="empty">' + (loading.guide ? '<span class="spinner"></span>Loading the TV guide…' : 'The TV guide couldn\'t be loaded. Press Menu to try again.') + '</div>';
       $('gChan').textContent = ''; $('gTitle').textContent = ''; $('gWhen').textContent = ''; $('gDesc').textContent = '';
       return;
     }
     var box = $('rows'), rowH = innerHeight * 0.062, vis = Math.max(3, Math.floor(box.clientHeight / rowH) - 1);
+    if (TOUCH) { rTop = 0; vis = chans.length; }        // phones: all rows, scrolled by finger
     if (gRow < rTop) rTop = gRow;
     if (gRow >= rTop + vis) rTop = gRow - vis + 1;
+    var keepScroll = box.scrollTop;
     var listedKeys = {};
     lists.forEach(function (l) { l.items.forEach(function (x) { if (x.src === 'tv') listedKeys[x.ch + '|' + x.s] = 1; }); });
     var fp = focused(), h = '', lastSec = rTop > 0 ? chans[rTop - 1].sec : null;
@@ -379,6 +395,7 @@ var app = (function () {
         (now >= ws && now < ws + SPAN ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div>';
     }
     box.innerHTML = h;
+    if (TOUCH) box.scrollTop = keepScroll;
     var ch = chans[gRow];
     $('gChan').textContent = ch.name + '  ·  ' + (ch.svc ? 'watch in ' + SVC[ch.svc].name : 'Freeview only');
     if (fp) {
@@ -579,7 +596,10 @@ var app = (function () {
   var REGIONS = ['BBC One London', 'BBC One NE&C', 'BBC One NW', 'BBC One Yorks', 'BBC One Yk&Li', 'BBC One E Mids', 'BBC One W Mids', 'BBC One East',
     'BBC One SE', 'BBC One South', 'BBC One SW', 'BBC One West', 'BBC One CI', 'BBC One Scotland', 'BBC One Wales', 'BBC One NI'];
   function tiles() {
-    var t = Object.keys(SVC).map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
+    // free services first, then subscriptions (installed ones first within each)
+    var keys = Object.keys(SVC), rank = function (k) { return (SVC[k].paid ? 2 : 0) + (has(k) ? 0 : 1); };
+    keys.sort(function (a, b) { return rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b); });
+    var t = keys.map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
     MINE.forEach(function (m) { if (has(m[1])) t.push({ kind: 'mine', k: m[1], name: m[0], desc: m[2], ok: true }); });
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
@@ -779,8 +799,29 @@ var app = (function () {
   }, true);
   $('q').addEventListener('input', function () { clearTimeout(qTimer); qTimer = setTimeout(runSearch, 350); });
 
+  // touch: move the guide through time
+  function shiftTime(dir) {
+    var now = nowSec();
+    if (dir === 0) { gT = now; ws = 0; }
+    else {
+      ws = Math.max(floor30(now), Math.min(floor30(now + 46 * 3600), ws + dir * 3600));
+      gT = Math.max(now, ws + 1);
+    }
+    renderGuide();
+  }
+  var sw = null;
+  $('rows').addEventListener('touchstart', function (e) { var t = e.touches[0]; sw = { x: t.clientX, y: t.clientY }; }, { passive: true });
+  $('rows').addEventListener('touchend', function (e) {
+    if (!sw) return;
+    var t = e.changedTouches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    sw = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { e.preventDefault(); shiftTime(dx < 0 ? 1 : -1); }
+  });
+
   // touch
   document.addEventListener('click', function (e) {
+    var tn = e.target.closest('[data-tn]');
+    if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var t = e.target.closest('.tab, .blk, .gch, .cat, .item, .app, .opt');
     if (!t) return;
     if (t.classList.contains('tab')) { zone = 'main'; setView(t.getAttribute('data-v')); return; }
