@@ -59,10 +59,13 @@ var app = (function () {
     toast('This device has no search to send it to');
     return false;
   }
+  /** what: a title to search for inside the app if no link goes straight to it (quotes are stripped for the search). */
   function openIn(svc, url, what) {
     var s = SVC[svc];
     if (!window.Native) { if (url) window.open(url); return; }
-    var r = Native.open(s ? s.app : svc, url || '', s ? s.store : '');
+    var q = (what || '').replace(/^"|"$/g, '');
+    var r = Native.open2 ? Native.open2(s ? s.app : svc, url || '', s ? s.store : '', q) : Native.open(s ? s.app : svc, url || '', s ? s.store : '');
+    if (r === 'search') { toast('Searching ' + s.name + ' for "' + q + '"'); return; }
     if (r === 'store') toast((s ? s.name : 'That app') + ' isn\'t installed – opening the Play Store');
     else if (r === 'none') toast('Couldn\'t open ' + (s ? s.name : 'that app'));
     else if (r === 'app') toast('Opened ' + s.name + (what ? ' – find ' + what + ' there' : '') + (TOUCH ? '' : '. Tip: hold OK and choose "Find on Google TV" to go straight to it'));
@@ -400,7 +403,7 @@ var app = (function () {
       ws.forEach(function (w) { w.exact = links[w.k] || ''; });
       // a straight link in an app you have: just go
       var direct = ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0];
-      if (direct) { openIn(direct.k, direct.exact); return; }
+      if (direct) { openIn(direct.k, direct.exact, '"' + it.title + '"'); return; }
       return ws;
     }).then(function (ws) {
       if (!ws) return;
@@ -411,7 +414,7 @@ var app = (function () {
       var gsearch = { label: TOUCH ? 'Search Google for it' : 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } };
       showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: (TOUCH ? [] : [gsearch]).concat(ws.map(function (w) {
         return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (has(w.k) ? '' : ' (not installed)'),
-          fn: function () { openIn(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), w.exact || w.search ? '' : '"' + it.title + '"'); } };
+          fn: function () { openIn(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), '"' + it.title + '"'); } };
       })).concat(TOUCH ? [gsearch] : [], [{ label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
   }
@@ -449,9 +452,9 @@ var app = (function () {
   function openItem(it) {
     var now = nowSec();
     if (it.src === 'tv') {
-      if (it.s <= now && it.e > now) { openIn(it.svc, it.live, it.live ? '' : it.chName); return; }
+      if (it.s <= now && it.e > now) { openIn(it.svc, it.live, ''); return; }
       if (it.e <= now) {
-        if (it.url) openIn(it.svc, it.url);
+        if (it.url) openIn(it.svc, it.url, '"' + it.title + '"');
         else if (it.svc) openIn(it.svc, '', '"' + it.title + '"');
         else toast('That was on ' + it.chName + ' – it isn\'t available on demand here');
         return;
@@ -460,7 +463,7 @@ var app = (function () {
       return;
     }
     if (it.src === 'tmdb') { openTMDB(it); return; }
-    openIn(it.svc, it.url);
+    openIn(it.svc, it.url, '"' + it.title + '"');
   }
 
   // ---------------------------------------------------------------- state and views

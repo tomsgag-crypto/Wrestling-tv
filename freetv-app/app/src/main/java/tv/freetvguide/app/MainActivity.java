@@ -192,7 +192,11 @@ public class MainActivity extends Activity {
          * then the Play Store page for it. Returns what happened.
          */
         @JavascriptInterface
-        public String open(String labels, String url, String store) {
+        public String open(String labels, String url, String store) { return open2(labels, url, store, ""); }
+
+        /** As open(), and if no link works, ask the app itself to search for `query` (the way Google Assistant does). */
+        @JavascriptInterface
+        public String open2(String labels, String url, String store, String query) {
             PackageManager pm = getPackageManager();
             String pkg = null;
             try {
@@ -211,6 +215,16 @@ public class MainActivity extends Activity {
                         Intent v = new Intent(Intent.ACTION_VIEW, Uri.parse(u.trim())).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         if (u.contains("netflix.com/watch") || u.contains("netflix.com/title")) v.putExtra("source", "30");
                         if (v.resolveActivity(pm) != null) { startActivity(v); return "link"; }
+                    } catch (Exception ignored) { }
+                }
+            }
+            if (pkg != null && query != null && query.length() > 0) {
+                String[] actions = {"com.google.android.gms.actions.SEARCH_ACTION", Intent.ACTION_SEARCH, "android.media.action.MEDIA_PLAY_FROM_SEARCH"};
+                for (String a : actions) {
+                    try {
+                        Intent i = new Intent(a).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                .putExtra(android.app.SearchManager.QUERY, query).putExtra("query", query);
+                        if (i.resolveActivity(pm) != null) { startActivity(i); return "search"; }
                     } catch (Exception ignored) { }
                 }
             }
