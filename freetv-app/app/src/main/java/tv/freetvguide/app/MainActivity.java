@@ -203,11 +203,16 @@ public class MainActivity extends Activity {
                     if (p.matcher(o.getString("label")).find() || p.matcher(o.getString("pkg")).find()) { pkg = o.getString("pkg"); break; }
                 }
             } catch (Exception ignored) { }
+            // several possible links (one per line): use the first one this app says it can open
             if (pkg != null && url != null && url.length() > 0) {
-                try {
-                    Intent v = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    if (v.resolveActivity(pm) != null) { startActivity(v); return "link"; }
-                } catch (ActivityNotFoundException ignored) { }
+                for (String u : url.split("\n")) {
+                    if (u.trim().isEmpty()) continue;
+                    try {
+                        Intent v = new Intent(Intent.ACTION_VIEW, Uri.parse(u.trim())).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        if (u.contains("netflix.com/watch") || u.contains("netflix.com/title")) v.putExtra("source", "30");
+                        if (v.resolveActivity(pm) != null) { startActivity(v); return "link"; }
+                    } catch (Exception ignored) { }
+                }
             }
             if (pkg != null) {
                 Intent l = launchIntent(pkg);
@@ -221,6 +226,19 @@ public class MainActivity extends Activity {
                 catch (Exception ignored) { }
             }
             return "none";
+        }
+
+        /** The device's own search (Google TV / Google): finds a title across all your apps and can play it. */
+        @JavascriptInterface
+        public boolean search(String q) {
+            String[] actions = {"android.search.action.GLOBAL_SEARCH", Intent.ACTION_SEARCH, Intent.ACTION_WEB_SEARCH};
+            for (String a : actions) {
+                try {
+                    Intent i = new Intent(a).putExtra(android.app.SearchManager.QUERY, q).putExtra("query", q).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    if (i.resolveActivity(getPackageManager()) != null) { startActivity(i); return true; }
+                } catch (Exception ignored) { }
+            }
+            return false;
         }
 
         @JavascriptInterface

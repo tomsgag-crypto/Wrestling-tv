@@ -54,16 +54,27 @@ var app = (function () {
     var re = new RegExp(SVC[svc] ? SVC[svc].app : svc, 'i');
     return installed.some(function (a) { return re.test(a.label) || re.test(a.pkg); });
   }
+  function findOnTV(title) {
+    if (window.Native && Native.search && Native.search(title)) return true;
+    toast('This device has no search to send it to');
+    return false;
+  }
   function openIn(svc, url, what) {
     var s = SVC[svc];
     if (!window.Native) { if (url) window.open(url); return; }
     var r = Native.open(s ? s.app : svc, url || '', s ? s.store : '');
     if (r === 'store') toast((s ? s.name : 'That app') + ' isn\'t installed – opening the Play Store');
     else if (r === 'none') toast('Couldn\'t open ' + (s ? s.name : 'that app'));
-    else if (r === 'app' && what) toast('Opened ' + s.name + ' – find ' + what + ' there');
+    else if (r === 'app') toast('Opened ' + s.name + (what ? ' – find ' + what + ' there' : '') + '. Tip: hold OK and choose "Find on Google TV" to go straight to it');
   }
 
   // Freeview channel -> service and live link
+  var BBC_APP = { bbcone: 'bbc_one_london', bbctwo: 'bbc_two_england', bbcthree: 'bbc_three', bbcfour: 'bbc_four', bbcnews: 'bbc_news24',
+    bbcparliament: 'bbc_parliament', cbbc: 'cbbc', cbeebies: 'cbeebies', bbcscotland: 'bbc_scotland', bbcalba: 'bbc_alba' };
+  function bbcLive(id) { return 'bbciplayer://www.bbc.co.uk/iplayer/mobile/channels/' + BBC_APP[id] + '\nhttps://www.bbc.co.uk/iplayer/live/' + id; }
+  function bbcEpisode(pid) { return 'bbciplayer://www.bbc.co.uk/iplayer/mobile/episode/' + pid + '\nhttps://www.bbc.co.uk/iplayer/episode/' + pid; }
+  function bbcBrand(pid) { return 'bbciplayer://www.bbc.co.uk/iplayer/mobile/episodes/' + pid + '\nhttps://www.bbc.co.uk/iplayer/episodes/' + pid; }
+  var FIVE_APP = { '5': 'C5', '5STAR': 'C6', '5ACTION': 'C0', '5SELECT': 'C8' };
   var BBC_LIVE = { 'BBC One': 'bbcone', 'BBC Two': 'bbctwo', 'BBC Three': 'bbcthree', 'BBC Four': 'bbcfour', 'BBC News': 'bbcnews',
     'BBC Parliament': 'bbcparliament', 'CBBC': 'cbbc', 'CBeebies': 'cbeebies', 'BBC Scotland': 'bbcscotland', 'BBC ALBA': 'bbcalba' };
   var ITV_LIVE = { 'ITV1': 'itv', 'ITV2': 'itv2', 'ITV3': 'itv3', 'ITV4': 'itv4', 'ITVBe': 'itvbe', 'ITV Quiz': 'itvquiz' };
@@ -71,12 +82,12 @@ var app = (function () {
   function chanInfo(name) {
     var base = name.replace(/\s*\+1$/, '');
     var b1 = /^BBC (One|Two)\b/.exec(base);
-    if (b1) return { svc: 'bbc', live: 'https://www.bbc.co.uk/iplayer/live/' + BBC_LIVE['BBC ' + b1[1]] };
-    if (BBC_LIVE[base]) return { svc: 'bbc', live: 'https://www.bbc.co.uk/iplayer/live/' + BBC_LIVE[base] };
+    if (b1) return { svc: 'bbc', live: bbcLive(BBC_LIVE['BBC ' + b1[1]]) };
+    if (BBC_LIVE[base]) return { svc: 'bbc', live: bbcLive(BBC_LIVE[base]) };
     if (/^ITV/.test(base)) return { svc: 'itv', live: ITV_LIVE[base] ? 'https://www.itv.com/watch?channel=' + ITV_LIVE[base] : '' };
-    if (C4_LIVE[base]) return { svc: 'c4', live: 'https://www.channel4.com/now/' + C4_LIVE[base] };
+    if (C4_LIVE[base]) return { svc: 'c4', live: 'https://www.channel4.com/now/' + C4_LIVE[base] + '\nall4://views/on-now?channel=' + C4_LIVE[base] };
     if (/^4(Reality|Homes|Life)/.test(base)) return { svc: 'c4', live: '' };
-    if (/^5(\b|[A-Z])/.test(base)) return { svc: 'five', live: '' };
+    if (/^5(\b|[A-Z])/.test(base)) return { svc: 'five', live: FIVE_APP[base] ? 'my5://watch/' + FIVE_APP[base] : '' };
     if (/^U&/.test(base)) return { svc: 'u', live: '' };
     if (/^S4C/.test(base)) return { svc: 's4c', live: '' };
     if (/^STV/.test(base)) return { svc: 'stv', live: '' };
@@ -86,7 +97,7 @@ var app = (function () {
   function catchUp(od) {
     if (!od || !od.player_links || !od.player_links.tv) return '';
     var u = od.player_links.tv.program_url || '', m;
-    if ((m = /urn:bbc:iplayer:episode:(\w+)/.exec(u))) return 'https://www.bbc.co.uk/iplayer/episode/' + m[1];
+    if ((m = /urn:bbc:iplayer:episode:(\w+)/.exec(u))) return bbcEpisode(m[1]);
     if ((m = /brand=([^&]+)&programme=([^&]+)/.exec(u))) return 'https://www.channel4.com/programmes/' + m[1] + '/on-demand/' + m[2];
     return '';
   }
@@ -105,7 +116,7 @@ var app = (function () {
   function _cb(id, body, err) { var f = cbs[id]; delete cbs[id]; if (f) f(body, err); }
 
   // ---------------------------------------------------------------- saved things
-  var settings = Object.assign({ bbc1: 'BBC One London', plus1: false, other: false }, load('settings') || {});
+  var settings = Object.assign({ bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false }, load('settings') || {});
   var lists = load('lists') || [{ name: 'Watch later', items: [] }];
   var device = load('device') || { id: 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) { var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }) };
   save('device', device);
@@ -172,7 +183,11 @@ var app = (function () {
     pluto.forEach(function (c) {
       out.push({ sec: 'Pluto TV', id: 'p' + c.slug, name: c.name, svc: 'pluto', live: 'https://pluto.tv/live-tv/' + c.slug, events: c.events, cat: c.cat });
     });
-    chans = out;
+    // favourites at the top (or on their own)
+    var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
+      .map(function (c) { return Object.assign({}, c, { sec: 'Favourites', fav: true }); });
+    out.forEach(function (c) { c.fav = settings.favs.indexOf(c.id) >= 0; });
+    chans = settings.favOnly && favs.length ? favs : favs.concat(out);
     if (gRow >= chans.length) gRow = 0;
   }
   function loadGuide() {
@@ -203,7 +218,7 @@ var app = (function () {
     var img = (p.images && (p.images.standard || p.images.promotional) || '').replace('{recipe}', '432x243');
     return { src: 'bbc', svc: 'bbc', title: p.title, sub: (p.labels && p.labels.category || '') + (p.count > 1 ? ' · ' + p.count + ' episodes' : ''),
       desc: p.synopses && (p.synopses.small || p.synopses.medium) || '', img: img,
-      url: one && child ? 'https://www.bbc.co.uk/iplayer/episode/' + child.id : 'https://www.bbc.co.uk/iplayer/episodes/' + p.id };
+      url: one && child ? bbcEpisode(child.id) : bbcBrand(p.id) };
   }
   function loadBBCCat(c) {
     if (c.items || c.loading) return Promise.resolve();
@@ -334,14 +349,12 @@ var app = (function () {
       if (!ws.length) { toast('"' + it.title + '" isn\'t on any of your UK streaming apps right now'); return; }
       // prefer an app you have, free before paid
       ws.sort(function (a, b) { return (has(b.k) ? 2 : 0) - (has(a.k) ? 2 : 0) + ((SVC[a.k].paid ? 1 : 0) - (SVC[b.k].paid ? 1 : 0)); });
-      if (ws.length === 1 || it.svc) {
-        var w = ws.filter(function (x) { return x.k === it.svc; })[0] || ws[0];
-        openIn(w.k, w.search ? w.search + encodeURIComponent(it.title) : '', w.search ? '' : '"' + it.title + '"');
-        return;
-      }
-      showPop({ title: '"' + it.title + '" is on…', opts: ws.map(function (w) {
-        return { label: SVC[w.k].name + (has(w.k) ? '' : ' (not installed)'), fn: function () { openIn(w.k, w.search ? w.search + encodeURIComponent(it.title) : '', w.search ? '' : '"' + it.title + '"'); } };
-      }).concat([{ label: 'Cancel' }]) });
+      var year = (it.sub || '').slice(0, 4);
+      showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [
+        { label: 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } }
+      ].concat(ws.map(function (w) {
+        return { label: 'Open ' + SVC[w.k].name + (has(w.k) ? '' : ' (not installed)'), fn: function () { openIn(w.k, w.search ? w.search + encodeURIComponent(it.title) : '', w.search ? '' : '"' + it.title + '"'); } };
+      })).concat([{ label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
   }
 
@@ -429,7 +442,7 @@ var app = (function () {
   function renderHelp() {
     var h;
     if (zone === 'tabs') h = '<b>◀ ▶</b> choose a section · <b>▼</b> go in';
-    else if (view === 'guide') h = '<b>▲▼</b> channels · <b>◀▶</b> time · <b>OK</b> watch / catch up · <b>hold OK</b> add to a list · <b>CH −/+</b> page';
+    else if (view === 'guide') h = '<b>▲▼</b> channels · <b>◀▶</b> time · <b>OK</b> watch · <b>hold OK</b> add to a list · <b>Menu</b> favourite channel · <b>CH −/+</b> page';
     else if (view === 'lists') h = '<b>OK</b> watch · <b>hold OK</b> remove or move · <b>Menu</b> on a list: rename or delete';
     else if (view === 'apps') h = '<b>OK</b> open the app (or install it) · settings are at the end';
     else h = '<b>OK</b> watch in its app · <b>hold OK</b> add to a list · <b>CH −/+</b> page';
@@ -482,7 +495,7 @@ var app = (function () {
           '<div class="bt">' + esc(p.t) + '</div><div class="bl">' + esc(p.sub || '') + '</div></div>';
       });
       var sv = c.svc ? SVC[c.svc].name : 'Freeview only';
-      h += '<div class="grow' + (ci === gRow ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + esc(c.name) + '</div>' +
+      h += '<div class="grow' + (ci === gRow ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
         '<div class="sv' + (c.svc ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline">' + blocks +
         (now >= ws && now < ws + SPAN ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div>';
     }
@@ -793,6 +806,12 @@ var app = (function () {
     });
     opts.push({ label: '+ Add to a new list…', fn: function () { newList(it); } });
     if (it.src === 'tv' && it.svc) opts.push({ label: 'Open ' + SVC[it.svc].name, fn: function () { openIn(it.svc, it.e <= nowSec() && it.url ? it.url : it.live); } });
+    if (it.src !== 'tv' || it.e <= nowSec()) opts.push({ label: 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title); } });
+    if (it.src === 'tv' && view === 'guide') {
+      var ch = chans[gRow];
+      if (ch) opts.push({ label: (ch.fav ? '♥ Remove ' + ch.name + ' from' : '♥ Add ' + ch.name + ' to') + ' favourite channels', fn: function () { toggleFav(ch); } });
+      if (settings.favs.length) opts.push({ label: settings.favOnly ? 'Show all channels' : 'Show only my favourite channels', fn: function () { settings.favOnly = !settings.favOnly; saveSettings(); buildChans(); gRow = 0; } });
+    }
     showPop({ title: it.title + (it.src === 'tv' ? ' – ' + dayWord(it.s) + ' ' + clock(it.s) : ''), opts: opts });
   }
   function toggleIn(i, it) {
@@ -849,12 +868,34 @@ var app = (function () {
       { label: 'Cancel' }
     ] });
   }
+  function toggleFav(c) {
+    var i = settings.favs.indexOf(c.id);
+    if (i >= 0) { settings.favs.splice(i, 1); toast(c.name + ' removed from favourites'); }
+    else { settings.favs.push(c.id); toast(c.name + ' added to favourites'); }
+    saveSettings();
+    var keep = c.id; buildChans();
+    if (!settings.favOnly) { for (var j = 0; j < chans.length; j++) if (chans[j].id === keep && (chans[j].fav || j >= settings.favs.length)) { gRow = j; break; } }
+  }
+  function moveFav(c, dir) {
+    var i = settings.favs.indexOf(c.id), j = i + dir;
+    if (i < 0 || j < 0 || j >= settings.favs.length) return;
+    settings.favs[i] = settings.favs[j]; settings.favs[j] = c.id; saveSettings(); buildChans(); gRow = j;
+  }
   function optionsMenu() {
-    showPop({ title: 'Options', opts: [
+    var c = view === 'guide' && zone === 'main' ? chans[gRow] : null, opts = [];
+    if (c) {
+      opts.push({ label: (c.fav ? 'Remove ' : 'Add ') + c.name + (c.fav ? ' from' : ' to') + ' favourites', fn: function () { toggleFav(c); } });
+      if (c.fav && c.sec === 'Favourites') {
+        opts.push({ label: 'Move ' + c.name + ' up', fn: function () { moveFav(c, -1); } });
+        opts.push({ label: 'Move ' + c.name + ' down', fn: function () { moveFav(c, 1); } });
+      }
+    }
+    if (settings.favs.length) opts.push({ label: settings.favOnly ? 'Show all channels' : 'Show only my favourites', fn: function () { settings.favOnly = !settings.favOnly; saveSettings(); buildChans(); gRow = 0; } });
+    showPop({ title: c ? c.name : 'Options', opts: opts.concat([
       { label: 'Refresh the TV guide', fn: function () { loadGuide(); } },
       { label: 'Go to My Lists', fn: function () { zone = 'main'; setView('lists'); } },
       { label: 'Cancel' }
-    ] });
+    ]) });
   }
 
   // ---------------------------------------------------------------- keys
@@ -960,6 +1001,8 @@ var app = (function () {
     }
   });
   document.addEventListener('contextmenu', function (e) {
+    var gc = e.target.closest('.gch[data-r]');
+    if (gc) { e.preventDefault(); zone = 'main'; gRow = +gc.getAttribute('data-r'); optionsMenu(); return; }
     var t = e.target.closest('.blk, .item, .cat');
     if (!t) return;
     e.preventDefault();
