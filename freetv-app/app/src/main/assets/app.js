@@ -122,7 +122,7 @@ var app = (function () {
   function _cb(id, body, err) { var f = cbs[id]; delete cbs[id]; if (f) f(body, err); }
 
   // ---------------------------------------------------------------- saved things
-  var settings = Object.assign({ bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, hide: {}, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
+  var settings = Object.assign({ plutoInApp: true, helper: true, profile: '', bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, hide: {}, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
   var reminders = (load('reminders') || []).filter(function (r) { return r.item && r.item.e > Date.now() / 1000 - 3600; });
   var watched = load('watched') || {};          // key -> {at, item}
   var history = load('history') || [];          // [{at, item}] most recent first
@@ -277,7 +277,7 @@ var app = (function () {
       out.push({ sec: 'Freeview channels', id: 'f' + id, name: name, svc: info.svc, live: info.live, events: c.events });
     });
     pluto.forEach(function (c) {
-      out.push({ sec: 'Pluto TV', id: 'p' + c.slug, name: c.name, svc: 'pluto', live: 'https://pluto.tv/en/live-tv/' + c.id + '\nhttps://pluto.tv/live-tv/' + c.slug, events: c.events, cat: c.cat });
+      out.push({ sec: 'Pluto TV', id: 'p' + c.slug, pid: c.id, num: c.num, name: c.name, svc: 'pluto', live: 'https://pluto.tv/en/live-tv/' + c.id + '\nhttps://pluto.tv/live-tv/' + c.slug, events: c.events, cat: c.cat });
     });
     if (settings.pay) sky.list.forEach(function (c) {
       out.push({ sec: c.sec, id: 's' + c.sid, name: c.name, svc: c.svc, live: '', pay: true, events: sky.ev[c.sid].list });
@@ -335,10 +335,12 @@ var app = (function () {
     }
     return page(1).then(function () { c.items = all; c.loading = false; }, function () { c.items = all; c.loading = false; });
   }
+  var plutoToken = '';
   function loadPlutoVOD() {
     return getJSON('https://boot.pluto.tv/v4/start?appName=web&appVersion=9.0.0&deviceVersion=120.0.0&deviceModel=web&deviceMake=chrome&deviceType=web&clientID=' +
       device.id + '&clientModelNumber=1.0.0&serverSideAds=false&drmCapabilities=widevine%3AL3&blockingMode=&notificationVersion=1&appLaunchCount=0&lastAppLaunchDate=')
       .then(function (boot) {
+        plutoToken = boot.sessionToken;
         if (!window.Native) throw new Error('needs app');
         return new Promise(function (res, rej) {
           // the VOD list needs the session token in a header: fetch through a URL the bridge accepts
@@ -352,7 +354,7 @@ var app = (function () {
             var cover = (x.covers || []).filter(function (v) { return v.aspectRatio === '16:9'; })[0];
             var mins = Math.round((x.originalContentDuration || x.duration || 0) / 60000);
             var year = x.clip && x.clip.originalReleaseDate ? x.clip.originalReleaseDate.slice(0, 4) : '';
-            return { src: 'pluto', svc: 'pluto', title: x.name, sub: [x.genre, year, x.rating, x.type === 'movie' && mins ? mins + ' mins' : x.type === 'series' ? 'Series' : ''].filter(Boolean).join(' · '),
+            return { src: 'pluto', svc: 'pluto', pid: x._id, ptype: x.type, title: x.name, sub: [x.genre, year, x.rating, x.type === 'movie' && mins ? mins + ' mins' : x.type === 'series' ? 'Series' : ''].filter(Boolean).join(' · '),
               desc: x.summary || x.description || '', img: cover ? cover.url : (x.featuredImage && x.featuredImage.path) || '',
               url: 'https://pluto.tv/en/on-demand/' + (x.type === 'series' ? 'series/' + (x.seriesID || x._id) : 'movies/' + x._id) + '\nhttps://pluto.tv/on-demand/' + (x.type === 'series' ? 'series/' : 'movies/') + x.slug };
           }) };
@@ -563,13 +565,63 @@ var app = (function () {
     return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
   }
 
+  // ---------------------------------------------------------------- Pluto TV in Free TV's own player
+  function canPlayPluto() { return settings.plutoInApp && window.Native && Native.playPluto; }
+  function playPlutoChannel(chId) {
+    var now = nowSec(), list = [], at = 0;
+    chans.forEach(function (c) {
+      if (c.svc !== 'pluto' || !c.pid || c.sec === 'Favourites' && list.some(function (x) { return x.id === c.pid; })) return;
+      if (list.some(function (x) { return x.id === c.pid; })) return;
+      if (c.id === chId) at = list.length;
+      list.push({ id: c.pid, name: c.name, num: c.num || 0, ev: c.events.filter(function (e) { return e.e > now && e.s < now + 6 * 3600; }).map(function (e) { return [e.s, e.e, e.t]; }) });
+    });
+    if (!list.length) return false;
+    Native.playPluto(JSON.stringify(list), at);
+    return true;
+  }
+  function playPlutoVOD(it) {
+    if (it.ptype !== 'series') { Native.playPlutoFilm(it.pid, it.title); return; }
+    if (!plutoToken) { openIn('pluto', it.url, '"' + it.title + '"'); return; }
+    toast('Getting the episodes…');
+    getJSON('https://service-vod.clusters.pluto.tv/v4/vod/series/' + it.pid + '/seasons?offset=1000&page=1#bearer=' + plutoToken).then(function (j) {
+      var seasons = (j.seasons || []).filter(function (x) { return x.episodes && x.episodes.length; });
+      if (!seasons.length) throw new Error('none');
+      var eps = function (se) {
+        showPop({ title: it.title + (seasons.length > 1 ? ' – series ' + se.number : ''), opts: se.episodes.map(function (e, i) {
+          return { label: (e.number || i + 1) + '. ' + (e.name || 'Episode'), fn: function () { logOpen(it); Native.playPlutoFilm(e._id, it.title + ' – ' + (e.name || '')); } };
+        }).concat([{ label: 'Close' }]) });
+      };
+      if (seasons.length === 1) eps(seasons[0]);
+      else showPop({ title: it.title, opts: seasons.map(function (se) { return { label: 'Series ' + se.number + ' (' + se.episodes.length + ' episodes)', fn: function () { eps(se); } }; }).concat([{ label: 'Close' }]) });
+    }).catch(function () { openIn('pluto', it.url, '"' + it.title + '"'); });
+  }
+
+  // ---------------------------------------------------------------- the helper: works iPlayer and U for you
+  function helperReady() { return settings.helper && !TOUCH && window.Native && Native.helperOn && Native.helperOn(); }
+  /** Before opening BBC iPlayer or U: tell the helper what to find there. */
+  function helperFor(svc, mode, target) {
+    if (!helperReady() || !/^(bbc|u)$/.test(svc)) return false;
+    var t = target;
+    if (mode === 'live' && svc === 'u') t = target + '|' + target.replace(/^U&/, '');
+    if (mode === 'live' && svc === 'bbc') t = target + '|' + target.replace(/^BBC /, 'BBC ').toUpperCase();
+    Native.helperJob(SVC[svc].app, mode, t, svc === 'bbc' ? settings.profile : settings.profileU || '');
+    return true;
+  }
+
   // ---------------------------------------------------------------- opening things
   function openItem(it) {
     var now = nowSec();
     if (!(it.src === 'tv' && it.s > now)) logOpen(it);
     if (it.src === 'tv') {
-      if (it.s <= now && it.e > now) { openIn(it.svc, it.live, '', it.chName); return; }
+      if (it.s <= now && it.e > now) {
+        if (it.svc === 'pluto' && canPlayPluto() && playPlutoChannel(it.ch)) return;
+        var hl = helperFor(it.svc, 'live', it.chName);
+        openIn(it.svc, it.live, '', hl ? '' : it.chName);
+        if (hl) toast('Opening ' + it.chName + ' in ' + SVC[it.svc].name + '…');
+        return;
+      }
       if (it.e <= now) {
+        if (helperFor(it.svc, 'find', it.title)) { openIn(it.svc, it.url, ''); toast('Finding "' + it.title + '" in ' + SVC[it.svc].name + '…'); return; }
         if (it.url) openIn(it.svc, it.url, '"' + it.title + '"');
         else if (it.svc) openIn(it.svc, '', '"' + it.title + '"');
         else toast('That was on ' + it.chName + ' – it isn\'t available on demand here');
@@ -579,6 +631,8 @@ var app = (function () {
       return;
     }
     if (it.src === 'tmdb') { openTMDB(it); return; }
+    if (it.src === 'pluto' && it.pid && canPlayPluto()) { playPlutoVOD(it); return; }
+    if (helperFor(it.svc, 'find', it.title)) { openIn(it.svc, it.url, ''); toast('Finding "' + it.title + '" in ' + SVC[it.svc].name + '…'); return; }
     openIn(it.svc, it.url, '"' + it.title + '"');
   }
 
@@ -829,7 +883,8 @@ var app = (function () {
       var c = chans[gRow];
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
       if (fp && c && (c.svc || fp.e <= now)) openItem(progItem(c, fp));
-      else if (c && c.svc) openIn(c.svc, c.live, '', c.name);
+      else if (c && c.svc === 'pluto' && canPlayPluto() && playPlutoChannel(c.id)) {}
+      else if (c && c.svc) { var hl = helperFor(c.svc, 'live', c.name); openIn(c.svc, c.live, '', hl ? '' : c.name); }
       else if (c && c.pay) toast(c.name + ' is a pay channel – Free TV can only remind you about it');
       else if (fp && c) openItem(progItem(c, fp));
       return;
@@ -1109,6 +1164,13 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
+    t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
+    if (!TOUCH) {
+      var hOn = window.Native && Native.helperOn && Native.helperOn();
+      t.push({ kind: 'set', k: 'helper', name: 'Helper for iPlayer and U', desc: !hOn ? 'Off – OK to switch it on (in the TV\'s Accessibility settings)' : settings.helper ? 'On – picks your profile and finds the channel or programme. OK to pause it' : 'Paused – OK to use it again' });
+      t.push({ kind: 'set', k: 'profile', name: 'Your iPlayer profile', desc: (settings.profile ? '"' + settings.profile + '"' : 'Not set') + ' – the name on iPlayer\'s "Who\'s watching" screen' });
+      t.push({ kind: 'set', k: 'record', name: 'Record app screens for Claude', desc: (window.Native && Native.layoutCount ? Native.layoutCount() + ' screens recorded' : '') + ' – OK to start or share' });
+    }
     t.push({ kind: 'set', k: 'showhide', name: 'Show or hide', desc: (Object.keys(settings.hide).length ? Object.keys(settings.hide).length + ' hidden' : 'Everything shown') + ' – choose which channels and apps appear (e.g. hide Pluto TV)' });
     t.push({ kind: 'set', k: 'pay', name: 'Pay TV channels in the guide', desc: (settings.pay ? 'Shown' : 'Hidden') + ' – Sky / pay channels, so you can set reminders' });
     t.push({ kind: 'set', k: 'remindMins', name: 'Reminder time', desc: settings.remindMins + ' minutes before – OK to change' });
@@ -1148,6 +1210,13 @@ var app = (function () {
     else if (k === 'ok') {
       var x = t[apRow];
       if (x.k === 'showhide') { showMenu(); return; }
+      if (x.k === 'plutoInApp') { settings.plutoInApp = !settings.plutoInApp; saveSettings(); }
+      if (x.k === 'helper') {
+        if (!(Native.helperOn && Native.helperOn())) { helperHowTo(); return; }
+        settings.helper = !settings.helper; saveSettings();
+      }
+      if (x.k === 'profile') { askText('Your iPlayer profile name (as shown on "Who\'s watching")', settings.profile, function (v) { settings.profile = v; saveSettings(); }); return; }
+      if (x.k === 'record') { recordMenu(); return; }
       if (x.k === 'pay') { settings.pay = !settings.pay; saveSettings(); if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); loadSkyDay(0).then(render); }); buildChans(); buildFilmsOnTV(); }
       else if (x.k === 'remindMins') { var M = [30, 15, 10, 5, 60]; settings.remindMins = M[(M.indexOf(settings.remindMins) + 1) % M.length]; saveSettings(); }
       else if (x.k === 'hideWatched') { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; }
@@ -1327,6 +1396,26 @@ var app = (function () {
     Object.keys(SVC).forEach(function (k) { if (SVC[k].paid && streamCats.some(function (c) { return c.svcKey === k; })) add(k, 'On Demand: ' + SVC[k].name); });
     opts.push({ label: 'Done' });
     showPop({ title: 'Show or hide (ticked = shown)', opts: opts, row: row || 0 });
+  }
+  function askText(title, val, done) {
+    showPop({ title: title, input: true, inputFocus: true, opts: [{ label: 'Save', fn: function () { done($('popIn').value.trim()); } }, { label: 'Cancel' }] });
+    $('popIn').value = val || ''; setTimeout(function () { $('popIn').focus(); }, 30);
+    $('popIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var v = $('popIn').value.trim(); closePop(); done(v); render(); } };
+  }
+  function helperHowTo() {
+    showPop({ title: 'Switch on the helper: in the next screen choose "Free TV helper" (it may be under "Downloaded apps" or "Services"), turn it on and press OK to allow. Then press Back to return here.',
+      opts: [{ label: 'Open Accessibility settings', fn: function () { Native.openHelperSettings(); } }, { label: 'Not now' }] });
+  }
+  function recordMenu() {
+    showPop({ title: 'Recording helps me tune the helper. Start it, then open BBC iPlayer and U and move around them for a few minutes (profiles, Channels, Search, typing a title, a result). Then come back here and share.', opts: [
+      { label: 'Start recording (10 minutes)', fn: function () { if (!(Native.helperOn && Native.helperOn())) { helperHowTo(); return; } Native.recordLayouts(10); toast('Recording – now go to BBC iPlayer'); } },
+      { label: 'Share what\'s recorded', fn: function () {
+        var a = Native.shareLayouts();
+        if (!a) { toast('Couldn\'t start sharing – is the TV on Wi-Fi?'); return; }
+        showPop({ title: 'On your phone (on the same Wi-Fi), open ' + a + ' – press "Copy all" and paste it to Claude. This works for 10 minutes.', opts: [{ label: 'OK' }] });
+      } },
+      { label: 'Close' }
+    ] });
   }
   function appsToggle(k) { var t = tiles(); for (var i = 0; i < t.length; i++) if (t[i].k === k) { var keep = apRow; apRow = i; appsKey('ok'); apRow = keep; return; } }
   function optionsMenu() {

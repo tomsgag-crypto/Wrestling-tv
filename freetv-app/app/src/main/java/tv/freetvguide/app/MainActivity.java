@@ -334,6 +334,50 @@ public class MainActivity extends Activity {
             } catch (Exception e) { return "error"; }
         }
 
+        // ---------------- Pluto TV player
+        @JavascriptInterface
+        public void playPluto(String channelsJson, int index) {
+            Intent i = new Intent(MainActivity.this, PlayerActivity.class).putExtra("channels", channelsJson).putExtra("index", index);
+            ui.post(() -> startActivity(i));
+        }
+        @JavascriptInterface
+        public void playPlutoFilm(String id, String title) {
+            Intent i = new Intent(MainActivity.this, PlayerActivity.class).putExtra("episode", id).putExtra("title", title);
+            ui.post(() -> startActivity(i));
+        }
+
+        // ---------------- helper (works iPlayer and U for you)
+        @JavascriptInterface
+        public boolean helperOn() { return HelperService.isOn(); }
+        /** Give the helper its job before opening the app: labels = which app, mode = live | find. */
+        @JavascriptInterface
+        public void helperJob(String labels, String mode, String targets, String profile) {
+            String pkg = null;
+            try {
+                Pattern p = Pattern.compile(labels, Pattern.CASE_INSENSITIVE);
+                JSONArray a = launchable();
+                for (int i = 0; i < a.length(); i++) {
+                    JSONObject o = a.getJSONObject(i);
+                    if (p.matcher(o.getString("label")).find() || p.matcher(o.getString("pkg")).find()) { pkg = o.getString("pkg"); break; }
+                }
+            } catch (Exception ignored) { }
+            if (pkg != null) HelperService.setJob(pkg, mode, targets, profile);
+        }
+        @JavascriptInterface
+        public void openHelperSettings() {
+            ui.post(() -> {
+                try { startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+                catch (Exception e) { Toast.makeText(MainActivity.this, "Open Settings → System → Accessibility", Toast.LENGTH_LONG).show(); }
+            });
+        }
+        @JavascriptInterface
+        public void recordLayouts(int minutes) { HelperService.recordUntil = System.currentTimeMillis() + minutes * 60000L; HelperService.note("recording " + minutes + " min"); }
+        @JavascriptInterface
+        public int layoutCount() { synchronized (HelperService.layouts) { return HelperService.layouts.size(); } }
+        /** Show the recorded layouts on the home network for 10 minutes; returns the address to open on a phone. */
+        @JavascriptInterface
+        public String shareLayouts() { return LayoutServer.start(MainActivity.this); }
+
         /** The device's own search (Google TV / Google): finds a title across all your apps and can play it. */
         @JavascriptInterface
         public boolean search(String q) {
