@@ -801,6 +801,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
     t.push({ kind: 'set', k: 'tmdb', name: 'Streaming apps catalogue', desc: tmdbKey ? 'On – using your TMDB key' : 'Off – OK to enter a TMDB API key' });
+    t.push({ kind: 'set', k: 'linktest', name: 'Test channel links', desc: 'Try different link formats for a live channel, to find the one each app accepts' });
     t.push({ kind: 'set', k: 'reload', name: 'Refresh everything', desc: 'Reload the TV guide and On Demand lists' });
     return t;
   }
@@ -844,6 +845,7 @@ var app = (function () {
         $('popIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); closePop(); saveKey(); render(); } };
         return;
       }
+      else if (x.k === 'linktest') { linkTest(); return; }
       else if (x.k === 'reload') { loadGuide(); bbcCats = []; plutoCats = []; plutoTried = false; od = []; loadOD(); toast('Refreshing…'); }
     }
     render();
@@ -956,6 +958,38 @@ var app = (function () {
     if (i < 0 || j < 0 || j >= settings.favs.length) return;
     settings.favs[i] = settings.favs[j]; settings.favs[j] = c.id; saveSettings(); buildChans(); gRow = j;
   }
+  // ---------------------------------------------------------------- link tester
+  function linkTest() {
+    var pl = chans.filter(function (c) { return c.svc === 'pluto'; })[0];
+    var plSlug = pl ? pl.id.slice(1) : 'pluto-tv-action', plId = pl && pluto.filter(function (x) { return 'p' + x.slug === pl.id; })[0];
+    plId = plId ? plId.id : '';
+    var T = {
+      'Pluto TV': ['pluto', ['https://pluto.tv/en/live-tv/' + plSlug, 'https://pluto.tv/live-tv/' + plSlug, 'https://pluto.tv/gb/live-tv/' + plSlug,
+        'https://pluto.tv/en/live-tv/' + plId, 'https://pluto.tv/en/live-tv/' + plId + '/details', 'https://pluto.tv/live-tv/' + plId,
+        'plutotv://live-tv/' + plSlug, 'plutotv://live-tv/' + plId, 'https://pluto.tv/en/live-tv/' + plSlug + '/details']],
+      'U (Dave)': ['u', ['https://u.co.uk/live/dave', 'https://u.co.uk/live/u-dave', 'https://u.co.uk/tv-guide/dave', 'uktvplay://live/dave', 'uktvplay://channel/dave',
+        'uktvplay://live/u-dave', 'https://uktvplay.co.uk/live/dave', 'https://www.uktvplay.co.uk/live/dave']],
+      'BBC iPlayer (BBC One)': ['bbc', ['bbciplayer://www.bbc.co.uk/iplayer/mobile/channels/bbc_one', 'bbciplayer://www.bbc.co.uk/iplayer/mobile/channels/bbc_one_london',
+        'https://www.bbc.co.uk/iplayer/live/bbcone', 'bbc://iplayer/playback/live/bbc_one_london', 'bbc://iplayer/playback/live/bbcone', 'bbc://iplayer/browse/live/bbcone',
+        'bbciplayer://channels/bbc_one']],
+      'ITVX (ITV1)': ['itv', ['https://www.itv.com/watch?channel=itv1', 'https://www.itv.com/watch?channel=itv', 'https://www.itv.com/watch/itv1', 'itvx://live/itv1', 'itvhub://live/itv']],
+      '5 (5STAR)': ['five', ['my5://watch/C6', 'https://www.channel5.com/live/5star', 'https://www.channel5.com/channel/5star']],
+      'Channel 4 (E4)': ['c4', ['https://www.channel4.com/now/E4', 'all4://views/on-now?channel=E4']]
+    };
+    showPop({ title: 'Which app shall we test?', opts: Object.keys(T).map(function (name) {
+      return { label: name + (has(T[name][0]) ? '' : ' (not installed)'), fn: function () { pickLink(name, T[name]); } };
+    }).concat([{ label: 'Cancel' }]) });
+  }
+  function pickLink(name, t) {
+    showPop({ title: name + ': try each. Note the number that opens the channel', opts: t[1].map(function (u, i) {
+      return { label: (i + 1) + '.  ' + u.replace(/^https?:\/\//, ''), fn: function () {
+        var r = window.Native && Native.tryLink ? Native.tryLink(SVC[t[0]].app, u) : 'no bridge';
+        toast('Link ' + (i + 1) + ': ' + (r === 'sent' ? 'sent to the app' : r === 'not accepted' ? 'the app doesn\'t accept this one' : r));
+        if (r !== 'sent') setTimeout(function () { pickLink(name, t); }, 300);
+      } };
+    }).concat([{ label: 'Back' }]) });
+  }
+
   function optionsMenu() {
     var c = view === 'guide' && zone === 'main' ? chans[gRow] : null, opts = [];
     if (c) {

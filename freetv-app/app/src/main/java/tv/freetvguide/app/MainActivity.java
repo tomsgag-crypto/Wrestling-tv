@@ -242,6 +242,28 @@ public class MainActivity extends Activity {
             return "none";
         }
 
+        /** Link tester: send exactly this one link to the app. */
+        @JavascriptInterface
+        public String tryLink(String labels, String url) {
+            PackageManager pm = getPackageManager();
+            String pkg = null;
+            try {
+                Pattern p = Pattern.compile(labels, Pattern.CASE_INSENSITIVE);
+                JSONArray a = launchable();
+                for (int i = 0; i < a.length(); i++) {
+                    JSONObject o = a.getJSONObject(i);
+                    if (p.matcher(o.getString("label")).find() || p.matcher(o.getString("pkg")).find()) { pkg = o.getString("pkg"); break; }
+                }
+            } catch (Exception ignored) { }
+            if (pkg == null) return "not installed";
+            try {
+                Intent v = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (v.resolveActivity(pm) == null) return "not accepted";
+                startActivity(v);
+                return "sent";
+            } catch (Exception e) { return "error"; }
+        }
+
         /** The device's own search (Google TV / Google): finds a title across all your apps and can play it. */
         @JavascriptInterface
         public boolean search(String q) {
