@@ -3,7 +3,9 @@
 var app = (function () {
   var MV = window.Movies;
   var CATALOGUE = 'https://raw.githubusercontent.com/tomsgag-crypto/Wrestling-tv/movie-data/movies.json';
-  var PROMOS = ['GENRES', 'DECADES', 'DIRECTORS', 'STARS', 'CUTS'];
+  var PROMOS = ['GENRES', 'DECADES', 'TV', 'DIRECTORS', 'STARS', 'CUTS'];
+  var TV_LIST = 'https://raw.githubusercontent.com/tomsgag-crypto/Wrestling-tv/movie-data/tv.json';
+  var tvShows = [];
 
   var films = [];          // [{i,f,t,y,g,d,c,n}]
   var data = {};           // tab -> [{name, items}]
@@ -62,6 +64,14 @@ var app = (function () {
         .sort(function (a, b) { return last(a).localeCompare(last(b)) || a.localeCompare(b); })
         .map(function (p) { return { name: p, items: n[p].slice().sort(byYear) }; });
     }
+    // TV: a folder per show, episodes under season headings
+    data.TV = tvShows.slice().sort(function (a, b) { return noThe(a.n).localeCompare(noThe(b.n)); }).map(function (sh) {
+      var eps = sh.e.filter(function (x) { return !broken[x[2] + '|' + x[3]]; }).map(function (x) {
+        return { id: x[2], uid: x[2] + '|' + x[3], file: x[3], title: x[5] || 'Episode ' + x[1], y: 'Season ' + x[0], key: x[0] * 1000 + x[1],
+          label: 'E' + x[1] + ' · ' + runtime(x[4]).replace(/^0h /, ''), tv: { show: sh.n, s: x[0], e: x[1] } };
+      });
+      return { name: sh.n, items: eps };
+    }).filter(function (c) { return c.items.length; });
     data.DIRECTORS = people('dr', 3);
     data.STARS = people('st', 5);
     var decs = [];
@@ -87,7 +97,10 @@ var app = (function () {
       if (!j.films || !j.films.length) throw new Error('empty list');
       var keep = currentId();
       films = j.films;
-      try { Native.saveCache(JSON.stringify({ t: Date.now(), films: films })); } catch (e) {}
+      return get(TV_LIST + '?t=' + Math.floor(Date.now() / 3600000)).then(function (t) { tvShows = JSON.parse(t).shows || tvShows; }, function () {})
+        .then(function () { return keep; });
+    }).then(function (keep) {
+      try { Native.saveCache(JSON.stringify({ t: Date.now(), films: films, tv: tvShows })); } catch (e) {}
       build(); restore(keep); render();
       loading = false;
       countStatus();
@@ -102,7 +115,7 @@ var app = (function () {
 
   function countStatus() {
     var p = PROMOS[st.promo], c = data[p] && data[p][st.cat];
-    status(c ? c.items.length + ' ' + (p === 'CUTS' ? 'cut' : 'film') + (c.items.length === 1 ? '' : 's') : '');
+    status(c ? c.items.length + ' ' + (p === 'CUTS' ? 'cut' : p === 'TV' ? 'episode' : 'film') + (c.items.length === 1 ? '' : 's') : '');
   }
 
   // ---------- state helpers ----------
@@ -188,6 +201,13 @@ var app = (function () {
     return 'https://archive.org/download/' + encodeURIComponent(id) + '/' + name.split('/').map(encodeURIComponent).join('/');
   }
   function open(it) {
+    if (it.tv) {               // play on through the rest of the show
+      var list = items(), at = list.indexOf(it);
+      play(list.slice(at).map(function (x) {
+        return { url: fileUrl(x.id, x.file), key: x.uid, name: x.title, label: x.tv.show + ' S' + x.tv.s + ' E' + x.tv.e };
+      }), 0, it.tv.show);
+      return;
+    }
     var f = it.f;
     play([{ url: fileUrl(f.i, f.f), key: f.i + '|', name: it.title, label: '' }], 0,
       it.title + (f.y ? ' (' + f.y + ')' : ''));
@@ -314,7 +334,7 @@ var app = (function () {
   document.addEventListener('keydown', key, true);
   try {
     var cached = window.Native ? Native.loadCache() : '';
-    if (cached) { var cj = JSON.parse(cached); films = cj.films || []; }
+    if (cached) { var cj = JSON.parse(cached); films = cj.films || []; tvShows = cj.tv || []; }
   } catch (e) { films = []; }
   loadBroken();
   build();

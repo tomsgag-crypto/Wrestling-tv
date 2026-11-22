@@ -9,6 +9,8 @@
 var app = (function () {
   var MV = window.Movies;
   var CATALOGUE = 'https://raw.githubusercontent.com/tomsgag-crypto/Wrestling-tv/movie-data/movies.json';
+  var TV_LIST = 'https://raw.githubusercontent.com/tomsgag-crypto/Wrestling-tv/movie-data/tv.json';
+  var TV_CATS = ['Sitcoms', 'British TV', 'Sci-Fi TV', 'Action & Drama TV', 'Animated TV', 'Kids & Teen TV', 'Horror & Mystery TV'];
   var TOUCH = window.Native && Native.isTV ? !Native.isTV() : ('ontouchstart' in window);
   var EPOCH = Date.UTC(2026, 0, 1) / 1000;
   var COMMIT_AHEAD = 6 * 3600, GUIDE_AHEAD = 48 * 3600;
@@ -35,8 +37,21 @@ var app = (function () {
   var CHANNELS = [];
   function short(name) { return name.replace(/^The /, '').split(/[ &:]/)[0].toUpperCase().slice(0, 10); }
   function lastName(n) { var w = n.split(' '); return w[w.length - 1]; }
+  function fid(f) { return f.u || f.i; }
+  /** Films plus every TV episode, as one list of things to schedule. */
+  function merge() {
+    var eps = [];
+    (tvShows || []).forEach(function (sh) {
+      sh.e.forEach(function (x) {
+        eps.push({ u: x[2] + '|' + x[3], i: x[2], f: x[3], t: sh.n, et: 'S' + x[0] + ' E' + x[1] + (x[5] ? ' · ' + x[5] : ''),
+          d: x[4], c: 't', cat: sh.c, show: sh.n, sy: sh.y, k: x[0] * 1000 + x[1], g: [], y: 0 });
+      });
+    });
+    all = films.concat(eps);
+  }
   function makeChannels() {
-    var out = [], F = films.filter(function (f) { return !bad[f.i]; });
+    var out = [], F = all.filter(function (f) { return !bad[fid(f)]; });
+    var isT = function (f) { return f.c === 't'; };
     var isF = function (f) { return f.c === 'f'; };
     function add(sec, name, pick, extra) {
       var n = F.filter(pick).length;
@@ -55,6 +70,12 @@ var app = (function () {
     add('Collections', 'Under 90 Minutes', function (f) { return isF(f) && f.d < 90 * 60; }, { call: 'SHORT' });
     add('Collections', 'Sequels', function (f) { return isF(f) && /\b(2|3|4|5|6|ii|iii|iv|v|part \w+)\b|: the next|returns\b|revenge of/i.test(f.t.replace(/^\d+/, '')); }, { call: 'SEQUELS' });
     add('Collections', 'Movie Mix', isF, { call: 'MIX', sub: 'anything goes' });
+    // TV: mixed channels by type, then a channel for every show (episodes in order, like reruns)
+    add('TV', 'TV Mix', isT, { call: 'TV MIX', sub: 'classic TV' });
+    TV_CATS.forEach(function (c) { add('TV', c, function (f) { return isT(f) && f.cat === c; }, { min: 6 }); });
+    (tvShows || []).slice().sort(function (a, b) { return a.n.replace(/^The /, '').localeCompare(b.n.replace(/^The /, '')); }).forEach(function (sh) {
+      add('TV shows', sh.n, function (f) { return f.show === sh.n; }, { seq: true, sub: sh.y, min: 5 });
+    });
     var dn = {}, sn = {};
     F.forEach(function (f) { (f.dr || []).forEach(function (d) { dn[d] = (dn[d] || 0) + 1; }); (f.st || []).forEach(function (x) { sn[x] = (sn[x] || 0) + 1; }); });
     Object.keys(dn).filter(function (d) { return dn[d] >= 6; }).sort(function (a, b) { return lastName(a).localeCompare(lastName(b)); }).forEach(function (d) {
@@ -91,7 +112,7 @@ var app = (function () {
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   // ---------------------------------------------------------------- saved state
-  var films = [], fetchedAt = 0, bad = {}, tl = [], tlSaved = {}, savedName = '';
+  var films = [], tvShows = [], all = [], fetchedAt = 0, bad = {}, tl = [], tlSaved = {}, savedName = '';
   var cur = 0;
   try { savedName = localStorage.getItem('chName') || ''; } catch (e) {}
   var saveTimer = null;
@@ -100,12 +121,12 @@ var app = (function () {
     saveTimer = setTimeout(function () {
       var byName = {};
       CHANNELS.forEach(function (c, i) { if (tl[i] && tl[i].length) byName[c.name] = tl[i]; });
-      try { Native.saveCache(JSON.stringify({ v: 2, t: fetchedAt, films: films, bad: bad, tl: byName })); } catch (e) {}
+      try { Native.saveCache(JSON.stringify({ v: 2, t: fetchedAt, films: films, tv: tvShows, bad: bad, tl: byName })); } catch (e) {}
     }, 2000);
   }
   try {
     var cj = JSON.parse(window.Native ? Native.loadCache() || '{}' : '{}');
-    if (cj.v === 1 || cj.v === 2) { films = cj.films || []; fetchedAt = cj.t || 0; bad = cj.bad || {}; }
+    if (cj.v === 1 || cj.v === 2) { films = cj.films || []; tvShows = cj.tv || []; fetchedAt = cj.t || 0; bad = cj.bad || {}; }
     if (cj.v === 2) tlSaved = cj.tl || {};
   } catch (e) {}
 
@@ -116,43 +137,51 @@ var app = (function () {
     return 'https://archive.org/download/' + encodeURIComponent(f.i) + '/' + String(f.f).split('/').map(encodeURIComponent).join('/');
   }
   function build() {
+    merge();
     makeChannels();
     lists = CHANNELS.map(function (ch) {
-      return films.filter(function (f) { return !bad[f.i] && ch.pick(f); })
-        .map(function (f) { return { f: f, h: hash(ch.name + '|' + f.i) }; })
+      var L = all.filter(function (f) { return !bad[fid(f)] && ch.pick(f); });
+      if (ch.seq) return L.sort(function (a, b) { return a.k - b.k; });
+      return L.map(function (f) { return { f: f, h: hash(ch.name + '|' + fid(f)) }; })
         .sort(function (a, b) { return a.h - b.h; })
         .map(function (x) { return x.f; });
     });
   }
   function labelOf(f) {
+    if (f.c === 't') return f.et;
     if (f.c === 'w') return (f.y ? f.y + ' · ' : '') + 'Workprint';
     if (f.c === 'e') return (f.y ? f.y + ' · ' : '') + 'Fan edit';
     return f.y + (f.g.length ? ' · ' + f.g.slice(0, 2).join(', ') : '');
   }
-  function entry(f, t) { return { s: t, e: t + (f.d || 6000), id: f.i, url: fileUrl(f), t: f.t, l: labelOf(f) }; }
+  function entry(f, t) { return { s: t, e: t + (f.d || 6000), id: fid(f), k: f.k, url: fileUrl(f), t: f.t, l: labelOf(f) }; }
 
   // ---------------------------------------------------------------- the schedule
   function tlEnd(ci) { var l = tl[ci][tl[ci].length - 1]; return l ? l.e : 0; }
   function startIndex(n) { return n ? Math.floor((nowSec() - EPOCH) / 86400) * 7 % n : 0; }
-  function nextFilm(ci, afterId) {
+  /** What follows `after` (the last programme): next episode in order on a show's channel, otherwise the fixed shuffle. */
+  function nextFilm(ci, after) {
     var L = lists[ci];
     if (!L.length) return null;
-    if (afterId == null) return L[startIndex(L.length)];
-    var h = hash(CHANNELS[ci].name + '|' + afterId);
-    for (var i = 0; i < L.length; i++) if (hash(CHANNELS[ci].name + '|' + L[i].i) > h) return L[i];
+    if (!after) return L[startIndex(L.length)];
+    if (CHANNELS[ci].seq) {
+      for (var j = 0; j < L.length; j++) if (L[j].k > after.k) return L[j];
+      return L[0];
+    }
+    var h = hash(CHANNELS[ci].name + '|' + after.id);
+    for (var i = 0; i < L.length; i++) if (hash(CHANNELS[ci].name + '|' + fid(L[i])) > h) return L[i];
     return L[0];
   }
-  function plan(ci, from, to, afterId) {
+  function plan(ci, from, to, after) {
     var out = [], t = from, g = 0;
-    while (t < to && g++ < 300) {
-      var f = nextFilm(ci, afterId);
+    while (t < to && g++ < 400) {
+      var f = nextFilm(ci, after);
       if (!f) break;
       var e = entry(f, t);
-      out.push(e); t = e.e; afterId = f.i;
+      out.push(e); t = e.e; after = e;
     }
     return out;
   }
-  function lastId(ci) { var l = tl[ci][tl[ci].length - 1]; return l ? l.id : null; }
+  function lastId(ci) { var l = tl[ci][tl[ci].length - 1]; return l || null; }
   function commit(ci) {
     var now = nowSec();
     tl[ci] = tl[ci].filter(function (e) { return e.e > now - 3600; });
@@ -448,7 +477,7 @@ var app = (function () {
     if (fp) {
       $('iTitle').textContent = fp.t + (fp.l ? ' (' + fp.l + ')' : '');
       var live = fp.s <= now && fp.e > now;
-      $('iWhen').textContent = clock(fp.s) + ' – ' + clock(fp.e) + (live ? (gRow === cur ? '   ▶ watching' : '   OK to watch') + (TOUCH ? '' : ' · wrong film? hold OK to remove')
+      $('iWhen').textContent = clock(fp.s) + ' – ' + clock(fp.e) + (live ? (gRow === cur ? '   ▶ watching' : '   OK to watch') + (TOUCH ? '' : ' · wrong video? hold OK to remove')
         : '   starts ' + dayWord(fp.s) + ' at ' + clock(fp.s) + ' · OK to watch it now');
     } else { $('iTitle').textContent = '—'; $('iWhen').textContent = ''; }
   }
@@ -563,15 +592,19 @@ var app = (function () {
     if (loading) return;
     loading = true;
     if (!films.length) status('Loading the film list…');
-    get(CATALOGUE + '?t=' + Math.floor(Date.now() / 3600000)).then(function (txt) {
-      loading = false;
+    var hour = '?t=' + Math.floor(Date.now() / 3600000);
+    var tvp = get(TV_LIST + hour).then(function (t) { var j = JSON.parse(t); return j.shows || null; }, function () { return null; });
+    get(CATALOGUE + hour).then(function (txt) {
       var j = JSON.parse(txt);
       if (!j.films || !j.films.length) throw new Error('empty');
+      return tvp.then(function (shows) { if (shows) tvShows = shows; return j; });
+    }).then(function (j) {
+      loading = false;
       films = j.films;
       fetchedAt = Date.now();
       build();
       commitAll();
-      if (manual) toast('Film list updated – ' + films.length + ' films');
+      if (manual) toast('Updated – ' + films.length + ' films and ' + tvShows.length + ' TV shows');
       if (!playing && !slateUntil) tune(cur);
       renderGuide();
     }).catch(function () {
