@@ -156,12 +156,14 @@
   #alert .a3 { font-size: 1.7vh; color: #c3cce4; }
 
   /* ---------------- phone ---------------- */
-  body.touch #top { flex-wrap: wrap; padding: 1vh 3vw .6vh; gap: 1vw; }
-  body.touch #logo { font-size: 2.2vh; width: 100%; margin-bottom: .4vh; }
+  body.touch #top { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 1.2vh 3vw .8vh; gap: 1vw; }
+  body.touch #top::-webkit-scrollbar { display: none; }
+  body.touch #logo { font-size: 2.2vh; margin-right: .5vw; flex: none; }
+  body.touch #logo b { display: none; }
   body.touch .tab { font-size: 1.6vh; padding: .6vh 1.9vw; }
-  body.touch #top { flex-wrap: wrap; } body.touch #top .tab { flex: none; }
+  body.touch #top .tab { flex: none; }
   body.touch #clock { display: none; }
-  body.touch #main { top: 10.8vh; bottom: 0; }
+  body.touch #main { top: 6.4vh; bottom: 0; }
   body.touch #help { display: none; }
   body.touch #rows { overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
   body.touch #gHead { height: 4.2vh; line-height: 4.2vh; }
@@ -190,6 +192,7 @@
   <div id="top">
     <div id="logo"><span class="mk"></span><b>FREE TV</b></div>
     <div class="tab" data-v="guide">TV Guide</div>
+    <div class="tab" data-v="popular">Most Popular</div>
     <div class="tab" data-v="ondemand">On Demand</div>
     <div class="tab" data-v="lists">My Lists</div>
     <div class="tab" data-v="search">Search</div>

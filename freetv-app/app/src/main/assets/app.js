@@ -178,7 +178,7 @@ var app = (function () {
     if (!want.length) return;
     status('guide', true);
     Promise.all(want.map(function (d) { return Promise.all([loadDay(d), settings.pay ? loadSkyDay(d) : null]); })).then(function () {
-      status('guide', false); buildFilmsOnTV(); if (view === 'guide' || view === 'ondemand') render();
+      status('guide', false); buildFilmsOnTV(); if (view === 'guide' || isOD()) render();
     });
   }
 
@@ -538,7 +538,7 @@ var app = (function () {
   var odGenre = 0;
   function setGenre(i) {
     odGenre = i; odRow = 0;
-    streamCats.forEach(function (c) { c.items = null; c.page = 0; c.done = false; c.loading = false; });
+    streamCats.concat(popCats || []).forEach(function (c) { c.items = null; c.page = 0; c.done = false; c.loading = false; });
     ensureODItems(); render();
   }
   function genreMenu() {
@@ -551,6 +551,7 @@ var app = (function () {
     var q = 'watch_region=GB&sort_by=' + (c.sort || 'popularity.desc') + '&include_adult=false&page=' + (c.page + 1) + '&with_watch_monetization_types=' + encodeURIComponent(c.mon) +
       (c.sort === 'vote_average.desc' ? '&vote_count.gte=' + (c.kind === 'movie' ? 400 : 150) : '') +
       (c.sort === 'primary_release_date.desc' ? '&primary_release_date.lte=' + today + '&vote_count.gte=10' : '') +
+      (c.sort === 'first_air_date.desc' ? '&first_air_date.lte=' + today + '&vote_count.gte=5' : '') +
       (c.prov ? '&with_watch_providers=' + c.prov : '') + (c.kind === 'movie' ? '&with_original_language=en' : '');
     var g = OD_GENRES[odGenre], gids = c.kind === 'movie' ? g[1] : g[2];
     if (odGenre && !gids) { c.items = []; c.done = true; c.loading = false; return Promise.resolve(); }
@@ -618,7 +619,41 @@ var app = (function () {
   }
 
   /** On Demand is organised as sources (chips), each with a few categories. */
+  /** The Most Popular tab: what's popular and newest across all the apps, and BBC iPlayer's most watched. */
+  var popCats = null;
+  function popularSources() {
+    var out = [];
+    if (streamCats.length) {
+      if (!popCats) {
+        var ids = {};
+        streamCats.forEach(function (c) { if (c.prov) ids[c.prov] = 1; });
+        var prov = Object.keys(ids).join('|');
+        popCats = [['movie', 'Popular films', 'popularity.desc'], ['tv', 'Popular TV', 'popularity.desc'], ['movie', 'Newest films', 'primary_release_date.desc'],
+          ['tv', 'Newest TV', 'first_air_date.desc'], ['movie', 'Best rated films', 'vote_average.desc'], ['tv', 'Best rated TV', 'vote_average.desc']].map(function (x) {
+          return { src: 'tmdb', name: x[1], kind: x[0], sort: x[2], prov: prov, mon: 'flatrate|free|ads', items: null, page: 0 };
+        });
+      }
+      out.push({ id: 'all', name: 'Across all apps', cats: popCats });
+    } else out.push({ id: 'all', name: 'Across all apps', cats: [{ src: 'msg', name: tmdbKey ? 'Loading…' : 'Needs a TMDB key (see Apps)', items: [] }] });
+    out.push({ id: 'bbcpop', name: 'BBC iPlayer', cats: [bbcPopular] });
+    out.push({ id: 'tvpop', name: 'On TV this week', cats: [filmsOnTV] });
+    return out;
+  }
+  var bbcPopular = { src: 'bbcpop', name: 'Most popular on iPlayer', items: null };
+  function loadBBCPopular() {
+    if (bbcPopular.loading || bbcPopular.items) return Promise.resolve();
+    bbcPopular.loading = true;
+    return getJSON('https://ibl.api.bbci.co.uk/ibl/v1/groups/popular/episodes?rights=mobile&page=1&per_page=60').then(function (j) {
+      var els = (j.group_episodes && j.group_episodes.elements) || [];
+      bbcPopular.items = els.map(function (e) {
+        var imgT = e.images && e.images.standard || '';
+        return { src: 'bbc', svc: 'bbc', title: e.title, sub: e.subtitle || '', desc: e.synopses && (e.synopses.small || e.synopses.medium) || '',
+          img: imgT.replace('{recipe}', '432x243'), big: imgT.replace('{recipe}', '832x468'), url: bbcEpisode(e.id) };
+      });
+    }).catch(function () { bbcPopular.items = []; }).then(function () { bbcPopular.loading = false; });
+  }
   function sources() {
+    if (view === 'popular') return popularSources();
     var out = [{ id: 'tv', name: 'On TV', cats: [filmsOnTV] }];
     out.push({ id: 'bbc', name: 'BBC iPlayer', cats: bbcCats.length ? bbcCats : [{ src: 'msg', name: 'Loading…', items: [] }] });
     out.push({ id: 'pluto', name: 'Pluto TV', cats: plutoCats.length ? plutoCats : [{ src: 'msg', name: plutoTried ? 'Not available' : 'Loading…', items: [] }] });
@@ -826,7 +861,9 @@ var app = (function () {
   }
 
   // ---------------------------------------------------------------- state and views
-  var VIEWS = ['guide', 'ondemand', 'lists', 'search', 'apps'];
+  var VIEWS = ['guide', 'popular', 'ondemand', 'lists', 'search', 'apps'];
+  function isOD() { return view === 'ondemand' || view === 'popular'; }
+  var odStash = {};
   var view = 'guide', zone = 'main';                 // zone: 'tabs' or 'main'
   var gRow = 0, gT = 0, ws = 0, gZone = 'rows', gDay = 0, SPAN = (TOUCH && innerWidth < innerHeight ? 2 : 3) * 3600;
   var odSrc = 0, odChip = 0, odCat = 0, odRow = 0, odZone = 'cats';
@@ -839,9 +876,16 @@ var app = (function () {
   function status(what, on) { loading[what] = on; renderHelp(); }
 
   function setView(v) {
+    if (v !== view && (v === 'popular' || v === 'ondemand' || isOD())) {
+      // On Demand and Most Popular share a screen: keep each one's place
+      if (isOD()) odStash[view] = { s: odSrc, c: odCat, r: odRow, z: odZone, h: odChip };
+      var st = odStash[v] || { s: 0, c: 0, r: 0, z: 'cats', h: 0 };
+      view = v; od = []; buildOD();
+      odSrc = Math.min(st.s, od.length - 1); odCat = st.c; odRow = st.r; odZone = st.z; odChip = st.h;
+    }
     view = v;
     try { localStorage.setItem('view', v); } catch (e) {}
-    if (v === 'ondemand') ensureODItems();
+    if (isOD()) ensureODItems();
     if (v === 'apps') refreshInstalled();
     if (v === 'lists') tidyReminders();
     render();
@@ -851,11 +895,11 @@ var app = (function () {
   function render() {
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-v') === view); });
     document.body.classList.toggle('zone-tabs', zone === 'tabs');
-    VIEWS.forEach(function (v) { $('v-' + v).classList.toggle('show', v === view); });
+    VIEWS.forEach(function (v) { if (v !== 'popular') $('v-' + v).classList.toggle('show', v === view || (v === 'ondemand' && isOD())); });
     var d = new Date();
     $('clock').textContent = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + '  ·  ' + clock(nowSec());
     if (view === 'guide') renderGuide();
-    else if (view === 'ondemand') renderOD();
+    else if (isOD()) renderOD();
     else if (view === 'lists') renderLists();
     else if (view === 'search') renderSearch();
     else if (view === 'apps') renderApps();
@@ -1063,8 +1107,9 @@ var app = (function () {
   }
   function ensureODItems() {
     var c = curCat();
-    if (c && c.src === 'bbc' && !c.items && !c.loading) loadBBCCat(c).then(function () { if (view === 'ondemand') render(); });
-    if (c && c.src === 'tmdb' && !c.loading && (!c.items || (odRow > c.items.length - 16 && !c.done))) loadStreamPage(c).then(function () { if (view === 'ondemand') render(); });
+    if (c && c.src === 'bbcpop' && !c.items) loadBBCPopular().then(function () { if (isOD()) render(); });
+    if (c && c.src === 'bbc' && !c.items && !c.loading) loadBBCCat(c).then(function () { if (isOD()) render(); });
+    if (c && c.src === 'tmdb' && !c.loading && (!c.items || (odRow > c.items.length - 16 && !c.done))) loadStreamPage(c).then(function () { if (isOD()) render(); });
   }
   function renderOD() {
     if (!od.length) buildOD();
@@ -1533,7 +1578,7 @@ var app = (function () {
     }
     if (settings.favs.length) opts.push({ label: settings.favOnly ? 'Show all channels' : 'Show only my favourites', fn: function () { settings.favOnly = !settings.favOnly; saveSettings(); buildChans(); gRow = 0; } });
     opts.push({ label: 'Show or hide channels and apps (e.g. Pluto TV)…', fn: function () { showMenu(); } });
-    if (view === 'ondemand') opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
+    if (isOD()) opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
     if (view === 'guide') opts.push({ label: settings.pay ? 'Hide pay TV channels' : 'Show pay TV channels (for reminders)', fn: function () { appsToggle('pay'); } });
     showPop({ title: c ? c.name : 'Options', opts: opts.concat([
       { label: 'Refresh the TV guide', fn: function () { loadGuide(); } },
@@ -1559,7 +1604,7 @@ var app = (function () {
     if (k === 'guide') { setView('guide'); return true; }
     if ((k === 'ff' || k === 'rw') && view !== 'guide') k = k === 'ff' ? 'pagedown' : 'pageup';
     if (view === 'guide') guideKey(k);
-    else if (view === 'ondemand') odKey(k);
+    else if (isOD()) odKey(k);
     else if (view === 'lists') lsKey(k);
     else if (view === 'search') searchKey(k);
     else if (view === 'apps') appsKey(k);
@@ -1568,8 +1613,8 @@ var app = (function () {
   function back() {
     if (pop) { closePop(); return true; }
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
-    if (zone === 'main' && view === 'ondemand' && odZone === 'grid') { odZone = 'cats'; render(); return true; }
-    if (zone === 'main' && view === 'ondemand' && odZone === 'cats') { odZone = 'src'; odChip = odSrc; render(); return true; }
+    if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
+    if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = odSrc; render(); return true; }
     if (zone === 'main' && view === 'guide' && gZone === 'days') { gZone = 'rows'; render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }
     if (zone === 'main') { zone = 'tabs'; render(); return true; }
@@ -1653,13 +1698,13 @@ var app = (function () {
     if (t.classList.contains('cat')) {
       var cats = [].slice.call(t.parentNode.querySelectorAll('.cat:not(.hdr)')), i = cats.indexOf(t);
       if (i < 0) return;
-      if (view === 'ondemand') { odCat = i; odRow = 0; odZone = 'cats'; ensureODItems(); }
+      if (isOD()) { odCat = i; odRow = 0; odZone = 'cats'; ensureODItems(); }
       else if (view === 'lists') { lsCat = i; lsRow = 0; lsSide = 'left'; if (lsAll()[i].kind === 'new') newList(null); }
       render(); return;
     }
     if (t.classList.contains('card')) {
       var n = +t.getAttribute('data-i');
-      if (view === 'ondemand') { var was = odZone === 'grid' && odRow === n; odZone = 'grid'; odRow = n; if (was || TOUCH) odKey('ok'); else render(); }
+      if (isOD()) { var was = odZone === 'grid' && odRow === n; odZone = 'grid'; odRow = n; if (was || TOUCH) odKey('ok'); else render(); }
       else if (view === 'lists') { var was2 = lsSide === 'right' && lsRow === n; lsSide = 'right'; lsRow = n; if (was2 || TOUCH) lsKey('ok'); else render(); }
       else if (view === 'search') { var was3 = sZone === 'results' && sRow === n; sZone = 'results'; sRow = n; if (was3 || TOUCH) searchKey('ok'); else render(); }
     }
@@ -1671,7 +1716,7 @@ var app = (function () {
     if (!t) return;
     e.preventDefault();
     if (t.classList.contains('blk')) { zone = 'main'; gZone = 'rows'; gRow = +t.getAttribute('data-r'); gT = +t.getAttribute('data-t'); key('hold'); }
-    else if (t.classList.contains('card')) { var n = +t.getAttribute('data-i'); if (view === 'ondemand') { odZone = 'grid'; odRow = n; } else if (view === 'lists') { lsSide = 'right'; lsRow = n; } else { sZone = 'results'; sRow = n; } zone = 'main'; key('hold'); }
+    else if (t.classList.contains('card')) { var n = +t.getAttribute('data-i'); if (isOD()) { odZone = 'grid'; odRow = n; } else if (view === 'lists') { lsSide = 'right'; lsRow = n; } else { sZone = 'results'; sRow = n; } zone = 'main'; key('hold'); }
     else if (view === 'lists') { var cats = [].slice.call(t.parentNode.querySelectorAll('.cat:not(.hdr)')); lsCat = Math.max(0, cats.indexOf(t)); lsSide = 'left'; zone = 'main'; lsKey('menu'); }
   });
 
