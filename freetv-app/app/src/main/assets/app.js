@@ -68,9 +68,10 @@ var app = (function () {
     if (r === 'search') { toast('Searching ' + s.name + ' for "' + q + '"'); return; }
     // apps that only open their channel list or home page: say which channel to pick
     if (channel && (r === 'app' || (r === 'link' && (/^(pluto|u)$/.test(svc) || (!TOUCH && svc === 'bbc'))))) { toast('Opened ' + s.name + ' – choose ' + channel); return; }
+    if (r === 'link' && !channel && what && !TOUCH && /^(bbc|u|pluto)$/.test(svc)) { toast('Opened ' + s.name + ' – find ' + what + ' there'); return; }
     if (r === 'store') toast((s ? s.name : 'That app') + ' isn\'t installed – opening the Play Store');
     else if (r === 'none') toast('Couldn\'t open ' + (s ? s.name : 'that app'));
-    else if (r === 'app') toast('Opened ' + s.name + (what ? ' – find ' + what + ' there' : '') + (TOUCH ? '' : '. Tip: hold OK and choose "Find on Google TV" to go straight to it'));
+    else if (r === 'app') toast('Opened ' + s.name + (what ? ' – find ' + what + ' there' : '') + '');
   }
 
   // Freeview channel -> service and live link
@@ -121,7 +122,7 @@ var app = (function () {
   function _cb(id, body, err) { var f = cbs[id]; delete cbs[id]; if (f) f(body, err); }
 
   // ---------------------------------------------------------------- saved things
-  var settings = Object.assign({ bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
+  var settings = Object.assign({ bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, hide: {}, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
   var reminders = (load('reminders') || []).filter(function (r) { return r.item && r.item.e > Date.now() / 1000 - 3600; });
   var watched = load('watched') || {};          // key -> {at, item}
   var history = load('history') || [];          // [{at, item}] most recent first
@@ -281,6 +282,7 @@ var app = (function () {
     if (settings.pay) sky.list.forEach(function (c) {
       out.push({ sec: c.sec, id: 's' + c.sid, name: c.name, svc: c.svc, live: '', pay: true, events: sky.ev[c.sid].list });
     });
+    out = out.filter(function (c) { return !settings.hide[c.sec]; });
     // favourites at the top (or on their own)
     var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
       .map(function (c) { return Object.assign({}, c, { sec: 'Favourites', fav: true }); });
@@ -515,7 +517,7 @@ var app = (function () {
       ws.sort(function (a, b) { return (has(b.k) ? 2 : 0) - (has(a.k) ? 2 : 0) + ((SVC[a.k].paid ? 1 : 0) - (SVC[b.k].paid ? 1 : 0)); });
       var year = (it.sub || '').slice(0, 4);
       var gsearch = { label: TOUCH ? 'Search Google for it' : 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } };
-      showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: (TOUCH ? [] : [gsearch]).concat(ws.map(function (w) {
+      showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [].concat(ws.map(function (w) {
         return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (has(w.k) ? '' : ' (not installed)'),
           fn: function () { openIn(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), '"' + it.title + '"'); } };
       })).concat(TOUCH ? [gsearch] : [], [{ label: 'Cancel' }]) });
@@ -536,7 +538,7 @@ var app = (function () {
     } else if (!tmdbKey) out.push({ id: 'free', name: 'Streaming apps', cats: [{ src: 'msg', name: 'Needs a TMDB key (see Apps)', items: [] }] });
     return out;
   }
-  function buildOD() { od = sources(); if (odSrc >= od.length) odSrc = 0; }
+  function buildOD() { od = sources().filter(function (x) { return !settings.hide[x.id] || x.id === 'tv'; }); if (odSrc >= od.length) odSrc = 0; }
   var plutoTried = false;
   function loadOD() {
     return Promise.all([loadBBC(), loadPlutoVOD().then(function () { plutoTried = true; }), loadStreaming()]).then(function () { buildOD(); render(); });
@@ -1044,7 +1046,7 @@ var app = (function () {
     });
     out.sort(function (a, b) { return a.s - b.s; });
     var od2 = [];
-    bbcCats.concat(plutoCats).forEach(function (c) {
+    (settings.hide.bbc ? [] : bbcCats).concat(settings.hide.pluto ? [] : plutoCats).forEach(function (c) {
       (c.items || []).forEach(function (it) { if (match(it.title) && !seen[it.url]) { seen[it.url] = 1; od2.push(it); } });
     });
     sResults = od2.slice(0, 100).concat(out.slice(0, 200));
@@ -1107,6 +1109,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
+    t.push({ kind: 'set', k: 'showhide', name: 'Show or hide', desc: (Object.keys(settings.hide).length ? Object.keys(settings.hide).length + ' hidden' : 'Everything shown') + ' – choose which channels and apps appear (e.g. hide Pluto TV)' });
     t.push({ kind: 'set', k: 'pay', name: 'Pay TV channels in the guide', desc: (settings.pay ? 'Shown' : 'Hidden') + ' – Sky / pay channels, so you can set reminders' });
     t.push({ kind: 'set', k: 'remindMins', name: 'Reminder time', desc: settings.remindMins + ' minutes before – OK to change' });
     t.push({ kind: 'set', k: 'hideWatched', name: 'Watched things in On Demand', desc: (settings.hideWatched ? 'Hidden' : 'Shown with a ✓') + ' – OK to change' });
@@ -1144,6 +1147,7 @@ var app = (function () {
     else if (k === 'up') moveV(-1);
     else if (k === 'ok') {
       var x = t[apRow];
+      if (x.k === 'showhide') { showMenu(); return; }
       if (x.k === 'pay') { settings.pay = !settings.pay; saveSettings(); if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); loadSkyDay(0).then(render); }); buildChans(); buildFilmsOnTV(); }
       else if (x.k === 'remindMins') { var M = [30, 15, 10, 5, 60]; settings.remindMins = M[(M.indexOf(settings.remindMins) + 1) % M.length]; saveSettings(); }
       else if (x.k === 'hideWatched') { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; }
@@ -1199,7 +1203,6 @@ var app = (function () {
     }));
     opts.push({ label: '+ Add to a new list…', fn: function () { newList(it); } });
     if (!(it.src === 'tv' && it.s > now)) opts.push(watchOpt(it));
-    if (!TOUCH && (it.src !== 'tv' || it.s <= nowSec())) opts.push({ label: 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title); } });
     if (it.src === 'tv' && view === 'guide') {
       var ch = chans[gRow];
       if (ch) opts.push({ label: (ch.fav ? '♥ Remove ' + ch.name + ' from' : '♥ Add ' + ch.name + ' to') + ' favourite channels', fn: function () { toggleFav(ch); } });
@@ -1309,6 +1312,22 @@ var app = (function () {
     }).concat([{ label: 'Back' }]) });
   }
 
+  /** Choose what's shown: guide sections and On Demand sources, ticked on/off. */
+  function showMenu(row) {
+    var opts = [], H = settings.hide;
+    var add = function (key, label) {
+      opts.push({ label: label, tick: !H[key], fn: function (p) { if (H[key]) delete H[key]; else H[key] = 1; saveSettings(); buildChans(); buildFilmsOnTV(); od = []; buildOD(); odSrc = 0; odCat = 0; odRow = 0; showMenu(p.row); } });
+    };
+    add('Freeview channels', 'Guide: Freeview channels');
+    add('Pluto TV', 'Guide: Pluto TV channels');
+    if (settings.pay) ['Pay TV – entertainment', 'Pay TV – films', 'Pay TV – sport', 'Pay TV – kids'].forEach(function (x) { add(x, 'Guide: ' + x); });
+    add('bbc', 'On Demand: BBC iPlayer');
+    add('pluto', 'On Demand: Pluto TV');
+    add('free', 'On Demand: Free on any app');
+    Object.keys(SVC).forEach(function (k) { if (SVC[k].paid && streamCats.some(function (c) { return c.svcKey === k; })) add(k, 'On Demand: ' + SVC[k].name); });
+    opts.push({ label: 'Done' });
+    showPop({ title: 'Show or hide (ticked = shown)', opts: opts, row: row || 0 });
+  }
   function appsToggle(k) { var t = tiles(); for (var i = 0; i < t.length; i++) if (t[i].k === k) { var keep = apRow; apRow = i; appsKey('ok'); apRow = keep; return; } }
   function optionsMenu() {
     var c = view === 'guide' && zone === 'main' ? chans[gRow] : null, opts = [];
@@ -1320,6 +1339,7 @@ var app = (function () {
       }
     }
     if (settings.favs.length) opts.push({ label: settings.favOnly ? 'Show all channels' : 'Show only my favourites', fn: function () { settings.favOnly = !settings.favOnly; saveSettings(); buildChans(); gRow = 0; } });
+    opts.push({ label: 'Show or hide channels and apps (e.g. Pluto TV)…', fn: function () { showMenu(); } });
     if (view === 'ondemand') opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
     if (view === 'guide') opts.push({ label: settings.pay ? 'Hide pay TV channels' : 'Show pay TV channels (for reminders)', fn: function () { appsToggle('pay'); } });
     showPop({ title: c ? c.name : 'Options', opts: opts.concat([
