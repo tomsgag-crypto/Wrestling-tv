@@ -28,6 +28,11 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Add the TMDB key (stored as a repository secret, never in the code)
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+        run: echo "window.TMDB_KEY = '${TMDB_KEY}';" > app/src/main/assets/config.js
+
       - name: Build APK
         run: gradle assembleRelease --no-daemon
 

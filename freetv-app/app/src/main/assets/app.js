@@ -255,13 +255,104 @@ var app = (function () {
     });
     filmsOnTV.items = out.sort(function (a, b) { return a.s - b.s; });
   }
+  // ---------------------------------------------------------------- streaming services (via TMDB's "where to watch" data)
+  var TMDB = 'https://api.themoviedb.org/3', tmdbKey = window.TMDB_KEY || settings.tmdb || '';
+  var streamCats = [], tmdbGenres = {};
+  // TMDB provider names -> our services; searchUrl opens the app's search for a title where the app supports it
+  var PROVIDERS = [
+    ['netflix', /^netflix$/i, 'https://www.netflix.com/search?q='], ['prime', /^amazon prime video$/i, 'https://www.primevideo.com/search/?phrase='],
+    ['disney', /^disney plus$/i, 'https://www.disneyplus.com/search?q='], ['appletv', /^apple tv\+?$|^apple tv plus$/i, 'https://tv.apple.com/search?term='],
+    ['now', /^now tv$|^now$|^now tv cinema$/i, ''], ['paramount', /^paramount\+?( plus)?$/i, ''], ['discovery', /^discovery\+?( plus)?$/i, ''],
+    ['bbc', /^bbc iplayer$/i, 'https://www.bbc.co.uk/iplayer/search?q='], ['itv', /^itvx$/i, 'https://www.itv.com/watch/search?q='],
+    ['c4', /^channel 4$/i, 'https://www.channel4.com/search?q='], ['five', /^my5$|^channel 5$|^5$/i, ''], ['u', /^u$|^uktv( play)?$/i, ''],
+    ['pluto', /^pluto tv$/i, ''], ['tubi', /^tubi( tv)?$/i, ''], ['rakuten', /^rakuten tv$/i, ''], ['plex', /^plex$/i, ''],
+    ['britbox', /^britbox$/i, ''], ['mubi', /^mubi$/i, ''], ['crunchyroll', /^crunchyroll$/i, ''], ['skysports', /^sky go$/i, '']
+  ];
+  function tmdb(path, q) {
+    return getJSON(TMDB + path + (path.indexOf('?') < 0 ? '?' : '&') + 'api_key=' + tmdbKey + (q ? '&' + q : ''));
+  }
+  function loadStreaming() {
+    if (!tmdbKey) { streamCats = []; return Promise.resolve(); }
+    return Promise.all([tmdb('/watch/providers/movie', 'watch_region=GB'), tmdb('/watch/providers/tv', 'watch_region=GB'),
+      tmdb('/genre/movie/list'), tmdb('/genre/tv/list')]).then(function (r) {
+      var byName = {};
+      r[0].results.concat(r[1].results).forEach(function (p) { byName[p.provider_name] = byName[p.provider_name] || p; });
+      [r[2], r[3]].forEach(function (g) { (g.genres || []).forEach(function (x) { tmdbGenres[x.id] = x.name; }); });
+      var cats = [];
+      cats.push({ src: 'tmdb', name: 'Free films on any app', kind: 'movie', mon: 'free|ads', prov: null, items: null, page: 0 });
+      cats.push({ src: 'tmdb', name: 'Free TV on any app', kind: 'tv', mon: 'free|ads', prov: null, items: null, page: 0 });
+      PROVIDERS.forEach(function (pv) {
+        var match = Object.keys(byName).filter(function (n) { return pv[1].test(n); })[0];
+        if (!match) return;
+        var id = byName[match].provider_id, svc = SVC[pv[0]];
+        ['movie', 'tv'].forEach(function (kind) {
+          cats.push({ src: 'tmdb', name: svc.name + (kind === 'movie' ? ' – films' : ' – TV'), svcKey: pv[0], search: pv[2], kind: kind,
+            prov: id, mon: svc.paid ? 'flatrate' : 'flatrate|free|ads', items: null, page: 0, mine: has(pv[0]) });
+        });
+      });
+      // the apps you have come first
+      var free = cats.slice(0, 2), rest = cats.slice(2);
+      rest.sort(function (a, b) { return (b.mine ? 1 : 0) - (a.mine ? 1 : 0); });
+      streamCats = free.concat(rest);
+      tmdbProviders = byName;
+    }).catch(function () { streamCats = []; });
+  }
+  var tmdbProviders = {};
+  function tmdbItem(x, kind, cat) {
+    var title = x.title || x.name, year = (x.release_date || x.first_air_date || '').slice(0, 4);
+    var gen = (x.genre_ids || []).slice(0, 2).map(function (g) { return tmdbGenres[g]; }).filter(Boolean).join(', ');
+    return { src: 'tmdb', svc: cat && cat.svcKey || '', title: title, tmdb: kind + '/' + x.id, kind: kind,
+      sub: [year, gen, x.vote_average ? '★ ' + x.vote_average.toFixed(1) : ''].filter(Boolean).join(' · '), desc: x.overview || '',
+      img: x.backdrop_path ? 'https://image.tmdb.org/t/p/w300' + x.backdrop_path : x.poster_path ? 'https://image.tmdb.org/t/p/w185' + x.poster_path : '',
+      url: cat && cat.search ? cat.search + encodeURIComponent(title) : '' };
+  }
+  function loadStreamPage(c) {
+    if (c.loading || c.done) return Promise.resolve();
+    c.loading = true;
+    var q = 'watch_region=GB&sort_by=popularity.desc&include_adult=false&page=' + (c.page + 1) + '&with_watch_monetization_types=' + encodeURIComponent(c.mon) +
+      (c.prov ? '&with_watch_providers=' + c.prov : '') + (c.kind === 'movie' ? '&with_original_language=en' : '');
+    return tmdb('/discover/' + c.kind, q).then(function (j) {
+      c.page = j.page; c.done = j.page >= Math.min(j.total_pages, 25);
+      c.items = (c.items || []).concat(j.results.map(function (x) { return tmdbItem(x, c.kind, c); }));
+      c.loading = false;
+    }, function () { c.loading = false; c.items = c.items || []; c.done = true; });
+  }
+  /** Where a title can be watched (UK): opens the best app for it. */
+  function whereToWatch(it) {
+    return tmdb('/' + it.tmdb + '/watch/providers').then(function (j) {
+      var gb = j.results && j.results.GB || {}, names = [];
+      ['free', 'ads', 'flatrate'].forEach(function (k) { (gb[k] || []).forEach(function (p) { if (names.indexOf(p.provider_name) < 0) names.push(p.provider_name); }); });
+      var out = [];
+      names.forEach(function (n) {
+        PROVIDERS.forEach(function (pv) { if (pv[1].test(n) && !out.some(function (o) { return o.k === pv[0]; })) out.push({ k: pv[0], search: pv[2] }); });
+      });
+      return out;
+    });
+  }
+  function openTMDB(it) {
+    whereToWatch(it).then(function (ws) {
+      if (!ws.length) { toast('"' + it.title + '" isn\'t on any of your UK streaming apps right now'); return; }
+      // prefer an app you have, free before paid
+      ws.sort(function (a, b) { return (has(b.k) ? 2 : 0) - (has(a.k) ? 2 : 0) + ((SVC[a.k].paid ? 1 : 0) - (SVC[b.k].paid ? 1 : 0)); });
+      if (ws.length === 1 || it.svc) {
+        var w = ws.filter(function (x) { return x.k === it.svc; })[0] || ws[0];
+        openIn(w.k, w.search ? w.search + encodeURIComponent(it.title) : '', w.search ? '' : '"' + it.title + '"');
+        return;
+      }
+      showPop({ title: '"' + it.title + '" is on…', opts: ws.map(function (w) {
+        return { label: SVC[w.k].name + (has(w.k) ? '' : ' (not installed)'), fn: function () { openIn(w.k, w.search ? w.search + encodeURIComponent(it.title) : '', w.search ? '' : '"' + it.title + '"'); } };
+      }).concat([{ label: 'Cancel' }]) });
+    }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
+  }
+
   function buildOD() {
     od = [{ hdr: 'On TV' }, filmsOnTV, { hdr: 'BBC iPlayer' }].concat(bbcCats.length ? bbcCats : [{ src: 'msg', name: 'Loading…', items: [] }],
-      [{ hdr: 'Pluto TV' }], plutoCats.length ? plutoCats : [{ src: 'msg', name: plutoTried ? 'Not available' : 'Loading…', items: [] }]);
+      [{ hdr: 'Pluto TV' }], plutoCats.length ? plutoCats : [{ src: 'msg', name: plutoTried ? 'Not available' : 'Loading…', items: [] }],
+      [{ hdr: 'Streaming apps' }], streamCats.length ? streamCats : [{ src: 'msg', name: tmdbKey ? 'Loading…' : 'Needs a TMDB key (see Apps)', items: [] }]);
   }
   var plutoTried = false;
   function loadOD() {
-    return Promise.all([loadBBC(), loadPlutoVOD().then(function () { plutoTried = true; })]).then(function () { buildOD(); render(); });
+    return Promise.all([loadBBC(), loadPlutoVOD().then(function () { plutoTried = true; }), loadStreaming()]).then(function () { buildOD(); render(); });
   }
 
   /** A guide programme as a list item. */
@@ -297,6 +388,7 @@ var app = (function () {
       toast('"' + it.title + '" starts ' + dayWord(it.s).toLowerCase() + ' at ' + clock(it.s) + ' on ' + it.chName);
       return;
     }
+    if (it.src === 'tmdb') { openTMDB(it); return; }
     openIn(it.svc, it.url);
   }
 
@@ -428,7 +520,7 @@ var app = (function () {
   function itemRow(it, sel, i) {
     var star = inLists(it).length;
     var badge = it.src === 'tv' ? (it.svc ? '<span class="badge ' + SVC[it.svc].cls + '">' + esc(SVC[it.svc].name) + '</span>' : '<span class="badge tv">TV</span>')
-      : it.svc ? '<span class="badge ' + SVC[it.svc].cls + '">' + esc(SVC[it.svc].name) + '</span>' : '';
+      : it.svc ? '<span class="badge ' + SVC[it.svc].cls + '">' + esc(SVC[it.svc].name) + '</span>' : it.where ? '<span class="badge">' + esc(it.where) + '</span>' : '';
     var when = '';
     if (it.src === 'tv') {
       var now = nowSec();
@@ -457,6 +549,7 @@ var app = (function () {
   function ensureODItems() {
     var c = od[odCat];
     if (c && c.src === 'bbc' && !c.items) loadBBCCat(c).then(function () { if (view === 'ondemand') render(); });
+    if (c && c.src === 'tmdb' && (!c.items || (odRow > c.items.length - 12 && !c.done))) loadStreamPage(c).then(function () { if (view === 'ondemand') render(); });
   }
   function renderOD() {
     if (!od.length) buildOD();
@@ -468,7 +561,7 @@ var app = (function () {
     }).join('');
     scrollInto($('odCats'), $('odCats').querySelectorAll('.cat')[odCat]);
     var c = od[odCat];
-    drawItems($('odItems'), odItems(), odRow, c && c.src === 'bbc' && !c.items ? '<span class="spinner"></span>Loading ' + esc(c.name) + '…'
+    drawItems($('odItems'), odItems(), odRow, c && (c.src === 'bbc' || c.src === 'tmdb') && !c.items ? '<span class="spinner"></span>Loading ' + esc(c.name) + '…'
       : c && c.id === 'filmsontv' && !chans.length ? '<span class="spinner"></span>Waiting for the TV guide…' : 'Nothing here right now.');
   }
   function odKey(k) {
@@ -484,8 +577,8 @@ var app = (function () {
       else if (k === 'menu') { optionsMenu(); return; }
     } else {
       if (k === 'up') { if (odRow === 0) { zone = 'tabs'; render(); return; } odRow--; }
-      else if (k === 'down') odRow = Math.min(items.length - 1, odRow + 1);
-      else if (k === 'pagedown') odRow = Math.min(items.length - 1, odRow + 8);
+      else if (k === 'down') { odRow = Math.min(items.length - 1, odRow + 1); ensureODItems(); }
+      else if (k === 'pagedown') { odRow = Math.min(items.length - 1, odRow + 8); ensureODItems(); }
       else if (k === 'pageup') odRow = Math.max(0, odRow - 8);
       else if (k === 'left') odSide = 'left';
       else if (k === 'ok') { if (items[odRow]) openItem(items[odRow]); return; }
@@ -536,7 +629,7 @@ var app = (function () {
   }
 
   // ---------------------------------------------------------------- search
-  var qTimer = null;
+  var qTimer = null, searchSeq = 0;
   function runSearch() {
     var q = $('q').value.trim().toLowerCase();
     sRow = 0;
@@ -557,6 +650,21 @@ var app = (function () {
     });
     sResults = out.slice(0, 150).concat(od2.slice(0, 150));
     render();
+    if (tmdbKey) {
+      var mine = ++searchSeq;
+      tmdb('/search/multi', 'region=GB&include_adult=false&query=' + encodeURIComponent(q)).then(function (j) {
+        var found = j.results.filter(function (x) { return x.media_type === 'movie' || x.media_type === 'tv'; }).slice(0, 12).map(function (x) { return tmdbItem(x, x.media_type, null); });
+        return Promise.all(found.map(function (it) {
+          return whereToWatch(it).then(function (ws) { it.where = ws.map(function (w) { return SVC[w.k].name; }).join(', '); return ws.length ? it : null; }, function () { return null; });
+        }));
+      }).then(function (found) {
+        if (mine !== searchSeq) return;
+        var seenT = {};
+        sResults.forEach(function (x) { seenT[(x.title || '').toLowerCase()] = 1; });
+        sResults = sResults.concat(found.filter(function (x) { return x && !seenT[x.title.toLowerCase()]; }));
+        render();
+      }).catch(function () {});
+    }
   }
   function renderSearch() {
     $('q').classList.toggle('sel', zone === 'main' && sZone === 'input');
@@ -565,7 +673,7 @@ var app = (function () {
     parent.className = (zone === 'main' && sZone === 'results') ? 'focus-right' : '';
     parent.id = 'sres';
     var q = $('q').value.trim();
-    drawItems(box, sResults, sRow, q.length < 2 ? 'Type a programme or film name.<br>Searches the TV guide (next two days), BBC iPlayer and Pluto TV.' +
+    drawItems(box, sResults, sRow, q.length < 2 ? 'Type a programme or film name.<br>Searches the TV guide (next two days), BBC iPlayer and Pluto TV' + (tmdbKey ? ', and finds which of your streaming apps has it.' : '.') +
       (bbcCats.some(function (c) { return !c.items; }) ? '<br><br>Tip: BBC iPlayer categories are searched once they\'ve loaded – press Menu here to load them all.' : '')
       : 'Nothing found for "' + esc(q) + '".');
   }
@@ -604,6 +712,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
+    t.push({ kind: 'set', k: 'tmdb', name: 'Streaming apps catalogue', desc: tmdbKey ? 'On – using your TMDB key' : 'Off – OK to enter a TMDB API key' });
     t.push({ kind: 'set', k: 'reload', name: 'Refresh everything', desc: 'Reload the TV guide and On Demand lists' });
     return t;
   }
@@ -640,6 +749,13 @@ var app = (function () {
       else if (x.kind === 'mine') { if (window.Native) Native.open(x.k, '', ''); }
       else if (x.k === 'bbc1') { settings.bbc1 = REGIONS[(REGIONS.indexOf(settings.bbc1) + 1) % REGIONS.length]; saveSettings(); buildChans(); }
       else if (x.k === 'plus1' || x.k === 'other') { settings[x.k] = !settings[x.k]; saveSettings(); buildChans(); buildFilmsOnTV(); }
+      else if (x.k === 'tmdb') {
+        showPop({ title: 'TMDB API key (from themoviedb.org)', input: true, inputFocus: true, opts: [{ label: 'Save', fn: function () { saveKey(); } }, { label: 'Cancel' }] });
+        $('popIn').value = settings.tmdb || ''; setTimeout(function () { $('popIn').focus(); }, 30);
+        var saveKey = function () { settings.tmdb = $('popIn').value.trim(); saveSettings(); tmdbKey = window.TMDB_KEY || settings.tmdb; loadStreaming().then(function () { buildOD(); render(); }); };
+        $('popIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); closePop(); saveKey(); render(); } };
+        return;
+      }
       else if (x.k === 'reload') { loadGuide(); bbcCats = []; plutoCats = []; plutoTried = false; od = []; loadOD(); toast('Refreshing…'); }
     }
     render();
