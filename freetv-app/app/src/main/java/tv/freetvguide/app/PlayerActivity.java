@@ -21,7 +21,9 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 
 import org.json.JSONArray;
@@ -42,6 +44,7 @@ import java.util.concurrent.Executors;
  */
 public class PlayerActivity extends Activity {
     private ExoPlayer player;
+    private DefaultHttpDataSource.Factory http;
     private PlayerView view;
     private TextView info1, info2, info3;
     private LinearLayout infoBox;
@@ -86,12 +89,13 @@ public class PlayerActivity extends Activity {
         episode = getIntent().getStringExtra("episode");
         title = getIntent().getStringExtra("title");
 
-        player = new ExoPlayer.Builder(this).build();
+        http = new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15000).setReadTimeoutMs(20000);
+        player = new ExoPlayer.Builder(this).setMediaSourceFactory(new DefaultMediaSourceFactory(http)).build();
         view.setPlayer(player);
         player.addListener(new Player.Listener() {
             @Override public void onPlayerError(PlaybackException e) {
                 // sessions expire: get a fresh one and try again
-                if (retries++ < 2) { bootAt = 0; play(); }
+                if (retries++ < 1) { bootAt = 0; play(); }
                 else { info3.setText("This channel won't play right now – try another (▲ ▼)"); showInfo(8000); }
             }
             @Override public void onPlaybackStateChanged(int s) { if (s == Player.STATE_READY) retries = 0; }
@@ -146,7 +150,17 @@ public class PlayerActivity extends Activity {
     private void play() {
         updateInfo();
         showInfo(5000);
-        final String what = episode != null ? "episode/" + episode : "channel/" + chans.optJSONObject(idx).optString("id");
+        final JSONObject cur = episode != null ? null : chans.optJSONObject(idx);
+        final String direct = cur == null ? "" : cur.optString("url");
+        http.setUserAgent(cur != null && !cur.optString("ua").isEmpty() ? cur.optString("ua") : "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Safari/537.36");
+        if (!direct.isEmpty()) {
+            // Samsung TV Plus and Plex: a ready-made stream address
+            player.setMediaItem(new MediaItem.Builder().setUri(Uri.parse(direct)).setMimeType(MimeTypes.APPLICATION_M3U8).build());
+            player.prepare();
+            player.setPlayWhenReady(true);
+            return;
+        }
+        final String what = episode != null ? "episode/" + episode : "channel/" + cur.optString("id");
         net.execute(() -> {
             try {
                 boot();
@@ -175,7 +189,7 @@ public class PlayerActivity extends Activity {
         if (episode != null) { info1.setText("PLUTO TV"); info2.setText(title == null ? "" : title); info3.setText("Back to return to Free TV"); return; }
         JSONObject c = chans.optJSONObject(idx);
         if (c == null) return;
-        info1.setText((c.optInt("num") > 0 ? c.optInt("num") + "  " : "") + c.optString("name") + "  ·  PLUTO TV  ·  " + (idx + 1) + " of " + chans.length());
+        info1.setText((c.optInt("num") > 0 ? c.optInt("num") + "  " : "") + c.optString("name") + "  ·  " + c.optString("svc", "PLUTO TV") + "  ·  " + (idx + 1) + " of " + chans.length());
         long now = System.currentTimeMillis() / 1000;
         String nowT = "", nextT = "";
         JSONArray ev = c.optJSONArray("ev");

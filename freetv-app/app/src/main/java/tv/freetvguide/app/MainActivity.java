@@ -198,18 +198,26 @@ public class MainActivity extends Activity {
                 String body = null, err = null;
                 HttpURLConnection c = null;
                 try {
-                    String u = url, bearer = null;
-                    int h = u.indexOf("#bearer=");
-                    if (h >= 0) { bearer = u.substring(h + 8); u = u.substring(0, h); }   // a session token to send as a header
+                    // extras after '#': bearer=TOKEN (session header), post (send as POST), h=Name:Value (another header)
+                    String u = url;
+                    String[] extra = new String[0];
+                    int h = u.indexOf('#');
+                    if (h >= 0) { extra = u.substring(h + 1).split("#"); u = u.substring(0, h); }
                     c = (HttpURLConnection) new URL(u).openConnection();
-                    if (bearer != null) c.setRequestProperty("Authorization", "Bearer " + bearer);
                     c.setConnectTimeout(20000);
                     c.setReadTimeout(60000);
                     c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; Android TV) FreeTVGuide/1.0");
                     c.setRequestProperty("Accept", "application/json");
+                    boolean post = false;
+                    for (String x : extra) {
+                        if (x.startsWith("bearer=")) c.setRequestProperty("Authorization", "Bearer " + x.substring(7));
+                        else if (x.equals("post")) post = true;
+                        else if (x.startsWith("h=")) { String hv = Uri.decode(x.substring(2)); int k = hv.indexOf(':'); if (k > 0) c.setRequestProperty(hv.substring(0, k).trim(), hv.substring(k + 1).trim()); }
+                    }
+                    if (post) { c.setRequestMethod("POST"); c.setDoOutput(true); c.getOutputStream().close(); }
                     int code = c.getResponseCode();
                     if (code >= 400) err = "HTTP " + code;
-                    else body = readAll(c.getInputStream());
+                    else body = readAll(u.endsWith(".gz") ? new java.util.zip.GZIPInputStream(c.getInputStream()) : c.getInputStream());
                 } catch (Exception ex) {
                     err = ex.getClass().getSimpleName() + ": " + ex.getMessage();
                 } finally {

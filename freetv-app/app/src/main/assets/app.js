@@ -262,6 +262,84 @@ var app = (function () {
       }).sort(function (x, y) { return x.num - y.num; });
     }).catch(function () { pluto = pluto || []; });
   }
+  // ---------------------------------------------------------------- Samsung TV Plus and Plex: free channels that play in Free TV
+  var samsung = [], plex = [], plexTok = '';
+  function loadSamsung() {
+    if (settings.hide['Samsung TV Plus']) return Promise.resolve();
+    return getJSON('https://i.mjh.nz/SamsungTVPlus/.channels.json.gz').then(function (j) {
+      var gb = j.regions && j.regions.gb && j.regions.gb.channels || {};
+      samsung = Object.keys(gb).filter(function (k) { return !gb[k].license_url; }).map(function (k) {
+        var c = gb[k], p = c.programs || [];
+        return { id: 'm' + k, name: c.name.replace(/:? ?'?Powered by Banijay'?/i, '').trim(), num: c.chno, group: c.group, url: 'https://jmp2.uk/stvp-' + k,
+          events: p.map(function (x, i) { return { s: x[0], e: p[i + 1] ? p[i + 1][0] : x[0] + 3600, t: x[1], sub: '', img: '' }; }) };
+      }).sort(function (a, b) { return a.num - b.num; });
+    }).catch(function () { samsung = samsung || []; });
+  }
+  var PLEX_H = '#h=' + encodeURIComponent('X-Plex-Product:Plex Mediaverse') + '#h=' + encodeURIComponent('X-Plex-Version:1.0.0');
+  function loadPlex() {
+    if (settings.hide['Plex']) return Promise.resolve();
+    var tokP = settings.plexTok ? Promise.resolve(settings.plexTok) :
+      getJSON('https://clients.plex.tv/api/v2/users/anonymous#post' + PLEX_H + '#h=' + encodeURIComponent('X-Plex-Client-Identifier:' + device.id)).then(function (j) {
+        settings.plexTok = j.authToken; saveSettings(); return j.authToken;
+      });
+    return tokP.then(function (tok) {
+      plexTok = tok;
+      return getJSON('https://epg.provider.plex.tv/lineups/plex/channels#h=' + encodeURIComponent('X-Plex-Token:' + tok));
+    }).then(function (j) {
+      plex = (j.MediaContainer.Channel || []).filter(function (c) {
+        return !c.hidden && c.Media && c.Media[0] && !c.Media[0].drm && c.Media[0].Part && c.Media[0].Part[0];
+      }).map(function (c) {
+        return { id: 'x' + c.gridKey, gridKey: c.gridKey, name: c.title, num: +c.vcn || 0, url: 'https://epg.provider.plex.tv' + c.Media[0].Part[0].key + '?X-Plex-Token=' + plexTok, events: [], days: {} };
+      });
+    }).catch(function () { if (settings.plexTok && !plex.length) { settings.plexTok = ''; saveSettings(); } plex = plex || []; });
+  }
+  /** Plex listings come a channel at a time, so only fetch them for the channels on screen. */
+  var plexQueue = [], plexBusy = 0;
+  function plexListings(c, a, b) {
+    var x = plex.filter(function (p) { return 'x' + p.gridKey === c.id; })[0];
+    if (!x) return;
+    for (var t = a; t < b + 86400; t += 86400) {
+      var d = new Date(t * 1000).toISOString().slice(0, 10);
+      if (x.days[d]) continue;
+      x.days[d] = 1;
+      plexQueue.push([x, d]);
+    }
+    pumpPlex();
+  }
+  function pumpPlex() {
+    while (plexBusy < 4 && plexQueue.length) {
+      var job = plexQueue.shift(), x = job[0];
+      plexBusy++;
+      getJSON('https://epg.provider.plex.tv/grid?channelGridKey=' + x.gridKey + '&date=' + job[1] + '#h=' + encodeURIComponent('X-Plex-Token:' + plexTok)).then(function (x) { return function (j) {
+        var seen = {};
+        x.events.forEach(function (e) { seen[e.s] = 1; });
+        (j.MediaContainer.Metadata || []).forEach(function (m) {
+          (m.Media || []).forEach(function (md) {
+            var s = md.beginsAt, e = md.endsAt;
+            if (!s || !e || seen[s]) return;
+            seen[s] = 1;
+            x.events.push({ s: s, e: e, t: m.grandparentTitle || m.title, sub: m.grandparentTitle ? m.title : (m.year ? String(m.year) : ''), desc: m.summary || '', img: m.thumb || '' });
+          });
+        });
+        x.events.sort(function (a, b) { return a.s - b.s; });
+      }; }(x)).catch(function () {}).then(function () { plexBusy--; pumpPlex(); clearTimeout(plexDraw); plexDraw = setTimeout(function () { if (view === 'guide') renderGuide(); }, 300); });
+    }
+  }
+  var plexDraw = null;
+  /** Fetch Plex listings for the rows that can be seen (on phones, the rows scrolled into view). */
+  function plexOnScreen() {
+    if (!plex.length || !chans.length) return;
+    var from, to;
+    if (TOUCH) { var rh = innerHeight * 0.063, top = $('rows').scrollTop; from = Math.max(0, Math.floor(top / rh) - 6); to = from + Math.ceil($('rows').clientHeight / rh) + 12; }
+    else { from = rTop; to = rTop + Math.ceil($('rows').clientHeight / (innerHeight * 0.063)) + 2; }
+    for (var i = from; i < Math.min(chans.length, to); i++) if (chans[i].play === 'plex') plexListings(chans[i], ws, ws + SPAN);
+  }
+  /** Names that differ only in "TV", "Channel", "by …" and so on count as the same channel. */
+  function dupKey(n) {
+    return String(n).toLowerCase().replace(/\(.*?\)/g, '').replace(/powered by.*$/, '').replace(/ by [a-z0-9&+.' ]+$/, '')
+      .replace(/\b(pluto ?tv|samsung|tv|channel|uk|hd|the|plus)\b/g, '').replace(/[^a-z0-9]/g, '');
+  }
+
   function buildChans() {
     var out = [];
     var region = settings.bbc1, two = /Wales/.test(region) ? 'BBC Two Wales' : /NI$/.test(region) ? 'BBC Two NI' : 'BBC Two';
@@ -276,8 +354,20 @@ var app = (function () {
       var name = n.replace(/^BBC One .*/, 'BBC One').replace(/^BBC Two (Wales|NI)$/, 'BBC Two');
       out.push({ sec: 'Freeview channels', id: 'f' + id, name: name, svc: info.svc, live: info.live, events: c.events });
     });
+    var seen = {};
+    out.forEach(function (c) { seen[dupKey(c.name)] = 1; });
     pluto.forEach(function (c) {
+      seen[dupKey(c.name)] = 1;
       out.push({ sec: 'Pluto TV', id: 'p' + c.slug, pid: c.id, num: c.num, name: c.name, svc: 'pluto', live: 'https://pluto.tv/en/live-tv/' + c.id + '\nhttps://pluto.tv/live-tv/' + c.slug, events: c.events, cat: c.cat });
+    });
+    [['Samsung TV Plus', samsung, 'samsung', 'SAMSUNG TV PLUS'], ['Plex', plex, 'plex', 'PLEX']].forEach(function (g) {
+      if (settings.hide[g[0]]) return;
+      g[1].forEach(function (c) {
+        var k = dupKey(c.name);
+        if (!k || seen[k] || /^pluto tv/i.test(c.name)) return;
+        seen[k] = 1;
+        out.push({ sec: g[0], id: c.id, name: c.name, num: c.num, svc: '', play: g[2], playName: g[3], url: c.url, events: c.events });
+      });
     });
     if (settings.pay) sky.list.forEach(function (c) {
       out.push({ sec: c.sec, id: 's' + c.sid, name: c.name, svc: c.svc, live: '', pay: true, events: sky.ev[c.sid].list });
@@ -299,6 +389,7 @@ var app = (function () {
       status('guide', false);
       render();
       // pay channels after the free ones are showing
+      Promise.all([loadSamsung(), loadPlex()]).then(function () { buildChans(); buildFilmsOnTV(); render(); });
       if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); return Promise.all([loadSkyDay(0), loadSkyDay(1)]); }).then(function () { render(); });
     });
   }
@@ -549,7 +640,7 @@ var app = (function () {
   /** A guide programme as a list item. */
   function progItem(c, e) {
     return { src: 'tv', svc: c.svc, title: e.t, sub: c.name + ' · ' + dayWord(e.s) + ' ' + clock(e.s), desc: e.sub || e.desc || '', img: e.img,
-      s: e.s, e: e.e, ch: c.id, chName: c.name, url: e.od || '', live: c.live };
+      s: e.s, e: e.e, ch: c.id, chName: c.name, url: e.od || '', live: c.live, play: c.play };
   }
 
   // ---------------------------------------------------------------- times
@@ -567,15 +658,20 @@ var app = (function () {
 
   // ---------------------------------------------------------------- Pluto TV in Free TV's own player
   function canPlayPluto() { return settings.plutoInApp && window.Native && Native.playPluto; }
+  /** Play a channel in Free TV's player; ▲ ▼ there moves through the other channels from the same service. */
   function playPlutoChannel(chId) {
-    var now = nowSec(), list = [], at = 0;
+    var now = nowSec(), list = [], at = -1, me = chans.filter(function (c) { return c.id === chId; })[0];
+    if (!me) return false;
+    var kind = me.play || 'pluto', ids = {};
     chans.forEach(function (c) {
-      if (c.svc !== 'pluto' || !c.pid || c.sec === 'Favourites' && list.some(function (x) { return x.id === c.pid; })) return;
-      if (list.some(function (x) { return x.id === c.pid; })) return;
-      if (c.id === chId) at = list.length;
-      list.push({ id: c.pid, name: c.name, num: c.num || 0, ev: c.events.filter(function (e) { return e.e > now && e.s < now + 6 * 3600; }).map(function (e) { return [e.s, e.e, e.t]; }) });
+      if ((c.play || (c.svc === 'pluto' && c.pid ? 'pluto' : '')) !== kind || ids[c.id]) return;
+      ids[c.id] = 1;
+      if (c.id === chId && at < 0) at = list.length;
+      list.push({ id: c.pid || c.id, name: c.name, num: c.num || 0, url: c.url || '', ua: kind === 'samsung' ? 'okhttp/4.12.0' : '', svc: c.playName || 'PLUTO TV',
+        ev: c.events.filter(function (e) { return e.e > now && e.s < now + 6 * 3600; }).map(function (e) { return [e.s, e.e, e.t]; }) });
     });
-    if (!list.length) return false;
+    if (!list.length || !(window.Native && Native.playPluto)) return false;
+    if (at < 0) at = 0;
     Native.playPluto(JSON.stringify(list), at);
     return true;
   }
@@ -615,6 +711,7 @@ var app = (function () {
     if (it.src === 'tv') {
       if (it.s <= now && it.e > now) {
         if (it.svc === 'pluto' && canPlayPluto() && playPlutoChannel(it.ch)) return;
+        if (it.play && playPlutoChannel(it.ch)) { logOpen(it); return; }
         var hl = helperFor(it.svc, 'live', it.chName);
         openIn(it.svc, it.live, '', hl ? '' : it.chName);
         if (hl) toast('Opening ' + it.chName + ' in ' + SVC[it.svc].name + '…');
@@ -844,20 +941,21 @@ var app = (function () {
           '<div class="bt">' + esc(p.t) + '</div><div class="bl">' + esc(p.sub || clock(p.s)) + '</div>' + (ic ? '<span class="ic">' + ic + '</span>' : '') +
           (live ? '<div class="pg" style="width:' + Math.round((now - p.s) / (p.e - p.s) * 100) + '%"></div>' : '') + '</div>';
       });
-      var sv = c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
+      var sv = c.play ? 'Plays here' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
       h += '<div class="grow' + (ci === gRow && rowSel ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
-        '<div class="sv' + (c.svc ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline">' + blocks +
+        '<div class="sv' + (c.svc || c.play ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline">' + blocks +
         (now >= ws && now < ws + SPAN ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div>';
     }
     box.innerHTML = h;
     if (TOUCH) box.scrollTop = keepScroll;
     var ch = chans[gRow];
-    $('gChan').textContent = ch.name + '  ·  ' + (ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
+    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
+    plexOnScreen();
     if (fp) {
       $('gTitle').textContent = fp.t;
       var live = fp.s <= now && fp.e > now, past = fp.e <= now, rem = reminders.some(function (r) { return r.item.ch === ch.id && r.item.s === fp.s; });
       $('gWhen').textContent = dayWord(fp.s) + ' ' + clock(fp.s) + ' – ' + clock(fp.e) +
-        (live ? (ch.svc ? '  ·  OK to watch live' : '') : past ? (fp.od ? '  ·  OK to catch up' : '') : rem ? '  ·  🔔 reminder set' : '  ·  OK to set a reminder');
+        (live ? (ch.svc || ch.play ? '  ·  OK to watch live' : '') : past ? (fp.od ? '  ·  OK to catch up' : '') : rem ? '  ·  🔔 reminder set' : '  ·  OK to set a reminder');
       $('gDesc').textContent = fp.desc && fp.sub ? fp.sub + ' – ' + fp.desc : fp.sub || fp.desc || '';
       $('gImg').style.backgroundImage = fp.img ? 'url("' + fp.img + '")' : '';
     } else { $('gTitle').textContent = 'No information'; $('gWhen').textContent = ''; $('gDesc').textContent = ''; $('gImg').style.backgroundImage = ''; }
@@ -882,8 +980,9 @@ var app = (function () {
     else if (k === 'ok') {
       var c = chans[gRow];
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
-      if (fp && c && (c.svc || fp.e <= now)) openItem(progItem(c, fp));
+      if (fp && c && (c.svc || c.play || fp.e <= now)) openItem(progItem(c, fp));
       else if (c && c.svc === 'pluto' && canPlayPluto() && playPlutoChannel(c.id)) {}
+      else if (c && c.play && playPlutoChannel(c.id)) {}
       else if (c && c.svc) { var hl = helperFor(c.svc, 'live', c.name); openIn(c.svc, c.live, '', hl ? '' : c.name); }
       else if (c && c.pay) toast(c.name + ' is a pay channel – Free TV can only remind you about it');
       else if (fp && c) openItem(progItem(c, fp));
@@ -1385,10 +1484,15 @@ var app = (function () {
   function showMenu(row) {
     var opts = [], H = settings.hide;
     var add = function (key, label) {
-      opts.push({ label: label, tick: !H[key], fn: function (p) { if (H[key]) delete H[key]; else H[key] = 1; saveSettings(); buildChans(); buildFilmsOnTV(); od = []; buildOD(); odSrc = 0; odCat = 0; odRow = 0; showMenu(p.row); } });
+      opts.push({ label: label, tick: !H[key], fn: function (p) { if (H[key]) delete H[key]; else H[key] = 1; saveSettings();
+        if (key === 'Samsung TV Plus' && !H[key] && !samsung.length) loadSamsung().then(function () { buildChans(); render(); });
+        if (key === 'Plex' && !H[key] && !plex.length) loadPlex().then(function () { buildChans(); render(); });
+        buildChans(); buildFilmsOnTV(); od = []; buildOD(); odSrc = 0; odCat = 0; odRow = 0; showMenu(p.row); } });
     };
     add('Freeview channels', 'Guide: Freeview channels');
     add('Pluto TV', 'Guide: Pluto TV channels');
+    add('Samsung TV Plus', 'Guide: Samsung TV Plus channels');
+    add('Plex', 'Guide: Plex channels');
     if (settings.pay) ['Pay TV – entertainment', 'Pay TV – films', 'Pay TV – sport', 'Pay TV – kids'].forEach(function (x) { add(x, 'Guide: ' + x); });
     add('bbc', 'On Demand: BBC iPlayer');
     add('pluto', 'On Demand: Pluto TV');
@@ -1511,6 +1615,8 @@ var app = (function () {
     }
     renderGuide();
   }
+  var scrollT = null;
+  $('rows').addEventListener('scroll', function () { clearTimeout(scrollT); scrollT = setTimeout(plexOnScreen, 250); }, { passive: true });
   var sw = null;
   $('rows').addEventListener('touchstart', function (e) { var t = e.touches[0]; sw = { x: t.clientX, y: t.clientY }; }, { passive: true });
   $('rows').addEventListener('touchend', function (e) {
