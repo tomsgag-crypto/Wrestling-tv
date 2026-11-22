@@ -60,12 +60,14 @@ var app = (function () {
     return false;
   }
   /** what: a title to search for inside the app if no link goes straight to it (quotes are stripped for the search). */
-  function openIn(svc, url, what) {
+  function openIn(svc, url, what, channel) {
     var s = SVC[svc];
     if (!window.Native) { if (url) window.open(url); return; }
-    var q = (what || '').replace(/^"|"$/g, '');
+    var q = channel ? '' : (what || '').replace(/^"|"$/g, '');
     var r = Native.open2 ? Native.open2(s ? s.app : svc, url || '', s ? s.store : '', q) : Native.open(s ? s.app : svc, url || '', s ? s.store : '');
     if (r === 'search') { toast('Searching ' + s.name + ' for "' + q + '"'); return; }
+    // apps that only open their channel list or home page: say which channel to pick
+    if (channel && (r === 'app' || (r === 'link' && /^(itv|pluto|u)$/.test(svc)))) { toast('Opened ' + s.name + ' – choose ' + channel); return; }
     if (r === 'store') toast((s ? s.name : 'That app') + ' isn\'t installed – opening the Play Store');
     else if (r === 'none') toast('Couldn\'t open ' + (s ? s.name : 'that app'));
     else if (r === 'app') toast('Opened ' + s.name + (what ? ' – find ' + what + ' there' : '') + (TOUCH ? '' : '. Tip: hold OK and choose "Find on Google TV" to go straight to it'));
@@ -452,7 +454,7 @@ var app = (function () {
   function openItem(it) {
     var now = nowSec();
     if (it.src === 'tv') {
-      if (it.s <= now && it.e > now) { openIn(it.svc, it.live, ''); return; }
+      if (it.s <= now && it.e > now) { openIn(it.svc, it.live, '', it.chName); return; }
       if (it.e <= now) {
         if (it.url) openIn(it.svc, it.url, '"' + it.title + '"');
         else if (it.svc) openIn(it.svc, '', '"' + it.title + '"');
@@ -584,7 +586,7 @@ var app = (function () {
     else if (k === 'ok') {
       var c = chans[gRow];
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
-      if (fp && c) openItem(progItem(c, fp)); else if (c && c.svc) openIn(c.svc, c.live);
+      if (fp && c) openItem(progItem(c, fp)); else if (c && c.svc) openIn(c.svc, c.live, '', c.name);
       return;
     }
     else if (k === 'hold' || k === 'add') { var c2 = chans[gRow]; if (fp && c2) addMenu(progItem(c2, fp)); return; }
