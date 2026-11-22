@@ -1,0 +1,32 @@
+name: Build TV catalogue
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '47 2 * * 2'
+  push:
+    paths: ['tools/build-tv.js', 'tools/tv-shows.js', '.github/workflows/build-tv-data.yml']
+permissions:
+  contents: write
+concurrency: { group: tv-data, cancel-in-progress: true }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node tools/build-tv.js
+      - name: Publish to the movie-data branch
+        run: |
+          for try in 1 2 3; do
+            rm -rf pub
+            if git clone -q --depth 1 -b movie-data "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" pub; then :; else
+              mkdir pub && git -C pub init -q -b movie-data && git -C pub remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"; fi
+            cp out/tv.json pub/ && cd pub
+            git config user.name "tomsgag-crypto" && git config user.email "tomsgag-crypto@users.noreply.github.com"
+            git add tv.json && (git commit -qm "tv.json $(date -u +%F)" || true)
+            if git push -q origin HEAD:movie-data; then exit 0; fi
+            cd .. && sleep 10
+          done
+          exit 1

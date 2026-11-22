@@ -12,6 +12,8 @@ on:
       - 'tools/**'
       - '.github/workflows/build-movie-*.yml'
       - '.github/workflows/probe.yml'
+      - '.github/workflows/build-tv-data.yml'
+      - '.github/workflows/build-movie-data.yml'
       - '.github/workflows/build-channels-app.yml'
       - '.github/workflows/build-cartoon-app.yml'
       - '.github/workflows/build-archive-app.yml'

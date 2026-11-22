@@ -19,7 +19,14 @@ jobs:
       - run: node tools/build-movies.js
       - name: Publish to the movie-data branch
         run: |
-          mkdir pub && cp out/movies.json pub/ && cd pub
-          git init -q -b movie-data && git config user.name "tomsgag-crypto" && git config user.email "tomsgag-crypto@users.noreply.github.com"
-          git add movies.json && git commit -qm "Movie catalogue $(date -u +%F)"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" movie-data
+          for try in 1 2 3; do
+            rm -rf pub
+            if git clone -q --depth 1 -b movie-data "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" pub; then :; else
+              mkdir pub && git -C pub init -q -b movie-data && git -C pub remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"; fi
+            cp out/movies.json pub/ && cd pub
+            git config user.name "tomsgag-crypto" && git config user.email "tomsgag-crypto@users.noreply.github.com"
+            git add movies.json && (git commit -qm "movies.json $(date -u +%F)" || true)
+            if git push -q origin HEAD:movie-data; then exit 0; fi
+            cd .. && sleep 10
+          done
+          exit 1
