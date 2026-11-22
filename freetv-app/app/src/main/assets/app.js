@@ -1199,7 +1199,7 @@ var app = (function () {
     }));
     opts.push({ label: '+ Add to a new list…', fn: function () { newList(it); } });
     if (!(it.src === 'tv' && it.s > now)) opts.push(watchOpt(it));
-    if (!TOUCH && (it.src !== 'tv' || it.e <= nowSec())) opts.push({ label: 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title); } });
+    if (!TOUCH && (it.src !== 'tv' || it.s <= nowSec())) opts.push({ label: 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title); } });
     if (it.src === 'tv' && view === 'guide') {
       var ch = chans[gRow];
       if (ch) opts.push({ label: (ch.fav ? '♥ Remove ' + ch.name + ' from' : '♥ Add ' + ch.name + ' to') + ' favourite channels', fn: function () { toggleFav(ch); } });
@@ -1331,6 +1331,8 @@ var app = (function () {
 
   // ---------------------------------------------------------------- keys
   function key(k) {
+    var ae = document.activeElement;
+    if (k === 'ok' && ae && ae.tagName === 'INPUT') { ae.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return true; }
     if (k === 'resume') { refreshInstalled(); if (Date.now() - guideAt > 3 * 3600 * 1000) loadGuide(); render(); return true; }
     if (pop) { popKey(k); return true; }
     if (zone === 'tabs') {

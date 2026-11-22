@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
@@ -100,10 +101,25 @@ public class MainActivity extends Activity {
         }
     }
 
+    private long okDown = 0;
+    private boolean okHeld = false;
+
     private void js(String code) { ui.post(() -> web.evaluateJavascript(code, null)); }
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        // OK on the remote: a short press is 'ok', holding it is 'hold' (worked out here, as WebView key timing isn't reliable on TVs)
+        int kc = e.getKeyCode();
+        if (kc == KeyEvent.KEYCODE_DPAD_CENTER || kc == KeyEvent.KEYCODE_NUMPAD_ENTER || (kc == KeyEvent.KEYCODE_ENTER && e.getDeviceId() != KeyCharacterMap.VIRTUAL_KEYBOARD && !e.isFromSource(android.view.InputDevice.SOURCE_KEYBOARD))) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) { okDown = e.getEventTime(); okHeld = false; }
+                else if (!okHeld && e.getEventTime() - okDown > 650) { okHeld = true; js("app.key('hold')"); }
+            } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (!okHeld && !e.isCanceled()) js(e.getEventTime() - okDown > 650 ? "app.key('hold')" : "app.key('ok')");
+                okHeld = false;
+            }
+            return true;
+        }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
         switch (e.getKeyCode()) {
             case KeyEvent.KEYCODE_BACK:
