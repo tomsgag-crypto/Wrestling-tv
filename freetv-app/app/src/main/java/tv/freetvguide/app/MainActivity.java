@@ -46,6 +46,14 @@ public class MainActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private long lastBack = 0;
+    private static MainActivity current;
+    private boolean visible = false;
+
+    /** A reminder went off while the app is open: show it in the app as well. */
+    static void reminderFired(String id, String title, String text) {
+        MainActivity a = current;
+        if (a != null && a.visible) a.js("app.reminderDue(" + JSONObject.quote(id) + "," + JSONObject.quote(title) + "," + JSONObject.quote(text) + ")");
+    }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -62,12 +70,34 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Bridge(), "Native");
         web.loadUrl("file:///android_asset/index.html");
         web.requestFocus();
+        current = this;
+        ReminderReceiver.ensureChannel(this);
+        pendingReminder = getIntent() != null ? getIntent().getStringExtra("reminder") : null;
     }
+
+    private String pendingReminder;
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String id = intent.getStringExtra("reminder");
+        if (id != null) js("app.openReminder(" + JSONObject.quote(id) + ")");
+    }
+
+    @Override
+    protected void onPause() { super.onPause(); visible = false; }
 
     @Override
     protected void onResume() {
         super.onResume();
+        visible = true;
+        current = this;
         if (web != null) js("window.app && app.key('resume')");
+        if (pendingReminder != null) {
+            final String id = pendingReminder;
+            pendingReminder = null;
+            ui.postDelayed(() -> js("window.app && app.openReminder(" + JSONObject.quote(id) + ")"), 2500);
+        }
     }
 
     private void js(String code) { ui.post(() -> web.evaluateJavascript(code, null)); }
@@ -91,18 +121,25 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_PROG_BLUE:
                 js("app.key('guide')"); return true;
             case KeyEvent.KEYCODE_CHANNEL_UP:
-            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-            case KeyEvent.KEYCODE_MEDIA_NEXT:
                 js("app.key('pagedown')"); return true;
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
+                js("app.key('pageup')"); return true;
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+                js("app.key('ff')"); return true;
             case KeyEvent.KEYCODE_MEDIA_REWIND:
             case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
-                js("app.key('pageup')"); return true;
+                js("app.key('rw')"); return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
             case KeyEvent.KEYCODE_PROG_GREEN:
                 js("app.key('add')"); return true;
         }
         return super.dispatchKeyEvent(e);
+    }
+
+    void askForNotifications() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
+            ui.post(() -> requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7));
     }
 
     private static String readAll(InputStream in) throws Exception {
@@ -240,6 +277,23 @@ public class MainActivity extends Activity {
                 catch (Exception ignored) { }
             }
             return "none";
+        }
+
+        /** Book a reminder notification for `at` (milliseconds). */
+        @JavascriptInterface
+        public void remind(String id, double at, String title, String text) {
+            ReminderReceiver.schedule(MainActivity.this, id, (long) at, title, text);
+            askForNotifications();
+        }
+
+        @JavascriptInterface
+        public void unremind(String id) { ReminderReceiver.cancel(MainActivity.this, id); }
+
+        @JavascriptInterface
+        public boolean notificationsAllowed() {
+            if (android.os.Build.VERSION.SDK_INT >= 33)
+                return checkSelfPermission("android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED;
+            return true;
         }
 
         /** Link tester: send exactly this one link to the app. */
