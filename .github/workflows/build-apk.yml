@@ -8,6 +8,8 @@ on:
       - 'channels-app/**'
       - 'movie-channels-app/**'
       - 'movie-archive-app/**'
+      - 'freetv-app/**'
+      - '.github/workflows/build-free-tv.yml'
       - 'shared/**'
       - 'tools/**'
       - '.github/workflows/build-movie-*.yml'
