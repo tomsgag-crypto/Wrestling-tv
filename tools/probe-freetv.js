@@ -18,7 +18,7 @@ async function j(url, opts) { const r = await fetch(url, opts); const t = await 
     log('sample event', JSON.stringify(P[0].events[3]).slice(0, 900));
   }
   // other regions?
-  for (const nid of [64257, 12339, 9018]) { const r = await j('https://www.freely.co.uk/api/tv-guide?nid=' + nid + '&start=' + day); log('nid', nid, r.s, r.j ? r.j.data.programs.length + ' channels ' + r.j.data.programs[0].title : r.t); }
+  for (const nid of [64257, 12339, 9018]) { const r = await j('https://www.freely.co.uk/api/tv-guide?nid=' + nid + '&start=' + day); log('nid', nid, r.s, JSON.stringify(r.j ? (r.j.data && r.j.data.programs ? r.j.data.programs.length + ' channels ' + (r.j.data.programs[0] || {}).title : r.j) : r.t).slice(0, 200)); }
   // BBC iPlayer
   for (const u of ['https://ibl.api.bbci.co.uk/ibl/v1/categories', 'https://ibl.api.bbci.co.uk/ibl/v1/categories/films/programmes?page=1&per_page=5&sort=title',
     'https://ibl.api.bbci.co.uk/ibl/v1/categories/films/highlights?lang=en&rights=web&availability=available', 'https://ibl.api.bbci.co.uk/ibl/v1/channels']) {
