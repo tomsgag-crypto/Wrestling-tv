@@ -4,44 +4,27 @@ const uuid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => 
 async function t(u, o) { try { const r = await fetch(u, o); const b = Buffer.from(await r.arrayBuffer()); return { s: r.status, h: r.headers, b, url: r.url }; } catch (e) { return { s: 'ERR ' + e.message, b: Buffer.from('') }; } }
 (async () => {
   const j = JSON.parse(zlib.gunzipSync((await t('https://i.mjh.nz/SamsungTVPlus/.channels.json.gz')).b).toString());
-  out.push('headers ' + JSON.stringify(j.headers));
-  const gb = j.regions.gb.channels, ks = Object.keys(gb);
-  const tally = {};
-  for (const k of ks.filter((_, i) => i % 9 === 0).slice(0, 30)) {
-    const m = await t('https://jmp2.uk/stvp-' + k, { headers: j.headers || {} });
-    const txt = m.b.toString();
-    const v = /^(?!#)(\S+)$/m.exec(txt);
-    let key = '';
-    if (v) { const vv = await t(new URL(v[1], m.url).href, { headers: j.headers || {} }); const vt = vv.b.toString(); key = (/#EXT-X-KEY:[^\n]*/.exec(vt) || /#EXT-X-SESSION-KEY:[^\n]*/.exec(txt) || ['none'])[0].slice(0, 120) + ' seg:' + vv.s; }
-    const sk = (/#EXT-X-SESSION-KEY:[^\n]*/.exec(txt) || [''])[0].slice(0, 100);
-    out.push(gb[k].name + ' | master ' + m.s + ' ' + m.url.slice(8, 50) + ' | ' + key + ' ' + sk);
-    const kind = /METHOD=SAMPLE-AES|widevine|KEYFORMAT/i.test(key + sk) ? 'drm' : /AES-128/.test(key) ? 'aes' : /none/.test(key) ? 'clear' : 'other';
-    tally[kind] = (tally[kind] || 0) + 1;
-  }
-  out.push('tally ' + JSON.stringify(tally));
-  // Plex
+  const gb = j.regions.gb.channels; const keys = {};
+  Object.values(gb).forEach(c => Object.keys(c).forEach(k => keys[k] = (keys[k] || 0) + 1));
+  out.push('samsung keys ' + JSON.stringify(keys));
+  const drm = Object.entries(gb).filter(([k, c]) => c.license_url || c.drm || c.licence_url);
+  out.push('with licence ' + drm.length + ': ' + drm.map(([k, c]) => c.name).join(' | '));
+  out.push('groups ' + [...new Set(Object.values(gb).map(c => c.group))].join(' | '));
+  out.push('all names: ' + Object.values(gb).map(c => c.name).join(' | '));
+  out.push('programs sample ' + JSON.stringify(Object.values(gb)[3].programs.slice(0, 4)) + ' count ' + Object.values(gb)[3].programs.length);
   const id = uuid();
-  for (const host of ['https://clients.plex.tv', 'https://plex.tv']) {
-    const r = await t(host + '/api/v2/users/anonymous', { method: 'POST', headers: { Accept: 'application/json', 'X-Plex-Product': 'Plex Mediaverse', 'X-Plex-Client-Identifier': id, 'X-Plex-Version': '1.0.0', 'X-Plex-Platform': 'Chrome', 'X-Plex-Device': 'Linux', 'X-Plex-Provider-Version': '7.2' } });
-    out.push('plex anon ' + host + ' ' + r.s + ' ' + r.b.toString().slice(0, 200));
-    let tok = ''; try { tok = JSON.parse(r.b.toString()).authToken; } catch (e) {}
-    if (!tok) continue;
-    for (const u of ['https://epg.provider.plex.tv/lineups/plex/channels', 'https://epg.provider.plex.tv/lineups/plex/channels?X-Plex-Token=' + tok]) {
-      const c = await t(u, { headers: { Accept: 'application/json', 'X-Plex-Token': tok } });
-      out.push('channels ' + c.s + ' ' + c.b.length + ' ' + c.b.toString().slice(0, 600));
-      try {
-        const ch = JSON.parse(c.b.toString()).MediaContainer.Channel;
-        out.push('count ' + ch.length + ': ' + ch.slice(0, 30).map(x => x.title).join(' | '));
-        const key = ch[0].Media[0].Part[0].key;
-        const s = await t('https://epg.provider.plex.tv' + key + '?X-Plex-Token=' + tok);
-        const st = s.b.toString(); out.push('stream ' + s.s + ' ' + st.slice(0, 400));
-        const v = /^(?!#)(\S+)$/m.exec(st);
-        if (v) { const vv = await t(new URL(v[1], s.url).href); out.push('variant ' + vv.s + ' ' + vv.b.toString().slice(0, 400)); }
-        break;
-      } catch (e) { out.push('err ' + e.message); }
-    }
-    break;
+  const r = await t('https://clients.plex.tv/api/v2/users/anonymous', { method: 'POST', headers: { Accept: 'application/json', 'X-Plex-Product': 'Plex Mediaverse', 'X-Plex-Client-Identifier': id, 'X-Plex-Version': '1.0.0' } });
+  const tok = JSON.parse(r.b.toString()).authToken;
+  const H = { Accept: 'application/json', 'X-Plex-Token': tok };
+  const c = JSON.parse((await t('https://epg.provider.plex.tv/lineups/plex/channels', { headers: H })).b.toString()).MediaContainer.Channel;
+  out.push('plex channel keys ' + Object.keys(c[0]).join(',') + ' sample ' + JSON.stringify(c[0]).slice(0, 800));
+  const day = new Date().toISOString().slice(0, 10);
+  for (const u of ['https://epg.provider.plex.tv/grid?channelGridKey=' + c[0].gridKey + '&date=' + day,
+                   'https://epg.provider.plex.tv/grid?channelGridKey=' + c.slice(0, 3).map(x => x.gridKey).join(',') + '&date=' + day,
+                   'https://epg.provider.plex.tv/grid?type=1,4&date=' + day]) {
+    const g = await t(u, { headers: H });
+    out.push('GRID ' + u.slice(30, 160) + ' -> ' + g.s + ' ' + g.b.length + ' ' + g.b.toString().slice(0, 1500));
   }
   fs.mkdirSync('probe', { recursive: true });
   fs.writeFileSync('probe/fast.txt', out.join('\n'));
-})();
+})().catch(e => { fs.mkdirSync('probe', { recursive: true }); fs.writeFileSync('probe/fast.txt', out.join('\n') + '\nERR ' + e.stack); });
