@@ -167,11 +167,14 @@ var app = (function () {
     });
   }
   /** Day d (0 = today … 7) of the Freeview guide; each day is fetched once. */
+  var dayFailed = {};
   function loadDay(d) {
     if (d < 0 || d >= DAYS) return Promise.resolve();
+    // a failed day (e.g. Freeview's listings refuse a US connection) waits 2 minutes before trying again, so the guide can't loop
+    if (!dayLoads[d] && dayFailed[d] && Date.now() - dayFailed[d] < 120000) return Promise.resolve();
     if (!dayLoads[d]) dayLoads[d] = getJSON('https://www.freely.co.uk/api/tv-guide?nid=64865&start=' + (day0 + d * 86400)).then(function (j) {
-      mergeFreely(j.data.programs);
-    }).catch(function () { delete dayLoads[d]; });
+      mergeFreely(j.data.programs); delete dayFailed[d];
+    }).catch(function () { delete dayLoads[d]; dayFailed[d] = Date.now(); });
     return dayLoads[d];
   }
   function loadFreely() {
@@ -180,7 +183,7 @@ var app = (function () {
   /** Make sure the days between two times are loaded (guide and pay channels), then redraw. */
   function ensureDays(a, b) {
     var want = [];
-    for (var d = Math.floor((a - day0) / 86400); d <= Math.floor((b - day0) / 86400); d++) if (d >= 0 && d < DAYS && (!dayLoads[d] || (settings.pay && sky.list.length && !skyLoads[d]))) want.push(d);
+    for (var d = Math.floor((a - day0) / 86400); d <= Math.floor((b - day0) / 86400); d++) if (d >= 0 && d < DAYS && ((!dayLoads[d] && !(dayFailed[d] && Date.now() - dayFailed[d] < 120000)) || (settings.pay && sky.list.length && !skyLoads[d]))) want.push(d);
     if (!want.length) return;
     status('guide', true);
     Promise.all(want.map(function (d) { return Promise.all([loadDay(d), settings.pay ? loadSkyDay(d) : null]); })).then(function () {
@@ -363,8 +366,8 @@ var app = (function () {
   /** Virgin's listings come in 6-hour blocks; fetch the ones on screen. */
   function virginListings(a, b) {
     if (!virgin.length) return;
-    for (var t = Math.floor(a / 21600) * 21600; t < b; t += 21600) {
-      if (vSegs[t]) continue;
+    for (var t0 = Math.floor(a / 21600) * 21600; t0 < b; t0 += 21600) (function (t) {
+      if (vSegs[t] && (vSegs[t] === 1 || Date.now() - vSegs[t] < 120000)) return;   // loaded, loading, or failed in the last 2 minutes
       vSegs[t] = 1;
       var d = new Date(t * 1000), key = d.getUTCFullYear() + ('0' + (d.getUTCMonth() + 1)).slice(-2) + ('0' + d.getUTCDate()).slice(-2) + ('0' + d.getUTCHours()).slice(-2) + '0000';
       getJSON(VEPG + key).then(function (j) {
@@ -378,8 +381,8 @@ var app = (function () {
         });
         if (view === 'guide') renderGuide();
         buildFilmsOnTV();
-      }).catch(function () { delete vSegs[t]; });
-    }
+      }).catch(function () { vSegs[t] = Date.now(); });
+    })(t0);
   }
 
   /** Names that differ only in "TV", "Channel", "by …" and so on count as the same channel. */

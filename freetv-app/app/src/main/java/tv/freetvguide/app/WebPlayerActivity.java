@@ -270,7 +270,7 @@ public class WebPlayerActivity extends Activity {
         return true;
     }
     private String spaUrl = "";
-    private final Runnable spaFallback = () -> { if (web != null && !watching() && find != null) web.loadUrl(spaUrl); };
+    private final Runnable spaFallback = () -> { if (web != null && !watching() && this.find != null) web.loadUrl(spaUrl); };
     private long lastToggle = 0;
     private void togglePause() {
         long now = android.os.SystemClock.uptimeMillis();
