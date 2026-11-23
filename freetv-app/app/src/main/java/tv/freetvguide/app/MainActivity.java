@@ -45,6 +45,8 @@ import java.util.regex.Pattern;
 public class MainActivity extends Activity {
 
     private WebView web;
+    static String zapList = "[]", pendingZap = null;   // the guide's channels for the player's mini guide; a channel picked there
+    static int zapIndex = 0;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private long lastBack = 0;
@@ -154,6 +156,7 @@ public class MainActivity extends Activity {
         visible = true;
         current = this;
         if (web != null) js("window.app && app.key('resume')");
+        if (web != null && pendingZap != null) { String z = pendingZap; pendingZap = null; ui.postDelayed(() -> js("window.app && app.zap(" + org.json.JSONObject.quote(z) + ")"), 300); }
         if (pendingReminder != null) {
             final String id = pendingReminder;
             pendingReminder = null;
@@ -468,6 +471,8 @@ public class MainActivity extends Activity {
         public String virginOwned() { return getSharedPreferences("player", MODE_PRIVATE).getString("owned", ""); }
         /** Open Virgin TV Go briefly to read which channels you have. */
         /** Check your Virgin package in the background (no screen). */
+        @JavascriptInterface
+        public void setZap(String json, int index) { zapList = json; zapIndex = index; }
         @JavascriptInterface
         public void virginSyncQuiet() { ui.post(MainActivity.this::quietVirginSync); }
         @JavascriptInterface

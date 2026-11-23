@@ -1292,6 +1292,26 @@ var app = (function () {
       $('gImg').style.backgroundImage = fp.img ? 'url("' + fp.img + '")' : '';
     } else { $('gTitle').textContent = 'No information'; $('gWhen').textContent = ''; $('gDesc').textContent = ''; $('gImg').style.backgroundImage = ''; }
   }
+  /** The channel list the player's ▲▼ mini guide flicks through (the guide as it's filtered now). */
+  function setZap() {
+    if (!window.Native || !Native.setZap) return;
+    var now = nowSec(), seen = {}, list = [], idx = 0;
+    chans.forEach(function (c, i) {
+      if (seen[c.id]) return; seen[c.id] = 1;
+      var ev = c.events.filter(function (e) { return e.e > now; }).slice(0, 2);
+      if (i === gRow) idx = list.length;
+      list.push({ id: c.id, name: c.name, sec: c.sec, now: ev[0] && ev[0].s <= now ? ev[0].t : '', next: ev[0] && ev[0].s > now ? clock(ev[0].s) + ' ' + ev[0].t : ev[1] ? clock(ev[1].s) + ' ' + ev[1].t : '' });
+    });
+    Native.setZap(JSON.stringify(list), idx);
+  }
+  /** Watch another channel picked in the player's mini guide. */
+  function zap(id) {
+    for (var i = 0; i < chans.length; i++) if (chans[i].id === id) {
+      view = 'guide'; zone = 'main'; gZone = 'rows'; gRow = i; rTop = Math.max(0, i - 2); gT = nowSec();
+      render(); guideKey('ok'); return;
+    }
+    toast('That channel isn\'t in the guide any more');
+  }
   function guideKey(k) {
     var now = nowSec(), fp = focused();
     if (gZone === 'days') {
@@ -1315,6 +1335,7 @@ var app = (function () {
     else if (k === 'ok' && mini && chans[gRow] && chans[gRow].id === mini.gid && (!fp || fp.s <= now)) { Native.miniFull(); return; }
     else if (k === 'ok') {
       var c = chans[gRow];
+      if (c && (!fp || fp.s <= now)) setZap();
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
       if (fp && c && (c.svc || c.play || fp.e <= now || ((c.pay || c.vid) && settings.virgin))) openItem(progItem(c, fp));
@@ -2140,5 +2161,5 @@ var app = (function () {
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
-  return { key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
+  return { zap: zap, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();

@@ -62,7 +62,7 @@ public class WebPlayerActivity extends Activity {
                 if (r.contains("buffering")) lastBuffer = now2;
                 // Sky says it's behind live after buffering (and you didn't pause it): restart the channel at live, like a quality change does
                 if (r.contains("behind") && !userPaused && now2 - lastToggle > 300000 && now2 - lastBuffer < 120000) behindSecs++; else if (!r.contains("behind")) behindSecs = 0;
-                if (behindSecs >= 15 && now2 - lastLiveReload > 90000) {
+                if (behindSecs >= 5 && now2 - lastLiveReload > 60000) {
                     behindSecs = 0; lastLiveReload = now2;
                     applyQuality(); cover.setText("Catching up to live…");
                     return;
@@ -174,6 +174,37 @@ public class WebPlayerActivity extends Activity {
             float x = n == 0 ? cx : cx + col[(n - 1) % 3] * d, y = cy + (n == 0 ? row[3] : row[(n - 1) / 3]) * d;
             ui.postDelayed(() -> tap(x, y), 1800 + i * 700L);
         }
+    }
+    // ---- mini guide: ▲▼ shows what's on the channels above and below; OK watches it
+    private android.widget.TextView zapBox;
+    private boolean zapOn = false;
+    private int zapAt = -1;
+    private org.json.JSONArray zapArr;
+    private final Runnable zapHide = this::hideZap;
+    private void moveZap(int dir) {
+        try { if (zapArr == null) zapArr = new org.json.JSONArray(MainActivity.zapList); } catch (Exception x) { zapArr = new org.json.JSONArray(); }
+        int n = zapArr.length();
+        if (n == 0) { android.widget.Toast.makeText(this, "Open channels from the TV guide to flick through them here", android.widget.Toast.LENGTH_SHORT).show(); return; }
+        if (zapAt < 0) zapAt = MainActivity.zapIndex;
+        zapAt = ((zapAt + dir) % n + n) % n;
+        org.json.JSONObject c = zapArr.optJSONObject(zapAt);
+        if (c == null) return;
+        String now = c.optString("now"), next = c.optString("next");
+        zapBox.setText(android.text.Html.fromHtml("<small>" + android.text.TextUtils.htmlEncode(c.optString("sec")) + "  ·  ▲▼ more channels  ·  OK watch  ·  Back stay here</small><br><big><b>"
+            + android.text.TextUtils.htmlEncode(c.optString("name")) + "</b></big>"
+            + (now.isEmpty() ? "" : "<br>Now: " + android.text.TextUtils.htmlEncode(now)) + (next.isEmpty() ? "" : "<br>Next: " + android.text.TextUtils.htmlEncode(next))));
+        zapBox.setVisibility(View.VISIBLE); zapBox.bringToFront(); zapOn = true;
+        ui.removeCallbacks(zapHide); ui.postDelayed(zapHide, 8000);
+    }
+    private void hideZap() { zapOn = false; zapAt = -1; if (zapBox != null) zapBox.setVisibility(View.GONE); ui.removeCallbacks(zapHide); }
+    private void goZap() {
+        int at = zapAt;
+        org.json.JSONObject c = zapArr == null || at < 0 ? null : zapArr.optJSONObject(at);
+        hideZap();
+        if (c == null) return;
+        MainActivity.pendingZap = c.optString("id");
+        MainActivity.zapIndex = at;
+        finish();
     }
     private long lastToggle = 0;
     private void togglePause() {
@@ -518,6 +549,11 @@ public class WebPlayerActivity extends Activity {
         root.addView(cover, new FrameLayout.LayoutParams(-1, -1));
         cursor = new CursorView(this);
         root.addView(cursor, new FrameLayout.LayoutParams(-1, -1));
+        zapBox = new android.widget.TextView(this);
+        zapBox.setTextColor(0xFFFFFFFF); zapBox.setBackgroundColor(0xE6101830); zapBox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18);
+        zapBox.setPadding(40, 24, 40, 28); zapBox.setVisibility(View.GONE);
+        FrameLayout.LayoutParams zl = new FrameLayout.LayoutParams(-1, -2); zl.gravity = android.view.Gravity.BOTTOM;
+        root.addView(zapBox, zl);
         stats = new android.widget.TextView(this);
         stats.setTextColor(0xFFFFFFFF); stats.setBackgroundColor(0x99000000); stats.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
         stats.setPadding(12, 6, 12, 6); stats.setVisibility(View.GONE);
@@ -607,9 +643,17 @@ public class WebPlayerActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
-        if (watching() && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN)) {
+        if (watching() && zapOn && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) goZap();
+            return true;
+        }
+        if (watching() && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_CHANNEL_UP || k == KeyEvent.KEYCODE_CHANNEL_DOWN)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) moveZap(k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1);
+            return true;
+        }
+        if (watching() && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                if (k == KeyEvent.KEYCODE_DPAD_UP) qualityMenu();
+                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (onSky()) qualityMenu(); }
                 else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
             }
             return true;
@@ -637,6 +681,7 @@ public class WebPlayerActivity extends Activity {
             return true;
         }
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && e.getAction() == KeyEvent.ACTION_UP) {
+            if (zapOn) { hideZap(); return true; }
             if (watching()) { finish(); return true; }
             if (find != null) { web.evaluateJavascript(DUMP, d -> { lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""); finish(); }); return true; }
             String u = web.getUrl();
