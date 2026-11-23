@@ -109,7 +109,10 @@ public class WebPlayerActivity extends Activity {
         "var W=innerWidth,c=window.__ftvC=window.__ftvC||{st:0,n:0};c.n++;" +
         "if(!/watchtv/.test(location.pathname)){if(c.n%3===1)return JSON.stringify({act:'tap',x:50,y:202,why:'live tv (by position)'+info});return JSON.stringify({act:'wait',why:'opening live tv'+info});}" +
         "if(c.st===0){c.st=1;return JSON.stringify({act:'type',x:W-140,y:136,text:T.split('|')[0].replace(/\\s*HD$/i,''),why:'searching (by position)'+info});}" +
-        "if(c.st===1){c.st=2;return JSON.stringify({act:'wait',why:'waiting for the result'+info});}" +
+        "var nm0=T.split('|')[0].replace(/\\s*HD$/i,'').toLowerCase(),typedOk=qa('input,textarea').some(function(e){return (e.value||'').toLowerCase().indexOf(nm0.slice(0,3))>=0;});" +
+        "if(c.st===1){if(typedOk){c.st=2;return JSON.stringify({act:'wait',why:'found the channel'+info});}c.tries=(c.tries||0)+1;" +
+        "if(c.tries%3===0&&c.tries<12)return JSON.stringify({act:'type',x:W-140,y:136,text:T.split('|')[0].replace(/\\s*HD$/i,''),why:'searching again (by position)'+info});" +
+        "return JSON.stringify({act:'wait',why:'typing the channel name · boxes='+qa('input,textarea').length+info});}" +
         "if(c.st===2){c.st=3;var tw=(W-200)/2;return JSON.stringify({act:'tap',x:140+tw/2,y:174+Math.min(120,(innerHeight-174)/2),why:'channel (by position)'+info});}" +
         "if(c.st<6){c.st++;return JSON.stringify({act:'wait',why:'starting the channel'+info});}" +
         "if(c.st===6){c.st=7;var tw2=(W-200)/2;return JSON.stringify({act:'tap',x:140+tw2/2,y:174+Math.min(120,(innerHeight-174)/2),why:'channel again (by position)'+info});}" +
@@ -167,11 +170,13 @@ public class WebPlayerActivity extends Activity {
                     final String text = o.optString("text");
                     ui.postDelayed(() -> {
                         typeText(text);
+                    }, 700);
+                    ui.postDelayed(() -> {
                         // backup: put the text into the box the page is using, in case key presses didn't arrive
-                        web.evaluateJavascript("(function(t){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a.value!==t){" +
+                        web.evaluateJavascript("(function(t){var a=document.activeElement;while(a&&a.shadowRoot&&a.shadowRoot.activeElement)a=a.shadowRoot.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a.value!==t){" +
                             "var s=Object.getOwnPropertyDescriptor(a.tagName==='INPUT'?HTMLInputElement.prototype:HTMLTextAreaElement.prototype,'value').set;s.call(a,t);" +
                             "a.dispatchEvent(new InputEvent('input',{bubbles:true,data:t,inputType:'insertText'}));return 'set';}return a?a.tagName:'none';})(" + org.json.JSONObject.quote(text) + ")", null);
-                    }, 700);
+                    }, 1600);
                     next = 3000;
                 }
                 if (++steps > 45) {                                             // stuck: keep a note of the page for Claude
@@ -185,11 +190,21 @@ public class WebPlayerActivity extends Activity {
         }
     };
     /** Type like a keyboard would (the Flutter page only listens to real key presses). */
-    private void typeText(String text) {
+    private static final String BOXVAL = "(function(){var a=document.activeElement;while(a&&a.shadowRoot&&a.shadowRoot.activeElement)a=a.shadowRoot.activeElement;return a&&a.value!=null?String(a.value):'';})()";
+    /** Type like a keyboard would: first the way on-screen keyboards do, then key presses if that didn't land. */
+    private void typeText(final String text) {
         if (web == null) return;
-        android.view.KeyCharacterMap km = android.view.KeyCharacterMap.load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD);
-        KeyEvent[] evs = km.getEvents(text.toCharArray());
-        if (evs != null) for (KeyEvent e : evs) web.dispatchKeyEvent(e);
+        web.requestFocus();
+        try {
+            android.view.inputmethod.InputConnection ic = web.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            if (ic != null) { ic.commitText(text, 1); }
+        } catch (Exception ignored) { }
+        ui.postDelayed(() -> web.evaluateJavascript(BOXVAL, v -> {
+            if (v != null && v.toLowerCase().contains(text.toLowerCase().substring(0, Math.min(3, text.length())))) return;
+            android.view.KeyCharacterMap km = android.view.KeyCharacterMap.load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD);
+            KeyEvent[] evs = km.getEvents(text.toCharArray());
+            if (evs != null) for (KeyEvent e : evs) web.dispatchKeyEvent(e);
+        }), 400);
     }
 
     // Make the player fill the screen and start it, if the page hasn't already.
