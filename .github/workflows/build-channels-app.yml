@@ -28,6 +28,11 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Use the fixed signing key (so new versions install as updates)
+        env:
+          KEY: ${{ secrets.APK_KEYSTORE }}
+        run: |
+          if [ -n "$KEY" ]; then mkdir -p ~/.android && echo "$KEY" | base64 -d > ~/.android/debug.keystore && echo "fixed key in use"; else echo "no APK_KEYSTORE secret: using a throwaway key"; fi
       - name: Build APK
         run: gradle assembleRelease --no-daemon
 
