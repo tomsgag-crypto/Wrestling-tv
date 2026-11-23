@@ -65,7 +65,7 @@ var app = (function () {
     if (!window.Native) { if (url) window.open(url); return; }
     if (svc === 'bbc' && bbcWeb()) {
       var web = String(url || '').split('\n').filter(function (u) { return /^https:\/\/www\.bbc\.co\.uk\/iplayer/.test(u); })[0] || 'https://www.bbc.co.uk/iplayer';
-      Native.openWeb(web);
+      Native.openWeb(web, channel || (what || '').replace(/^"|"$/g, '') || 'BBC iPlayer');
       if (!settings.bbcWebTold) { settings.bbcWebTold = true; saveSettings(); toast('First time: sign in to your BBC account on the page – it stays signed in after that'); }
       return;
     }
