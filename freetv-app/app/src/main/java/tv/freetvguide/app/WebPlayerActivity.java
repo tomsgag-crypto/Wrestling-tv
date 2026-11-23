@@ -40,8 +40,20 @@ public class WebPlayerActivity extends Activity {
         d.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN); u.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
         web.dispatchTouchEvent(d); web.dispatchTouchEvent(u); d.recycle(); u.recycle();
     }
+    private void wheel(float x, float y, float amount) {
+        long t = android.os.SystemClock.uptimeMillis();
+        android.view.MotionEvent.PointerProperties[] pp = { new android.view.MotionEvent.PointerProperties() };
+        pp[0].id = 0; pp[0].toolType = android.view.MotionEvent.TOOL_TYPE_MOUSE;
+        android.view.MotionEvent.PointerCoords[] pc = { new android.view.MotionEvent.PointerCoords() };
+        pc[0].x = x; pc[0].y = y; pc[0].setAxisValue(android.view.MotionEvent.AXIS_VSCROLL, amount);
+        android.view.MotionEvent m = android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_SCROLL, 1, pp, pc, 0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_MOUSE, 0);
+        web.dispatchGenericMotionEvent(m);
+        m.recycle();
+    }
     private void scrollAt(float x, float y, int dy) {
+        wheel(cursor.x, cursor.y, dy > 0 ? -2f : 2f);
         float dpr = getResources().getDisplayMetrics().density;
+        if (true) return;
         web.evaluateJavascript("(function(x,y,dy){var e=document.elementFromPoint(x,y);while(e&&e!==document.body){var s=getComputedStyle(e);" +
             "if(/(auto|scroll)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight){e.scrollBy(0,dy);return;}e=e.parentElement;}window.scrollBy(0,dy);})(" +
             (x / dpr) + "," + (y / dpr) + "," + dy + ")", null);
@@ -66,11 +78,19 @@ public class WebPlayerActivity extends Activity {
         "function hit(e){var l=lab(e);return want.some(function(w){return l.indexOf(w)>=0;});}" +
         "function press(e){var c=e.closest('a,button,[role=button],[role=link],[role=gridcell],[tabindex]')||e;c.scrollIntoView({block:'center'});c.click();}" +
         "var all=[].slice.call(document.querySelectorAll('a,button,[role],img,[aria-label],[title],li,span,div'));" +
-        "var w=window.__ftv=window.__ftv||{ch:0,play:0,nav:0};" +
-        "if(w.ch<3){var c=all.filter(function(e){return vis(e)&&hit(e);})[0];if(c){w.ch++;press(c);return 'channel';}}" +
+        "var w=window.__ftv=window.__ftv||{ch:0,play:0,nav:0,now:0};" +
+        "if(w.ch<3){var c=all.filter(function(e){return vis(e)&&hit(e)&&e.tagName!=='INPUT';})[0];if(c){w.ch++;press(c);return 'channel';}}" +
+        "var q=[].slice.call(document.querySelectorAll('input')).filter(function(e){return vis(e)&&/search/i.test((e.placeholder||'')+(e.getAttribute('aria-label')||''));})[0];" +
+        "var name=T.split('|')[1]||T.split('|')[0];" +
+        "if(q&&q.value!==name&&(w.tp||0)<3){w.tp=(w.tp||0)+1;w.typed=1;w.card=0;q.focus();var set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(q,name);" +
+        "q.dispatchEvent(new Event('input',{bubbles:true}));q.dispatchEvent(new Event('change',{bubbles:true}));" +
+        "q.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'a'}));return 'typed';}" +
+        "if(w.typed&&w.typed++>3&&!w.card){var cards=all.filter(function(e){var r=e.getBoundingClientRect();return r.width>120&&r.height>60&&r.top>=(q?q.getBoundingClientRect().bottom-2:0)&&(e.querySelector('img')||/tile|card|channel/i.test(e.className));}).sort(function(a,b){var x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return x.width*x.height-y.width*y.height;});" +
+        "if(cards[0]){w.card=1;press(cards[0]);return 'card';}}" +
+        "if(!q&&w.now<2){var nt=all.filter(function(e){return vis(e)&&/^now on tv$/i.test((e.textContent||'').trim());})[0];if(nt){w.now=(w.now||0)+1;press(nt);return 'now';}}" +
         "var b=all.filter(function(e){return vis(e)&&/^(watch( live| now)?|play( live)?|start watching|watch on tv go)$/i.test(((e.getAttribute('aria-label')||'')+' '+(e.children.length<2?e.textContent:'')).trim());})[0];" +
         "if(b&&w.play<3){w.play++;press(b);return 'play';}" +
-        "if(w.nav<2){var l=all.filter(function(e){return vis(e)&&/^(live tv|tv guide|guide|channels|live)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim());})[0];if(l){w.nav++;press(l);return 'nav';}}" +
+        "if(!q&&w.nav<2){var l=all.filter(function(e){return vis(e)&&/^(live tv|tv guide|guide|channels|live)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim());})[0];if(l){w.nav++;press(l);return 'nav';}}" +
         "return 'looking';}catch(x){return 'err '+x;}})";
     private static final String DUMP = "(function(){var o=['URL '+location.href];[].slice.call(document.querySelectorAll('a,button,[role],img[alt],[aria-label],input')).slice(0,400).forEach(function(e){" +
         "var r=e.getBoundingClientRect();if(r.width<=0)return;o.push(e.tagName+' '+(e.getAttribute('role')||'')+' |'+(e.getAttribute('aria-label')||'')+'|'+(e.getAttribute('alt')||'')+'|'+String(e.children.length<3?e.textContent:'').trim().slice(0,60)+'| '+(e.getAttribute('href')||'')+' @'+Math.round(r.left)+','+Math.round(r.top));});return o.join('\\n');})()";
@@ -221,8 +241,8 @@ public class WebPlayerActivity extends Activity {
             float w = root.getWidth(), h = root.getHeight();
             if (k == KeyEvent.KEYCODE_DPAD_LEFT) cursor.x = Math.max(0, cursor.x - step);
             if (k == KeyEvent.KEYCODE_DPAD_RIGHT) cursor.x = Math.min(w - 4, cursor.x + step);
-            if (k == KeyEvent.KEYCODE_DPAD_UP) { if (cursor.y <= 8 * d) scrollAt(cursor.x, 40 * d, -(int) (h / d / 3)); cursor.y = Math.max(0, cursor.y - step); }
-            if (k == KeyEvent.KEYCODE_DPAD_DOWN) { if (cursor.y >= h - 30 * d) scrollAt(cursor.x, h - 40 * d, (int) (h / d / 3)); cursor.y = Math.min(h - 26 * d, cursor.y + step); }
+            if (k == KeyEvent.KEYCODE_DPAD_UP) { if (cursor.y <= 8 * d) wheel(cursor.x, cursor.y + 20 * d, 1.5f); cursor.y = Math.max(0, cursor.y - step); }
+            if (k == KeyEvent.KEYCODE_DPAD_DOWN) { if (cursor.y >= h - 30 * d) wheel(cursor.x, cursor.y - 20 * d, -1.5f); cursor.y = Math.min(h - 26 * d, cursor.y + step); }
             cursor.invalidate();
             return true;
         }
