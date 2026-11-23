@@ -65,6 +65,9 @@ public class WebPlayerActivity extends Activity {
                     String u0 = web.getUrl();
                     if (u0 != null && (u0.contains("itv.com/watch") || u0.contains("primevideo.com") || u0.contains("amazon.co.uk/gp/video"))) {
                         String[] pp = r.replace("\"", "").split("\\|");
+                        // a short video playing behind the loading screen is an advert break
+                        try { if (autoMode && cover.getVisibility() == View.VISIBLE && pp.length >= 3 && Double.parseDouble(pp[pp.length - 3]) > 0 && Double.parseDouble(pp[pp.length - 3]) <= 240 && "0".equals(pp[pp.length - 1].trim()))
+                            cover.setText("Adverts playing – " + getIntent().getStringExtra("title") + " starts after them…"); } catch (Exception ignored) { }
                         // a programme (over 4 minutes long, playing) – not a trailer or preview on the page
                         try { if (pp.length >= 3 && Double.parseDouble(pp[pp.length - 3]) > 240 && Double.parseDouble(pp[pp.length - 2]) > 1.5 && "0".equals(pp[pp.length - 1].trim())) {
                             autoFilled = true; fsTries = 0; tries = 0; web.evaluateJavascript("window.__ftvFillOK=1", null); ui.postDelayed(fill, 200); } } catch (Exception ignored) { }
@@ -708,7 +711,7 @@ public class WebPlayerActivity extends Activity {
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
                 if (find != null) { /* the step loop decides */ }
-                else if (autoSite(url) && autoMode && getIntent().getStringExtra("title") != null) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
+                else if (autoSite(url) && autoMode && getIntent().getStringExtra("title") != null) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 180000); }
                 else if (getIntent().getBooleanExtra("sync", false)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
                 else if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); if (find == null) { tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 2500); } } else cover.setVisibility(View.GONE);
             }
