@@ -104,6 +104,16 @@ public class WebPlayerActivity extends Activity {
         "var ph=qa('flt-semantics-placeholder')[0];" +
         "var labelled=qa('flt-semantics,a').filter(function(e){return (e.getAttribute('aria-label')||(e.querySelector('flt-semantics')?'':e.textContent)||'').trim().length>2;}).length;" +
         "var info=' · s='+qa('flt-semantics').length+' l='+labelled+(ph?' ph':'')+' '+location.pathname+(qa('flt-glass-pane').some(function(g){return g.shadowRoot;})?' shadow':'');" +
+        "if(!ph&&labelled<4&&qa('flt-glass-pane,flutter-view').length){" +
+        // no labels to read (the TV's browser): Virgin's Live TV page is laid out the same every time, so tap by position
+        "var W=innerWidth,c=window.__ftvC=window.__ftvC||{st:0,n:0};c.n++;" +
+        "if(!/watchtv/.test(location.pathname)){if(c.n%3===1)return JSON.stringify({act:'tap',x:50,y:202,why:'live tv (by position)'+info});return JSON.stringify({act:'wait',why:'opening live tv'+info});}" +
+        "if(c.st===0){c.st=1;return JSON.stringify({act:'type',x:W-140,y:136,text:T.split('|')[0].replace(/\\s*HD$/i,''),why:'searching (by position)'+info});}" +
+        "if(c.st===1){c.st=2;return JSON.stringify({act:'wait',why:'waiting for the result'+info});}" +
+        "if(c.st===2){c.st=3;var tw=(W-200)/2;return JSON.stringify({act:'tap',x:140+tw/2,y:174+Math.min(120,(innerHeight-174)/2),why:'channel (by position)'+info});}" +
+        "if(c.st<6){c.st++;return JSON.stringify({act:'wait',why:'starting the channel'+info});}" +
+        "if(c.st===6){c.st=7;var tw2=(W-200)/2;return JSON.stringify({act:'tap',x:140+tw2/2,y:174+Math.min(120,(innerHeight-174)/2),why:'channel again (by position)'+info});}" +
+        "}" +
         "if(ph&&labelled<4){window.__ftvEn=(window.__ftvEn||0)+1;try{ph.click();}catch(x){}ph.setAttribute('tabindex','0');ph.focus();var r0=ph.getBoundingClientRect();" +
         "return JSON.stringify({act:'enable',x:Math.max(0,r0.left+r0.width/2),y:Math.max(0,r0.top+r0.height/2),why:'switching on accessibility'+info});}" +
         "var lt=qa('a,flt-semantics').filter(function(e){return /^live tv\b/i.test((e.textContent||'').trim())&&!e.querySelector('a,flt-semantics')&&e.getBoundingClientRect().width>0;})[0];" +
