@@ -781,9 +781,12 @@ var app = (function () {
   /** With Virgin TV Go switched on: U channels and pay channels (not Sky Sports) open on the Virgin TV Go website inside Free TV. */
   function viaVirgin(svc, pay, name) {
     if (!settings.virgin || !window.Native || !Native.openWebFind) return false;
-    if (!(svc === 'u' || pay) || /sky sports/i.test(name)) return false;
+    if (!(svc === 'u' || pay)) return false;
     var base = name.replace(/\s*HD$/i, ''), alt = base.replace(/^U&/, '');
-    Native.openWebFind('https://virgintvgo.virginmedia.com/en/watchtv', name, [base, alt, base + ' HD', alt + ' HD'].join('|'));
+    // Virgin's own names for some channels
+    var also = [base.replace(/^Sky Cinema /i, 'Sky '), base.replace(/Premier League/i, 'PL'), base.replace(/Science Fiction|Sci-Fi & Horror|Sci-Fi\/Horror/i, 'SciFi & Hor'),
+      base.replace(/^Sky Sports Main Event$/i, 'Sky SportsMainEvent'), base.replace(/^Sky Max$/i, 'Sky One')];
+    Native.openWebFind('https://virgintvgo.virginmedia.com/en/watchtv', name, [base, alt, base + ' HD', alt + ' HD'].concat(also).join('|'));
     if (!settings.virginTold) { settings.virginTold = true; saveSettings(); toast('First time: sign in with your My Virgin Media details – it stays signed in after that'); }
     return true;
   }
@@ -1051,7 +1054,7 @@ var app = (function () {
           '<div class="bt">' + esc(p.t) + '</div><div class="bl">' + esc(p.sub || clock(p.s)) + '</div>' + (ic ? '<span class="ic">' + ic + '</span>' : '') +
           (live ? '<div class="pg" style="width:' + Math.round((now - p.s) / (p.e - p.s) * 100) + '%"></div>' : '') + '</div>';
       });
-      var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.svc === 'u') && !/sky sports/i.test(c.name) ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
+      var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.svc === 'u') ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
       h += '<div class="grow' + (ci === gRow && rowSel ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
         '<div class="sv' + (c.svc || c.play ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline">' + blocks +
         (now >= ws && now < ws + SPAN ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div>';
@@ -1059,7 +1062,7 @@ var app = (function () {
     box.innerHTML = h;
     if (TOUCH) box.scrollTop = keepScroll;
     var ch = chans[gRow];
-    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.svc === 'u') && !/sky sports/i.test(ch.name) ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
+    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.svc === 'u') ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
     plexOnScreen();
     if (fp) {
       $('gTitle').textContent = fp.t;

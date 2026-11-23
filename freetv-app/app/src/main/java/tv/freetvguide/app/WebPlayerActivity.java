@@ -101,6 +101,16 @@ public class WebPlayerActivity extends Activity {
         "function qa(sel){var out=[];(function walk(r,d){if(!r||d>6)return;out.push.apply(out,[].slice.call(r.querySelectorAll(sel)));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)walk(e.shadowRoot,d+1);});})(document,0);return out;}" +
         "var v=deep(document,0);if(v&&!v.paused&&v.currentTime>0.5)return JSON.stringify({act:'playing'});" +
         "var pw=qa('input[type=password]')[0];if(pw&&pw.getBoundingClientRect().width>0)return JSON.stringify({act:'login'});" +
+        "if(/linearplayer/.test(location.pathname))return JSON.stringify({act:'wait',why:'starting the channel'});" +
+        "function nn(s){return String(s||'').toLowerCase().replace(/&/g,' and ').replace(/\\bhd\\b/g,'').replace(/[^a-z0-9]/g,'').replace(/hd$/,'');}" +
+        "var L=window.__ftvList;" +
+        "if(!L&&!window.__ftvListLoading){var cu=performance.getEntriesByType('resource').map(function(e){return e.name;}).filter(function(u){return /linear-service\\/v2\\/channels/.test(u);})[0];" +
+        "if(cu){window.__ftvListLoading=1;fetch(cu,{credentials:'include'}).then(function(r){return r.json();}).then(function(j){window.__ftvList=Array.isArray(j)?j:(j.channels||[]);}).catch(function(){window.__ftvListLoading=0;});}}" +
+        "if(L&&L.length){var ws=T.split('|').map(nn).filter(Boolean),hit=null;" +
+        "L.forEach(function(c){if(!hit&&!c.isHidden&&ws.indexOf(nn(c.name))>=0)hit=c;});" +
+        "if(!hit)L.forEach(function(c){if(!hit&&!c.isHidden&&!/\\+1|javu/i.test(c.name)&&ws.some(function(w){return w.length>3&&nn(c.name).indexOf(w)===0;}))hit=c;});" +
+        "if(hit){location.assign('/en/watchtv/linearplayer/'+encodeURIComponent(hit.id)+'/'+encodeURIComponent(hit.name));return JSON.stringify({act:'wait',why:'opening '+hit.name});}" +
+        "if(!window.__ftvNoHit){window.__ftvNoHit=1;}}" +
         "var ph=qa('flt-semantics-placeholder')[0];" +
         "var labelled=qa('flt-semantics,a').filter(function(e){return (e.getAttribute('aria-label')||(e.querySelector('flt-semantics')?'':e.textContent)||'').trim().length>2;}).length;" +
         "var info=' · s='+qa('flt-semantics').length+' l='+labelled+(ph?' ph':'')+' '+location.pathname+(qa('flt-glass-pane').some(function(g){return g.shadowRoot;})?' shadow':'');" +
