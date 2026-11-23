@@ -778,6 +778,15 @@ var app = (function () {
   // ---------------------------------------------------------------- the helper: works iPlayer and U for you
   function helperReady() { return settings.helper && !TOUCH && window.Native && Native.helperOn && Native.helperOn(); }
   /** Before opening BBC iPlayer or U: tell the helper what to find there. */
+  /** With Virgin TV Go switched on: U channels and pay channels (not Sky Sports) open on the Virgin TV Go website inside Free TV. */
+  function viaVirgin(svc, pay, name) {
+    if (!settings.virgin || !window.Native || !Native.openWebFind) return false;
+    if (!(svc === 'u' || pay) || /sky sports/i.test(name)) return false;
+    var base = name.replace(/\s*HD$/i, ''), alt = base.replace(/^U&/, '');
+    Native.openWebFind('https://virgintvgo.virginmedia.com/', name, [base, alt, base + ' HD', alt + ' HD'].join('|'));
+    if (!settings.virginTold) { settings.virginTold = true; saveSettings(); toast('First time: sign in with your My Virgin Media details – it stays signed in after that'); }
+    return true;
+  }
   function bbcWeb() { return window.Native && Native.openWeb && (settings.bbcWeb == null ? !TOUCH : settings.bbcWeb); }
   function helperFor(svc, mode, target) {
     if (svc === 'bbc' && bbcWeb()) return false;
@@ -797,6 +806,8 @@ var app = (function () {
       if (it.s <= now && it.e > now) {
         if (it.svc === 'pluto' && canPlayPluto() && playPlutoChannel(it.ch)) return;
         if (it.play && playPlutoChannel(it.ch)) { logOpen(it); return; }
+        var cc = chans.filter(function (x) { return x.id === it.ch; })[0];
+        if (viaVirgin(it.svc, cc && cc.pay, it.chName)) { logOpen(it); return; }
         var hl = helperFor(it.svc, 'live', it.chName);
         openIn(it.svc, it.live, '', hl ? '' : it.chName);
         if (hl) toast('Opening ' + it.chName + ' in ' + SVC[it.svc].name + '…');
@@ -1039,7 +1050,7 @@ var app = (function () {
           '<div class="bt">' + esc(p.t) + '</div><div class="bl">' + esc(p.sub || clock(p.s)) + '</div>' + (ic ? '<span class="ic">' + ic + '</span>' : '') +
           (live ? '<div class="pg" style="width:' + Math.round((now - p.s) / (p.e - p.s) * 100) + '%"></div>' : '') + '</div>';
       });
-      var sv = c.play ? 'Plays here' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
+      var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.svc === 'u') && !/sky sports/i.test(c.name) ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
       h += '<div class="grow' + (ci === gRow && rowSel ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
         '<div class="sv' + (c.svc || c.play ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline">' + blocks +
         (now >= ws && now < ws + SPAN ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div>';
@@ -1047,7 +1058,7 @@ var app = (function () {
     box.innerHTML = h;
     if (TOUCH) box.scrollTop = keepScroll;
     var ch = chans[gRow];
-    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
+    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.svc === 'u') && !/sky sports/i.test(ch.name) ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
     plexOnScreen();
     if (fp) {
       $('gTitle').textContent = fp.t;
@@ -1081,9 +1092,10 @@ var app = (function () {
     else if (k === 'ok') {
       var c = chans[gRow];
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
-      if (fp && c && (c.svc || c.play || fp.e <= now)) openItem(progItem(c, fp));
+      if (fp && c && (c.svc || c.play || fp.e <= now || (c.pay && settings.virgin))) openItem(progItem(c, fp));
       else if (c && c.svc === 'pluto' && canPlayPluto() && playPlutoChannel(c.id)) {}
       else if (c && c.play && playPlutoChannel(c.id)) {}
+      else if (c && viaVirgin(c.svc, c.pay, c.name)) {}
       else if (c && c.svc) { var hl = helperFor(c.svc, 'live', c.name); openIn(c.svc, c.live, '', hl ? '' : c.name); }
       else if (c && c.pay) toast(c.name + ' is a pay channel – Free TV can only remind you about it');
       else if (fp && c) openItem(progItem(c, fp));
@@ -1368,6 +1380,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
+    t.push({ kind: 'set', k: 'virgin', name: 'Virgin TV Go', desc: settings.virgin ? 'On – U and pay channels open on the Virgin TV Go website (sign in once). OK to switch off' : 'Off – OK to open U and pay channels with your Virgin TV account' });
     t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
     if (!TOUCH) {
@@ -1421,6 +1434,7 @@ var app = (function () {
         return;
       }
       if (x.k === 'showhide') { showMenu(); return; }
+      if (x.k === 'virgin') { settings.virgin = !settings.virgin; saveSettings(); buildChans(); }
       if (x.k === 'bbcWeb') { settings.bbcWeb = !bbcWeb(); saveSettings(); }
       if (x.k === 'plutoInApp') { settings.plutoInApp = !settings.plutoInApp; saveSettings(); }
       if (x.k === 'helper') {

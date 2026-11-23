@@ -415,6 +415,12 @@ public class MainActivity extends Activity {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title);
             ui.post(() -> { stopMini(); startActivity(i); });
         }
+        /** Open a website that has no per-channel links and pick the channel on it (Virgin TV Go). */
+        @JavascriptInterface
+        public void openWebFind(String url, String title, String find) {
+            Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title).putExtra("find", find);
+            ui.post(() -> { stopMini(); startActivity(i); });
+        }
         /** Where the small window goes (in page pixels); w = 0 hides it. */
         @JavascriptInterface
         public void miniRect(final double x, final double y, final double w, final double h) {

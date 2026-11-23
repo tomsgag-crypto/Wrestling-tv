@@ -29,7 +29,50 @@ public class WebPlayerActivity extends Activity {
     private int tries = 0;
     private android.widget.TextView cover;
     private final Runnable reveal = () -> { if (cover != null) cover.setVisibility(View.GONE); };
-    private static boolean isPlayer(String u) { return u != null && u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*"); }
+    private String find;   // a channel to pick on the site (Virgin TV Go), or null
+    private boolean isPlayer(String u) { return find != null || (u != null && u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*")); }
+
+    /** What the last stuck page looked like (shared on the home network with "Record app screens for Claude"). */
+    static String lastDump = "";
+
+    // One step of working the site like a person would: sign-in shows the page; otherwise open Live TV, pick the channel, press Watch.
+    private static final String STEP = "(function(T){try{" +
+        "function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
+        "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}" +
+        "var v=deep(document,0);if(v&&!v.paused&&v.currentTime>0.5)return 'playing';" +
+        "var pw=document.querySelector('input[type=password]');if(pw&&pw.getBoundingClientRect().width>0)return 'login';" +
+        "function n(s){return String(s||'').toLowerCase().replace(/&/g,' and ').replace(/\\bhd\\b/g,'').replace(/[^a-z0-9]/g,'');}" +
+        "var want=T.split('|').map(n).filter(Boolean);" +
+        "function lab(e){return [e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('alt'),e.getAttribute('data-channel-name'),(e.children.length<3?e.textContent:'')].map(n);}" +
+        "function vis(e){var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}" +
+        "function hit(e){var l=lab(e);return want.some(function(w){return l.indexOf(w)>=0;});}" +
+        "function press(e){var c=e.closest('a,button,[role=button],[role=link],[role=gridcell],[tabindex]')||e;c.scrollIntoView({block:'center'});c.click();}" +
+        "var all=[].slice.call(document.querySelectorAll('a,button,[role],img,[aria-label],[title],li,span,div'));" +
+        "var w=window.__ftv=window.__ftv||{ch:0,play:0,nav:0};" +
+        "if(w.ch<3){var c=all.filter(function(e){return vis(e)&&hit(e);})[0];if(c){w.ch++;press(c);return 'channel';}}" +
+        "var b=all.filter(function(e){return vis(e)&&/^(watch( live| now)?|play( live)?|start watching|watch on tv go)$/i.test(((e.getAttribute('aria-label')||'')+' '+(e.children.length<2?e.textContent:'')).trim());})[0];" +
+        "if(b&&w.play<3){w.play++;press(b);return 'play';}" +
+        "if(w.nav<2){var l=all.filter(function(e){return vis(e)&&/^(live tv|tv guide|guide|channels|live)$/i.test((e.getAttribute('aria-label')||e.textContent||'').trim());})[0];if(l){w.nav++;press(l);return 'nav';}}" +
+        "return 'looking';}catch(x){return 'err '+x;}})";
+    private static final String DUMP = "(function(){var o=['URL '+location.href];[].slice.call(document.querySelectorAll('a,button,[role],img[alt],[aria-label],input')).slice(0,400).forEach(function(e){" +
+        "var r=e.getBoundingClientRect();if(r.width<=0)return;o.push(e.tagName+' '+(e.getAttribute('role')||'')+' |'+(e.getAttribute('aria-label')||'')+'|'+(e.getAttribute('alt')||'')+'|'+String(e.children.length<3?e.textContent:'').trim().slice(0,60)+'| '+(e.getAttribute('href')||'')+' @'+Math.round(r.left)+','+Math.round(r.top));});return o.join('\\n');})()";
+    private int steps = 0;
+    private final Runnable step = new Runnable() {
+        @Override public void run() {
+            if (web == null || find == null || custom != null) return;
+            web.evaluateJavascript(STEP + "(" + org.json.JSONObject.quote(find) + ")", r -> {
+                String st = r == null ? "" : r.replace("\"", "");
+                if (st.equals("login")) { reveal.run(); }                       // let you sign in
+                if (st.equals("playing")) { if (fsTries == 0) goFull(); return; }
+                if (++steps > 45) {                                            // stuck: show the page and keep a note of it for Claude
+                    reveal.run();
+                    web.evaluateJavascript(DUMP, d -> lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""));
+                    return;
+                }
+                ui.postDelayed(step, st.equals("looking") || st.equals("login") ? 1500 : 2500);
+            });
+        }
+    };
 
     // Make the player fill the screen and start it, if the page hasn't already.
     // Make the player fill the screen: find the video (the BBC player keeps it inside sealed-off "shadow" parts of the page),
@@ -101,12 +144,19 @@ public class WebPlayerActivity extends Activity {
                 fsTries = 0;
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
-                if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); } else cover.setVisibility(View.GONE);
+                if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, find != null ? 60000 : 15000); } else cover.setVisibility(View.GONE);
             }
             @Override public void onPageFinished(WebView v, String url) {
-                if (!isPlayer(url)) cover.setVisibility(View.GONE); tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 1500); CookieManager.getInstance().flush(); }
+                if (!isPlayer(url)) cover.setVisibility(View.GONE);
+                CookieManager.getInstance().flush();
+                if (find != null) { ui.removeCallbacks(step); ui.postDelayed(step, 2000); return; }
+                tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 1500); }
         });
         web.setWebChromeClient(new WebChromeClient() {
+            @Override public void onPermissionRequest(android.webkit.PermissionRequest req) {
+                for (String r : req.getResources()) if (android.webkit.PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(r)) { req.grant(new String[]{r}); return; }
+                req.deny();
+            }
             @Override public android.graphics.Bitmap getDefaultVideoPoster() {
                 android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888);
                 b.eraseColor(Color.BLACK);
@@ -121,6 +171,7 @@ public class WebPlayerActivity extends Activity {
             }
         });
         start = getIntent().getStringExtra("url");
+        find = getIntent().getStringExtra("find");
         web.loadUrl(start);
         web.requestFocus();
     }
@@ -152,5 +203,5 @@ public class WebPlayerActivity extends Activity {
 
     @Override protected void onPause() { super.onPause(); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); }
-    @Override protected void onDestroy() { ui.removeCallbacks(fill); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { ui.removeCallbacks(fill); ui.removeCallbacks(step); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }

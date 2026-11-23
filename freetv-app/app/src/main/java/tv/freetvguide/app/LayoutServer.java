@@ -39,7 +39,7 @@ class LayoutServer {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()));
                     in.readLine();
-                    String esc = HelperService.report().replace("&", "&amp;").replace("<", "&lt;");
+                    String esc = (HelperService.report() + "\n\n=== Web page (Virgin TV Go etc)\n" + WebPlayerActivity.lastDump).replace("&", "&amp;").replace("<", "&lt;");
                     String html = "<!DOCTYPE html><html><head><meta name=viewport content='width=device-width'><title>Free TV layouts</title></head><body style='font-family:sans-serif'>" +
                             "<p><button onclick=\"var t=document.getElementById('t');t.focus();t.select();t.setSelectionRange(0,t.value.length);document.execCommand('copy');this.textContent='Copied - now paste it to Claude'\" style='font-size:20px;padding:10px'>Copy all</button></p>" +
                             "<textarea id=t readonly style='width:100%;height:80vh;font-size:11px'>" + esc + "</textarea></body></html>";
