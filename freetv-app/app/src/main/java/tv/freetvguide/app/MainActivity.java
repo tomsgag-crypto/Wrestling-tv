@@ -45,6 +45,13 @@ import java.util.regex.Pattern;
 public class MainActivity extends Activity {
 
     private WebView web;
+    /** Switch channel from the player's mini guide without showing the guide first (the guide stays behind, working). */
+    static boolean zapNow(String id) {
+        MainActivity m = current;
+        if (m == null || m.web == null) return false;
+        m.js("window.app && app.zap(" + JSONObject.quote(id) + ")");
+        return true;
+    }
     static String zapList = "[]", pendingZap = null;   // the guide's channels for the player's mini guide; a channel picked there
     static int zapIndex = 0;
     private final Handler ui = new Handler(Looper.getMainLooper());

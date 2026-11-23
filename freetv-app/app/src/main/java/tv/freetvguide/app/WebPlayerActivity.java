@@ -178,7 +178,7 @@ public class WebPlayerActivity extends Activity {
     }
     // ---- mini guide: ▲▼ shows what's on the channels above and below; OK watches it
     private android.widget.TextView zapBox;
-    private boolean zapOn = false;
+    private boolean zapOn = false, zapping = false;
     private int zapAt = -1;
     private org.json.JSONArray zapArr;
     private final Runnable zapHide = this::hideZap;
@@ -203,9 +203,14 @@ public class WebPlayerActivity extends Activity {
         org.json.JSONObject c = zapArr == null || at < 0 ? null : zapArr.optJSONObject(at);
         hideZap();
         if (c == null) return;
-        MainActivity.pendingZap = c.optString("id");
         MainActivity.zapIndex = at;
-        finish();
+        // keep this screen up (with a note) until the new channel opens on top, so the guide never flashes up
+        cover.setText("Switching to " + c.optString("name") + "…"); cover.setVisibility(View.VISIBLE); cover.bringToFront();
+        if (custom != null) { root.removeView(custom); custom = null; }
+        web.loadUrl("about:blank");
+        zapping = true;
+        if (!MainActivity.zapNow(c.optString("id"))) { MainActivity.pendingZap = c.optString("id"); finish(); return; }
+        ui.postDelayed(this::finish, 10000);
     }
     private long lastToggle = 0;
     private void togglePause() {
@@ -695,6 +700,7 @@ public class WebPlayerActivity extends Activity {
         return super.dispatchKeyEvent(e);
     }
 
+    @Override protected void onStop() { super.onStop(); if (zapping) finish(); }
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); }
     @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(ownedSync); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
