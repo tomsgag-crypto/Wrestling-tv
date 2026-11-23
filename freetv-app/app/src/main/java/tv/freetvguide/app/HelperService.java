@@ -55,12 +55,15 @@ public class HelperService extends AccessibilityService {
     }
     static void note(String s) { synchronized (log) { log.add(System.currentTimeMillis() % 1000000 + " " + s); if (log.size() > 300) log.remove(0); } }
 
-    @Override protected void onServiceConnected() { running = this; note("helper on"); }
+    @Override protected void onServiceConnected() { try { running = this; note("helper on"); } catch (Throwable ignored) { } }
     @Override public boolean onUnbind(android.content.Intent i) { running = null; return super.onUnbind(i); }
     @Override public void onInterrupt() { }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
+        try { onEvent(e); } catch (Throwable t) { note("error " + t); }
+    }
+    private void onEvent(AccessibilityEvent e) {
         CharSequence pkg = e.getPackageName();
         if (pkg == null || pkg.toString().equals(getPackageName())) return;
         if (System.currentTimeMillis() < recordUntil) record();
@@ -148,6 +151,9 @@ public class HelperService extends AccessibilityService {
     }
 
     private void tick() {
+        try { tick2(); } catch (Throwable t) { note("error " + t); jobPkg = null; }
+    }
+    private void tick2() {
         if (jobPkg == null || System.currentTimeMillis() > jobUntil) { if (jobPkg != null) note("job timed out"); jobPkg = null; return; }
         if (System.currentTimeMillis() - lastTick < 500) { ui.postDelayed(tickR, 600); return; }
         lastTick = System.currentTimeMillis();

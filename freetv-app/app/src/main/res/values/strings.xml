@@ -2,5 +2,6 @@
 <resources>
     <string name="app_name">Free TV</string>
     <string name="helper_name">Free TV helper</string>
-    <string name="helper_desc">When Free TV opens BBC iPlayer or U for you, the helper picks your profile and finds the channel or programme, so you don\'t have to. It only acts for a few seconds after Free TV opens one of those apps, and only inside that app.</string>
+    <string name="helper_summary">Finds channels and programmes in iPlayer and U for Free TV</string>
+    <string name="helper_desc">When Free TV opens BBC iPlayer or U, the helper picks your profile and finds the channel or programme for you.</string>
 </resources>
