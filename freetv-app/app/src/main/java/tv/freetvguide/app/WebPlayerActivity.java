@@ -30,7 +30,7 @@ public class WebPlayerActivity extends Activity {
     private android.widget.TextView cover;
     private final Runnable reveal = () -> { if (cover != null) cover.setVisibility(View.GONE); };
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
-    private boolean isPlayer(String u) { return find != null || (u != null && u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*")); }
+    private boolean isPlayer(String u) { return find == null && (u != null && u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*")); }
 
     /** What the last stuck page looked like (shared on the home network with "Record app screens for Claude"). */
     static String lastDump = "";
@@ -63,8 +63,8 @@ public class WebPlayerActivity extends Activity {
             web.evaluateJavascript(STEP + "(" + org.json.JSONObject.quote(find) + ")", r -> {
                 String st = r == null ? "" : r.replace("\"", "");
                 if (st.equals("login")) { reveal.run(); }                       // let you sign in
-                if (st.equals("playing")) { if (fsTries == 0) goFull(); return; }
-                if (++steps > 45) {                                            // stuck: show the page and keep a note of it for Claude
+                if (st.equals("playing")) { if (fsTries == 0) { cover.setText("Starting " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); goFull(); } return; }
+                if (++steps > 30) {                                            // stuck: show the page and keep a note of it for Claude
                     reveal.run();
                     web.evaluateJavascript(DUMP, d -> lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""));
                     return;
@@ -172,6 +172,7 @@ public class WebPlayerActivity extends Activity {
         });
         start = getIntent().getStringExtra("url");
         find = getIntent().getStringExtra("find");
+        if (find != null) { cover.setVisibility(View.GONE); ui.postDelayed(step, 5000); }
         web.loadUrl(start);
         web.requestFocus();
     }
@@ -191,6 +192,7 @@ public class WebPlayerActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && e.getAction() == KeyEvent.ACTION_UP) {
             if (custom != null) { finish(); return true; }
+            if (find != null) { web.evaluateJavascript(DUMP, d -> { lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""); finish(); }); return true; }
             String u = web.getUrl();
             // during sign-in, Back steps back a page; on the player it returns to the guide
             if (web.canGoBack() && u != null && !u.contains("/iplayer/live/") && !u.contains("/iplayer/episode/")) { web.goBack(); return true; }
