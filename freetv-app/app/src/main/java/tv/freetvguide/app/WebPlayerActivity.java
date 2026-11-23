@@ -43,17 +43,18 @@ public class WebPlayerActivity extends Activity {
             "if(v.paused&&!v.ended&&v.currentTime>1){v.play();window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('paused');}" +
             "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
-            "window.__ftvStat='ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+N.last:'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing');" +
+            "window.__ftvStat='ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing');" +
             "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat;})()", r -> {
                 if (r == null) return;
                 int bar = r.indexOf('|');
-                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); stats.setText(st); stats.setVisibility(custom != null ? View.VISIBLE : View.GONE); if (custom != null) stats.bringToFront(); }
+                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); stats.setText(st); stats.setVisibility(custom != null && showStats ? View.VISIBLE : View.GONE); if (custom != null) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 if (r.contains("paused")) note("Sky paused it – restarting");
                 else if (r.contains("buffering")) note("Buffering…");
             });
         ui.postDelayed(this, 1000);
     } };
+    private boolean showStats = false;
     private android.widget.TextView stats;   // playback figures in the corner (to work out the buffering)
     private long lastNote = 0;
     private void note(String m) {
@@ -61,6 +62,40 @@ public class WebPlayerActivity extends Activity {
         if (t - lastNote < 4000 || custom == null) return;
         lastNote = t;
         android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_SHORT).show();
+    }
+    private static final int[] QS = {0, 1080, 720, 540, 360};
+    private void qualityMenu() {
+        web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
+            String offers = r == null ? "" : r.replace("\"", "");
+            String[] names = new String[QS.length];
+            int cur = quality(), sel = 0;
+            for (int i = 0; i < QS.length; i++) {
+                names[i] = QS[i] == 0 ? "Auto – Sky chooses" : QS[i] + "p";
+                if (QS[i] == cur) sel = i;
+            }
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Picture quality" + (offers.isEmpty() ? "" : "  (Sky offers " + offers + ")"))
+                .setSingleChoiceItems(names, sel, (d, which) -> {
+                    d.dismiss();
+                    if (QS[which] == quality()) return;
+                    getSharedPreferences("player", MODE_PRIVATE).edit().putInt("skyq", QS[which]).apply();
+                    applyQuality();
+                })
+                .show();
+        });
+    }
+    /** Restart the channel with the new quality. */
+    private void applyQuality() {
+        try {
+            if (startScript instanceof androidx.webkit.ScriptHandler) ((androidx.webkit.ScriptHandler) startScript).remove();
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT))
+                startScript = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, desktopJs(), java.util.Collections.singleton("*"));
+        } catch (Throwable ignored) { }
+        userPaused = false;
+        cover.setText("Changing picture quality…");
+        cover.setVisibility(View.VISIBLE);
+        if (custom != null) { root.removeView(custom); custom = null; }
+        web.reload();
     }
     private long lastToggle = 0;
     private void togglePause() {
@@ -346,10 +381,13 @@ public class WebPlayerActivity extends Activity {
         "var D=Document.prototype;try{Object.defineProperty(D,'hidden',{get:function(){return false;},configurable:true});Object.defineProperty(D,'visibilityState',{get:function(){return 'visible';},configurable:true});}catch(e){}" +
         "D.hasFocus=function(){return true;};var ae=EventTarget.prototype.addEventListener;EventTarget.prototype.addEventListener=function(t,f,o){if(t==='visibilitychange'||t==='webkitvisibilitychange'||(t==='blur'&&this===window)||t==='pagehide'||t==='freeze')return;return ae.call(this,t,f,o);};" +
         // Sky sends up to 12 Mbps; drop the top picture qualities from its stream list so the Chromecast's connection keeps up
-        "var CAP=6000000;function capMpd(t){try{if(typeof t!=='string'||t.indexOf('<MPD')<0)return t;var x=new DOMParser().parseFromString(t,'application/xml');if(x.getElementsByTagName('parsererror').length)return t;var n=0;" +
-        "[].forEach.call(x.getElementsByTagName('AdaptationSet'),function(a){var reps=[].slice.call(a.getElementsByTagName('Representation'));var vid=/video/.test((a.getAttribute('mimeType')||'')+(a.getAttribute('contentType')||''))||reps.some(function(r){return /video/.test(r.getAttribute('mimeType')||'')||r.hasAttribute('height');});if(!vid||reps.length<2)return;" +
-        "var keep=reps.filter(function(r){return +r.getAttribute('bandwidth')<=CAP;});if(!keep.length)keep=[reps.sort(function(p,q){return p.getAttribute('bandwidth')-q.getAttribute('bandwidth');})[0]];reps.forEach(function(r){if(keep.indexOf(r)<0){r.parentNode.removeChild(r);n++;}});});" +
-        "if(n){window.__ftvLog=window.__ftvLog||[];if(!window.__ftvCapped){window.__ftvCapped=1;window.__ftvLog.push('capped');}}return n?new XMLSerializer().serializeToString(x):t;}catch(e){return t;}}" +
+        // picture quality you picked (QH = height, 0 = let Sky decide); also note which qualities Sky offers
+        "var QH=0;function capMpd(t){try{if(typeof t!=='string'||t.indexOf('<MPD')<0)return t;var x=new DOMParser().parseFromString(t,'application/xml');if(x.getElementsByTagName('parsererror').length)return t;var n=0,hs={};" +
+        "[].forEach.call(x.getElementsByTagName('AdaptationSet'),function(a){var reps=[].slice.call(a.getElementsByTagName('Representation'));var ah=+a.getAttribute('height')||0;var vid=/video/.test((a.getAttribute('mimeType')||'')+(a.getAttribute('contentType')||''))||reps.some(function(r){return /video/.test(r.getAttribute('mimeType')||'')||r.hasAttribute('height');});if(!vid||!reps.length)return;" +
+        "function H(r){return +r.getAttribute('height')||ah;}reps.forEach(function(r){if(H(r))hs[H(r)]=1;});if(!QH||reps.length<2)return;" +
+        "var ok=reps.filter(function(r){return H(r)&&H(r)<=QH;});var best=ok.length?Math.max.apply(null,ok.map(H)):Math.min.apply(null,reps.map(H));" +
+        "reps.forEach(function(r){if(H(r)!==best){r.parentNode.removeChild(r);n++;}});});" +
+        "window.__ftvQs=Object.keys(hs).sort(function(a,b){return a-b;}).join('/');return n?new XMLSerializer().serializeToString(x):t;}catch(e){return t;}}" +
         "var N=window.__ftvNet={ok:0,bad:0,codes:{},kb:0,ms:0,seg:0};function cnt(st,u,t0,b){if(st>=400||st===0){N.bad++;N.codes[st]=(N.codes[st]||0)+1;N.last=String(u).replace(/^https?:\\/\\//,'').replace(/\\?.*/,'').slice(-70);}else N.ok++;if(/\\.(m4s|mp4|m4v|ts|cmfv)|segment|chunk/i.test(u)&&b){N.seg++;N.kb+=b/1024;N.ms+=Date.now()-t0;}}" +
         "var F=window.fetch;window.fetch=function(i,o){var t0=Date.now(),U=String(i&&i.url||i);return F.apply(this,arguments).then(function(r){try{var cl=+r.headers.get('content-length')||0;cnt(r.status,U,t0,cl);}catch(e){}try{var u=r.url||'';var ct=r.headers.get('content-type')||'';if(!/\\.mpd|dash/i.test(u+ct))return r;return r.clone().text().then(function(t){var c=capMpd(t);if(c===t)return r;var nr=new Response(c,{status:r.status,statusText:r.statusText,headers:r.headers});try{Object.defineProperty(nr,'url',{value:u});}catch(e){}return nr;});}catch(e){return r;}});};" +
         "var XP=XMLHttpRequest.prototype,xo=XP.open,xs=XP.send;XP.open=function(m,u){this.__ftvU=String(u||'');return xo.apply(this,arguments);};" +
@@ -358,6 +396,9 @@ public class WebPlayerActivity extends Activity {
         "if(typeof v==='string')out=capMpd(v);else if(v instanceof ArrayBuffer){var t=new TextDecoder().decode(v),c=capMpd(t);out=c===t?v:new TextEncoder().encode(c).buffer;}this.__ftvC=[v,out];return out;}catch(e){return v;}}});});" +
         "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
         "}catch(e){}})();";
+    private int quality() { return getSharedPreferences("player", MODE_PRIVATE).getInt("skyq", 0); }
+    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";"); }
+    private Object startScript;   // the script handle, so a new quality can replace it
     private void looksLikeDesktop(WebSettings s) {
         try {
             if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
@@ -372,7 +413,7 @@ public class WebPlayerActivity extends Activity {
         } catch (Throwable ignored) { }
         try {
             if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT))
-                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, DESKTOP, java.util.Collections.singleton("*"));
+                startScript = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, desktopJs(), java.util.Collections.singleton("*"));
         } catch (Throwable ignored) { }
     }
     @SuppressLint("SetJavaScriptEnabled")
@@ -414,7 +455,7 @@ public class WebPlayerActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
                 fsTries = 0;
-                if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(DESKTOP, null);
+                if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(desktopJs(), null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
                 if (find != null) { /* the step loop decides */ }
@@ -473,6 +514,13 @@ public class WebPlayerActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
+        if (custom != null && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                if (k == KeyEvent.KEYCODE_DPAD_UP) qualityMenu();
+                else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
+            }
+            return true;
+        }
         if (custom != null && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
                 || k == KeyEvent.KEYCODE_MEDIA_PAUSE || k == KeyEvent.KEYCODE_MEDIA_PLAY)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
