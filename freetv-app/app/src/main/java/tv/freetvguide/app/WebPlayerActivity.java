@@ -119,6 +119,33 @@ public class WebPlayerActivity extends Activity {
         web.reload();
         qChecks = 0; ui.removeCallbacks(qualityWatch); ui.postDelayed(qualityWatch, 5000);
     }
+    // Which Virgin channels are in your package: read from Virgin's own lists on the signed-in page, kept on this TV
+    private static final String OWNED = "(function(){if(window.__ftvOwned)return window.__ftvOwned;if(!window.__ftvOwnedGo){var R=performance.getEntriesByType('resource').map(function(e){return e.name;});" +
+        "var eu=R.filter(function(n){return /purchase-service.*entitlements/.test(n);})[0],cu=R.filter(function(n){return /linear-service\\/v2\\/channels/.test(n);})[0];" +
+        "if(eu&&cu){window.__ftvOwnedGo=1;Promise.all([fetch(eu,{credentials:'include'}).then(function(r){return r.json();}),fetch(cu).then(function(r){return r.json();})]).then(function(a){" +
+        "var E=(a[0].entitlements||[]).map(function(e){return e.id;});var C=Array.isArray(a[1])?a[1]:(a[1].channels||[]);" +
+        "var mine=C.filter(function(c){return (c.linearProducts||[]).some(function(p){return E.indexOf(p)>=0;});});" +
+        "if(mine.length>20)window.__ftvOwned=JSON.stringify({ids:mine.map(function(c){return c.id;}),names:mine.map(function(c){return c.name;}),at:Date.now()});else window.__ftvOwnedGo=0;}).catch(function(){window.__ftvOwnedGo=0;});}}return '';})()";
+    private int ownedTries = 0;
+    private final Runnable ownedSync = new Runnable() { @Override public void run() {
+        if (web == null) return;
+        String u = web.getUrl();
+        if (u == null || !u.contains("virgintvgo.virginmedia.com")) return;
+        web.evaluateJavascript(OWNED, r -> {
+            String v = null;
+            try { Object o = new org.json.JSONTokener(r).nextValue(); if (o instanceof String && ((String) o).startsWith("{")) v = (String) o; } catch (Exception ignored) { }
+            if (v != null) {
+                prefs().edit().putString("owned", v).apply();
+                if (getIntent().getBooleanExtra("sync", false)) {
+                    android.widget.Toast.makeText(WebPlayerActivity.this, "Checked your Virgin channels – the guide now shows only the ones you have", android.widget.Toast.LENGTH_LONG).show();
+                    finish();
+                }
+                return;
+            }
+            if (++ownedTries < 30) ui.postDelayed(ownedSync, 2000);
+            else if (getIntent().getBooleanExtra("sync", false)) reveal.run();   // maybe you need to sign in: show the page
+        });
+    } };
     private int pinWaits = 0;
     /** Tap the saved PIN on Virgin's number pad (a dialog in the middle of the screen: 1-9 in a 3x3 grid, 0 below). */
     private void enterPin() {
@@ -506,11 +533,13 @@ public class WebPlayerActivity extends Activity {
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
                 if (find != null) { /* the step loop decides */ }
+                else if (getIntent().getBooleanExtra("sync", false)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
                 else if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); } else cover.setVisibility(View.GONE);
             }
             @Override public void onPageFinished(WebView v, String url) {
-                if (!isPlayer(url) && find == null) cover.setVisibility(View.GONE);
+                if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false)) cover.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
+                if (url != null && url.contains("virgintvgo.virginmedia.com")) { ownedTries = 0; ui.removeCallbacks(ownedSync); ui.postDelayed(ownedSync, 3000); }
                 if (find != null) { ui.removeCallbacks(step); ui.postDelayed(step, 2000); return; }
                 tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 1500); }
         });
@@ -607,5 +636,5 @@ public class WebPlayerActivity extends Activity {
 
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); }
-    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(ownedSync); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }

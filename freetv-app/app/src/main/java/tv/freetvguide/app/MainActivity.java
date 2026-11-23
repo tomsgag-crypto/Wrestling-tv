@@ -427,6 +427,15 @@ public class MainActivity extends Activity {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title).putExtra("find", find).putExtra("pin", true);
             ui.post(() -> { stopMini(); startActivity(i); });
         }
+        /** Your Virgin channels ({ids, names}), as last read from the Virgin TV Go page; "" if not checked yet. */
+        @JavascriptInterface
+        public String virginOwned() { return getSharedPreferences("player", MODE_PRIVATE).getString("owned", ""); }
+        /** Open Virgin TV Go briefly to read which channels you have. */
+        @JavascriptInterface
+        public void virginSync() {
+            Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", "https://virgintvgo.virginmedia.com/en/watchtv").putExtra("title", "Checking which channels you have").putExtra("sync", true);
+            ui.post(() -> { stopMini(); startActivity(i); });
+        }
         @JavascriptInterface
         public boolean hasVirginPin() { return !getSharedPreferences("player", MODE_PRIVATE).getString("vpin", "").isEmpty(); }
         /** Ask for the Virgin TV Go parental PIN; it stays on this TV only. */
