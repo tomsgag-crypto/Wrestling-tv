@@ -37,7 +37,7 @@ public class WebPlayerActivity extends Activity {
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
     private boolean onSky() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("skysports.com"); }
-    private boolean pageMode() { return onSky() && prefs().getBoolean("skypage", false); }
+    private boolean pageMode() { return onSky() && prefs().getBoolean("skypage", true); }
     private void showCursor() { if (cursor != null) { cursor.setVisibility(pointerOn() ? View.VISIBLE : View.GONE); cursor.bringToFront(); cursor.invalidate(); } }
     private boolean userPaused = false;
     private final Runnable keepPlaying = new Runnable() { @Override public void run() {
@@ -58,7 +58,7 @@ public class WebPlayerActivity extends Activity {
                 if (r == null) return;
                 int bar = r.indexOf('|');
                 if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);
-                    if (onSky()) st += " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", false) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
+                    if (onSky()) st += " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", true) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 long now2 = android.os.SystemClock.uptimeMillis();
                 // Sky: if the picture has stood still for 5 seconds (and you didn't pause it), restart at live – that's what fixes it
@@ -107,9 +107,9 @@ public class WebPlayerActivity extends Activity {
             int cur = quality();
             String[] names = new String[QS.length + 3];
             for (int i = 0; i < QS.length; i++) names[i] = (QS[i] == cur ? "✓ " : "    ") + (QS[i] == 0 ? "Picture: Auto – Sky chooses" : "Picture: " + QS[i] + "p");
-            boolean clock = prefs().getBoolean("skyclock", true), page = prefs().getBoolean("skypage", false);
+            boolean clock = prefs().getBoolean("skyclock", false), page = prefs().getBoolean("skypage", true);
             names[QS.length] = "Page clock: " + (clock ? "8 seconds behind (on) – OK for normal" : "normal – OK for 8 seconds behind");
-            boolean noAds = prefs().getBoolean("skyNoAds", false);
+            boolean noAds = prefs().getBoolean("skyNoAds", true);
             names[QS.length + 2] = "Adverts & promos: " + (noAds ? "blocked – OK to allow" : "allowed – OK to block (test)");
             names[QS.length + 1] = "Full screen: " + (page ? "stretch Sky's page player – OK for TV full screen" : "TV full screen – OK to stretch Sky's page player instead");
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -180,7 +180,7 @@ public class WebPlayerActivity extends Activity {
             else if (getIntent().getBooleanExtra("sync", false)) reveal.run();   // maybe you need to sign in: show the page
         });
     } };
-    private int pinWaits = 0;
+    private int pinWaits = 0, startWaits = 0;
     /** Tap the saved PIN on Virgin's number pad (a dialog in the middle of the screen: 1-9 in a 3x3 grid, 0 below). */
     private void enterPin() {
         String pin = getSharedPreferences("player", MODE_PRIVATE).getString("vpin", "");
@@ -431,6 +431,11 @@ public class WebPlayerActivity extends Activity {
                     pinWaits++;
                     if (pinWaits == 5 || pinWaits == 20 || pinWaits == 35) enterPin();
                 }
+                // Virgin's page hasn't started the picture after ~15 s: show the page (there may be a message or button), keep watching for the picture
+                if (act.equals("wait") && o.optString("why").startsWith("starting") && ++startWaits == 18 && cover.getVisibility() == View.VISIBLE) {
+                    reveal.run();
+                    android.widget.Toast.makeText(WebPlayerActivity.this, "Virgin hasn't started the channel – showing its page so you can see why", android.widget.Toast.LENGTH_LONG).show();
+                }
                 if (fromCache && act.equals("wait") && o.optString("why").startsWith("starting") && ++cacheWaits > 25) {
                     android.content.SharedPreferences.Editor ed = getSharedPreferences("virgin", MODE_PRIVATE).edit();
                     for (String t : find.split("\\|")) ed.remove(norm(t));
@@ -536,7 +541,7 @@ public class WebPlayerActivity extends Activity {
         "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
         "}catch(e){}})();";
     private int quality() { return getSharedPreferences("player", MODE_PRIVATE).getInt("skyq", 0); }
-    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", true) ? 8000 : 0) + ","); }
+    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", false) ? 8000 : 0) + ","); }
     private Object startScript;   // the script handle, so a new quality can replace it
     private void looksLikeDesktop(WebSettings s) {
         try {
@@ -602,7 +607,7 @@ public class WebPlayerActivity extends Activity {
                 // adverts and promos (switch in the Sky Sports player menu): count them, and block them if asked
                 if (h != null && skyPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
                     adHits++;
-                    if (prefs().getBoolean("skyNoAds", false)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
+                    if (prefs().getBoolean("skyNoAds", true)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
                 }
                 if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
                     return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
