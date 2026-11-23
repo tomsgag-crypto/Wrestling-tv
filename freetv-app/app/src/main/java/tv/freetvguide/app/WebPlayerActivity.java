@@ -111,6 +111,30 @@ public class WebPlayerActivity extends Activity {
         android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_SHORT).show();
     }
     private static final int[] QS = {0, 1080, 720, 540, 360};
+    // ITVX / Prime: do the clicks their apps do for you – pick the title from the search results, then press Play
+    private static final String AUTOPLAY = "(function(T){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}" +
+        "function vis(e){var r=e.getBoundingClientRect();return r.width>8&&r.height>8;}var want=n(T),h=location.host+location.pathname;" +
+        "var v=document.querySelector('video');if(v&&!v.paused&&v.currentTime>1)return 'playing';" +
+        "var bad=/ad-?free|premium|subscribe|sign ?in|sign ?up|trial|buy|rent|channels|trailer|add to|watchlist|download|share|more like/i;" +
+        "function lab(e){return ((e.getAttribute('aria-label')||'')+' '+(e.innerText||e.textContent||'')).trim();}" +
+        "if(/primevideo|amazon/.test(h)&&/\\/search/.test(h)){var links=[].slice.call(document.querySelectorAll('a[href*=\"/detail/\"]')).filter(vis);" +
+        "function tt(a){return n(a.getAttribute('aria-label')||(a.querySelector('img')?a.querySelector('img').alt:'')||a.innerText);}" +
+        "var hit=links.filter(function(a){return want&&tt(a)===want;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)===0;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];if(hit){hit.click();return 'picked';}return 'looking';}" +
+        "var btns=[].slice.call(document.querySelectorAll('button,a,[role=button]')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(play|watch|resume|continue|start|watch now|play now|watch from (the )?start|play (movie|episode|film|s\\d)|watch (movie|episode|film|s\\d))/i.test(l);});" +
+        "var pb=btns.filter(function(b){return /play/i.test(lab(b));})[0]||btns[0]||document.querySelector('[data-automation-id*=play-button],[data-testid*=play],[class*=PlayButton],[class*=play-button]');" +
+        "if(pb&&vis(pb)){pb.click();return 'play';}return 'looking';}catch(e){return 'err';}})";
+    private int apTries = 0;
+    private final Runnable autoplay = new Runnable() { @Override public void run() {
+        if (web == null || watching() || autoFilled) return;
+        String u = web.getUrl() == null ? "" : web.getUrl();
+        if (!(u.contains("itv.com/watch") || u.contains("primevideo.com") || u.contains("amazon.co.uk/gp/video"))) return;
+        String want = getIntent().getStringExtra("title");
+        web.evaluateJavascript(AUTOPLAY + "(" + org.json.JSONObject.quote(want == null ? "" : want) + ")", r -> {
+            boolean clicked = r != null && (r.contains("play") || r.contains("picked"));
+            if (r != null && r.contains("playing")) return;
+            if (++apTries < 30) ui.postDelayed(autoplay, clicked ? 3500 : 1500);
+        });
+    } };
     /** ◀ on ITVX / Prime: just the adverts switch. */
     private void adMenu() {
         boolean noAds = prefs().getBoolean("webNoAds", false);
@@ -679,6 +703,7 @@ public class WebPlayerActivity extends Activity {
             @Override public void onPageFinished(WebView v, String url) {
                 if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false)) cover.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
+                if (url != null && (url.contains("itv.com/watch") || url.contains("primevideo.com") || url.contains("amazon.co.uk/gp/video"))) { apTries = 0; ui.removeCallbacks(autoplay); ui.postDelayed(autoplay, 2000); }
                 if (url != null && url.contains("virgintvgo.virginmedia.com")) { ownedTries = 0; ui.removeCallbacks(ownedSync); ui.postDelayed(ownedSync, 3000); }
                 if (find != null) { ui.removeCallbacks(step); ui.postDelayed(step, 2000); return; }
                 tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 1500); }
@@ -786,5 +811,5 @@ public class WebPlayerActivity extends Activity {
     @Override protected void onStop() { super.onStop(); if (zapping) finish(); }
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); }
-    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }

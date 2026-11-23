@@ -816,12 +816,12 @@ var app = (function () {
   function openService(k, url, what, title) {
     if (k === 'itv' && itvWeb()) {
       toast('Finding ' + what + ' on ITVX…');
-      itvPage(title).then(function (u) { Native.openWeb(u || 'https://www.itv.com/watch/search?q=' + encodeURIComponent(title), 'ITVX'); });
+      itvPage(title).then(function (u) { Native.openWeb(u || 'https://www.itv.com/watch/search?q=' + encodeURIComponent(title), title); });
       return;
     }
     if (k === 'prime' && primeWeb()) {
       var direct = String(url || '').split('\n').filter(function (u) { return /primevideo\.com\/detail|amazon\.co\.uk\/gp\/video/.test(u); })[0];
-      Native.openWeb(direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title), 'Prime Video');
+      Native.openWeb(direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title), title);
       return;
     }
     openIn(k, url, what);
