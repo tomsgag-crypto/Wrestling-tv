@@ -814,20 +814,21 @@ var app = (function () {
     }).catch(function () { return ''; });
   }
   /** Open a title in a streaming service: ITVX and Prime on their websites inside Free TV, everything else in its app. */
-  function openService(k, url, what, title) {
+  function openService(k, url, what, title, kind) {
+    var tag = kind === 'tv' ? '#ftv-series' : '';   // a series: show its episodes to choose from
     if (k === 'itv' && itvWeb()) {
       toast('Finding ' + what + ' on ITVX…');
-      itvPage(title).then(function (u) { Native.openWeb(u || 'https://www.itv.com/watch/search?q=' + encodeURIComponent(title), title); });
+      itvPage(title).then(function (u) { Native.openWeb((u || 'https://www.itv.com/watch/search?q=' + encodeURIComponent(title)) + tag, title); });
       return;
     }
     if (k === 'disney' && disneyWeb()) {
       var dl = String(url || '').split('\n').filter(function (u) { return /disneyplus\.com\/(browse|movies|series|video)/.test(u); })[0];
-      Native.openWeb(dl || 'https://www.disneyplus.com/search?q=' + encodeURIComponent(title), title);
+      Native.openWeb((dl || 'https://www.disneyplus.com/search?q=' + encodeURIComponent(title)) + tag, title);
       return;
     }
     if (k === 'prime' && primeWeb()) {
       var direct = String(url || '').split('\n').filter(function (u) { return /primevideo\.com\/detail|amazon\.co\.uk\/gp\/video/.test(u); })[0];
-      Native.openWeb(direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title), title);
+      Native.openWeb((direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title)) + tag, title);
       return;
     }
     openIn(k, url, what);
@@ -839,10 +840,10 @@ var app = (function () {
       ws.forEach(function (w) { w.exact = links[w.k] || ''; });
       // a straight link in an app you have: just go
       var direct = ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0];
-      if (direct) { openService(direct.k, direct.exact, '"' + it.title + '"', it.title); return; }
+      if (direct) { openService(direct.k, direct.exact, '"' + it.title + '"', it.title, it.kind); return; }
       // ITVX / Prime on the web don't need the app
       var webOne = ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()) || (w.k === 'disney' && disneyWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
-      if (webOne) { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title); return; }
+      if (webOne) { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it.kind); return; }
       return ws;
     }).then(function (ws) {
       if (!ws) return;
@@ -853,7 +854,7 @@ var app = (function () {
       var gsearch = { label: TOUCH ? 'Search Google for it' : 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } };
       showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [].concat(ws.map(function (w) {
         return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (has(w.k) ? '' : ' (not installed)'),
-          fn: function () { openService(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), '"' + it.title + '"', it.title); } };
+          fn: function () { openService(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), '"' + it.title + '"', it.title, it.kind); } };
       })).concat(TOUCH ? [gsearch] : [], [{ label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
   }
@@ -1067,8 +1068,8 @@ var app = (function () {
       }
       if (it.e <= now) {
         if (helperFor(it.svc, 'find', it.title)) { openIn(it.svc, it.url, ''); toast('Finding "' + it.title + '" in ' + SVC[it.svc].name + '…'); return; }
-        if (it.url) openService(it.svc, it.url, '"' + it.title + '"', it.title);
-        else if (it.svc) openService(it.svc, '', '"' + it.title + '"', it.title);
+        if (it.url) openService(it.svc, it.url, '"' + it.title + '"', it.title, it.kind);
+        else if (it.svc) openService(it.svc, '', '"' + it.title + '"', it.title, it.kind);
         else toast('That was on ' + it.chName + ' – it isn\'t available on demand here');
         return;
       }
@@ -1078,7 +1079,7 @@ var app = (function () {
     if (it.src === 'tmdb') { openTMDB(it); return; }
     if (it.src === 'pluto' && it.pid && canPlayPluto()) { playPlutoVOD(it); return; }
     if (helperFor(it.svc, 'find', it.title)) { openIn(it.svc, it.url, ''); toast('Finding "' + it.title + '" in ' + SVC[it.svc].name + '…'); return; }
-    openService(it.svc, it.url, '"' + it.title + '"', it.title);
+    openService(it.svc, it.url, '"' + it.title + '"', it.title, it.kind);
   }
 
   // ---------------------------------------------------------------- reminders

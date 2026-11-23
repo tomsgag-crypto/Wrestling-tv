@@ -122,9 +122,9 @@ public class WebPlayerActivity extends Activity {
     }
     private static final int[] QS = {0, 1080, 720, 540, 360};
     // ITVX / Prime: do the clicks their apps do for you – pick the title from the search results, then press Play
-    private static final String AUTOPLAY = "(function(T){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}" +
+    private static final String AUTOPLAY = "(function(T,S){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}" +
         "function vis(e){var r=e.getBoundingClientRect();return r.width>8&&r.height>8;}var want=n(T),h=location.host+location.pathname;" +
-        "var v=document.querySelector('video');if(v&&!v.paused&&v.currentTime>1)return 'playing';" +
+        "if([].some.call(document.querySelectorAll('video'),function(v){return !v.paused&&v.currentTime>1&&isFinite(v.duration)&&v.duration>240;}))return 'playing';" +
         "if(/signin|sign-in|\\/ap\\/|login|account\\/(create|register)/i.test(location.href)||[].some.call(document.querySelectorAll('input[type=password],input[type=email]'),vis))return 'login';" +
         "var bad=/ad-?free|premium|subscribe|sign ?in|sign ?up|trial|buy|rent|channels|trailer|add to|watchlist|download|share|more like|parental|turn on|settings|set up|pin/i;" +
         "function lab(e){return ((e.getAttribute('aria-label')||'')+' '+(e.innerText||e.textContent||'')).trim();}" +
@@ -132,11 +132,12 @@ public class WebPlayerActivity extends Activity {
         "function tt(a){return n(a.getAttribute('aria-label')||(a.querySelector('img')?a.querySelector('img').alt:'')||a.innerText);}" +
         "var hit=links.filter(function(a){return want&&tt(a)===want;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)===0;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];if(hit){hit.click();return 'picked';}return 'looking';}" +
         "var ok=[].slice.call(document.querySelectorAll('[role=dialog] button,[role=dialog] a,[class*=odal] button,[class*=ialog] button,[class*=uidance] button,button')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(continue( watching)?|i understand|i'?m (over|aged)|i am (over|aged)|yes|confirm|accept|ok|got it|watch anyway|proceed)\\b/i.test(l);})[0];" +
-        "if(ok){ok.click();return 'play';}" +
+        "if(ok){ok.click();return 'play';}if(S)return 'series';" +
         "var btns=[].slice.call(document.querySelectorAll('button,a,[role=button]')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(play|watch|resume|continue|start|watch now|play now|watch from (the )?start|play (movie|episode|film|s\\d)|watch (movie|episode|film|s\\d))/i.test(l);});" +
         "var pb=btns.filter(function(b){return /play/i.test(lab(b));})[0]||btns[0]||document.querySelector('[data-automation-id*=play-button],[data-testid*=play],[class*=PlayButton],[class*=play-button]');" +
         "if(pb&&vis(pb)){pb.click();return 'play';}return 'looking';}catch(e){return 'err';}})";
     private int apTries = 0;
+    private boolean series() { String u = getIntent().getStringExtra("url"); return u != null && u.contains("#ftv-series"); }
     private boolean autoMode = true;   // Free TV is doing the clicks behind the loading screen
     private static boolean autoSite(String u) { return u != null && (u.contains("itv.com") || u.contains("primevideo.com") || u.contains("amazon.co.uk/gp/video") || u.contains("disneyplus.com")); }
     private void autoGiveUp(String why) {
@@ -148,7 +149,8 @@ public class WebPlayerActivity extends Activity {
         String u = web.getUrl() == null ? "" : web.getUrl();
         if (!autoSite(u)) return;
         String want = getIntent().getStringExtra("title");
-        web.evaluateJavascript(AUTOPLAY + "(" + org.json.JSONObject.quote(want == null ? "" : want) + ")", r -> {
+        web.evaluateJavascript(AUTOPLAY + "(" + org.json.JSONObject.quote(want == null ? "" : want) + "," + series() + ")", r -> {
+            if (r != null && r.contains("series")) { if (cover.getVisibility() == View.VISIBLE) autoGiveUp("Pick an episode – it goes full screen when it starts"); if (++apTries < 60) ui.postDelayed(autoplay, 3000); return; }
             boolean clicked = r != null && (r.contains("play") || r.contains("picked"));
             if (r != null && r.contains("playing")) return;
             if (r != null && r.contains("login")) { autoGiveUp("Sign in once with the pointer – after that Free TV starts things for you"); return; }
@@ -733,12 +735,12 @@ public class WebPlayerActivity extends Activity {
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
                 if (find != null) { /* the step loop decides */ }
-                else if (autoSite(url) && autoMode && getIntent().getStringExtra("title") != null) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 180000); }
+                else if (autoSite(url) && autoMode && getIntent().getStringExtra("title") != null && !(series() && !url.contains("search"))) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 180000); }
                 else if (getIntent().getBooleanExtra("sync", false)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
                 else if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); if (find == null) { tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 2500); } } else cover.setVisibility(View.GONE);
             }
             @Override public void onPageFinished(WebView v, String url) {
-                if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false) && !(autoSite(url) && autoMode)) cover.setVisibility(View.GONE);
+                if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false) && !(autoSite(url) && autoMode && !(series() && !url.contains("search")))) cover.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
                 if (autoSite(url) && autoMode) { apTries = 0; ui.removeCallbacks(autoplay); ui.postDelayed(autoplay, 2000); }
                 if (url != null && url.contains("virgintvgo.virginmedia.com")) { ownedTries = 0; ui.removeCallbacks(ownedSync); ui.postDelayed(ownedSync, 3000); }
