@@ -867,6 +867,7 @@ var app = (function () {
     var r = reminders.filter(function (x) { return x.id === id; })[0];
     if (!r) return;
     var it = r.item;
+    $('alert').querySelector('.a1').textContent = 'STARTING SOON';
     $('alert').querySelector('.a2').textContent = it.title;
     $('alert').querySelector('.a3').textContent = clock(it.s) + ' on ' + it.chName;
     $('alert').classList.add('show');
@@ -1430,7 +1431,7 @@ var app = (function () {
       if (x.k === 'update') {
         var r = Native.updateSelf();
         if (r === 'allow') showPop({ title: 'First allow Free TV to install updates: turn on "Allow from this source" on the next screen, press Back, then choose Update Free TV again.', opts: [{ label: 'OK' }] });
-        else toast('Downloading the newest Free TV…');
+        else updateMsg('Downloading the update…');
         return;
       }
       if (x.k === 'showhide') { showMenu(); return; }
@@ -1470,6 +1471,16 @@ var app = (function () {
 
   // ---------------------------------------------------------------- the small window: a channel keeps playing in the guide
   var mini = null;   // { gid, name }
+  /** Progress of "Update Free TV", shown in the corner box. */
+  var updTimer = null;
+  function updateMsg(m) {
+    $('alert').querySelector('.a1').textContent = 'UPDATING FREE TV';
+    $('alert').querySelector('.a2').textContent = m.replace(/\s*\d+%$/, '');
+    $('alert').querySelector('.a3').textContent = (/(\d+)%/.exec(m) || [, ''])[1] ? /(\d+)%/.exec(m)[1] + '%' : '';
+    $('alert').classList.add('show');
+    clearTimeout(updTimer);
+    updTimer = setTimeout(function () { $('alert').classList.remove('show'); }, /didn|fail|Already/i.test(m) ? 6000 : 60000);
+  }
   function miniStarted(gid, name) {
     mini = { gid: gid, name: name };
     view = 'guide'; zone = 'main'; gZone = 'rows';
@@ -1832,5 +1843,5 @@ var app = (function () {
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
-  return { key: key, back: back, _cb: _cb, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
+  return { key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();

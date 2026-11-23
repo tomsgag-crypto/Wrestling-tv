@@ -497,7 +497,7 @@ public class MainActivity extends Activity {
                 });
                 return "allow";
             }
-            pool.execute(() -> SelfUpdate.run(MainActivity.this, msg -> ui.post(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show())));
+            pool.execute(() -> SelfUpdate.run(MainActivity.this, msg -> js("window.app && app.updateMsg(" + JSONObject.quote(msg) + ")")));
             return "started";
         }
 
