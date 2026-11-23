@@ -63,7 +63,12 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         web = new WebView(this);
         web.setBackgroundColor(Color.BLACK);
-        setContentView(web);
+        root = new android.widget.FrameLayout(this);
+        root.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        miniView = new android.view.TextureView(this);
+        miniView.setVisibility(android.view.View.GONE);
+        root.addView(miniView, new android.widget.FrameLayout.LayoutParams(1, 1));
+        setContentView(root);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -78,6 +83,59 @@ public class MainActivity extends Activity {
     }
 
     private String pendingReminder;
+
+    // ---------------- the small window in the guide: keeps a channel playing after you go back from full screen
+    private android.widget.FrameLayout root;
+    private android.view.TextureView miniView;
+    private androidx.media3.exoplayer.ExoPlayer mini;
+    private androidx.media3.datasource.DefaultHttpDataSource.Factory miniHttp;
+    private JSONArray miniChans;
+    private int miniIdx;
+    private boolean miniShown = false;
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != 7 || res != RESULT_OK || data == null) return;
+        try {
+            miniChans = new JSONArray(data.getStringExtra("channels"));
+            miniIdx = data.getIntExtra("index", 0);
+            JSONObject c = miniChans.getJSONObject(miniIdx);
+            startMini(c);
+            js("window.app && app.miniStarted(" + JSONObject.quote(c.optString("gid")) + "," + JSONObject.quote(c.optString("name")) + ")");
+        } catch (Exception ignored) { }
+    }
+    private void startMini(final JSONObject c) {
+        stopMini();
+        miniHttp = new androidx.media3.datasource.DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true).setUserAgent(PlayerActivity.userAgent(c));
+        mini = new androidx.media3.exoplayer.ExoPlayer.Builder(this)
+                .setMediaSourceFactory(new androidx.media3.exoplayer.source.DefaultMediaSourceFactory(miniHttp)).build();
+        mini.setVideoTextureView(miniView);
+        final androidx.media3.exoplayer.ExoPlayer p = mini;
+        pool.execute(() -> {
+            try {
+                final String url = PlayerActivity.streamUrl(MainActivity.this, c);
+                ui.post(() -> {
+                    if (mini != p) return;
+                    p.setMediaItem(new androidx.media3.common.MediaItem.Builder().setUri(android.net.Uri.parse(url)).setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8).build());
+                    p.prepare();
+                    p.setPlayWhenReady(true);
+                });
+            } catch (Exception e) { ui.post(this::stopMiniAndTell); }
+        });
+    }
+    private void stopMiniAndTell() { stopMini(); js("window.app && app.miniStopped()"); }
+    private void stopMini() {
+        if (mini != null) { mini.release(); mini = null; }
+        if (miniView != null) miniView.setVisibility(android.view.View.GONE);
+        miniShown = false;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (mini != null) stopMiniAndTell();
+    }
 
     @Override
     protected void onNewIntent(Intent intent) {
@@ -349,12 +407,37 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void playPluto(String channelsJson, int index) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class).putExtra("channels", channelsJson).putExtra("index", index);
-            ui.post(() -> startActivity(i));
+            ui.post(() -> { stopMini(); startActivityForResult(i, 7); });
+        }
+        /** Where the small window goes (in page pixels); w = 0 hides it. */
+        @JavascriptInterface
+        public void miniRect(final double x, final double y, final double w, final double h) {
+            ui.post(() -> {
+                if (mini == null) return;
+                float d = getResources().getDisplayMetrics().density;
+                if (w <= 0 || h <= 0) { miniView.setVisibility(android.view.View.GONE); return; }
+                android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams((int) (w * d), (int) (h * d));
+                lp.leftMargin = (int) (x * d); lp.topMargin = (int) (y * d);
+                miniView.setLayoutParams(lp);
+                miniView.setVisibility(android.view.View.VISIBLE);
+            });
+        }
+        @JavascriptInterface
+        public void miniStop() { ui.post(MainActivity.this::stopMini); }
+        /** Back to full screen on the channel in the small window. */
+        @JavascriptInterface
+        public void miniFull() {
+            ui.post(() -> {
+                if (miniChans == null) return;
+                Intent i = new Intent(MainActivity.this, PlayerActivity.class).putExtra("channels", miniChans.toString()).putExtra("index", miniIdx);
+                stopMini();
+                startActivityForResult(i, 7);
+            });
         }
         @JavascriptInterface
         public void playPlutoFilm(String id, String title) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class).putExtra("episode", id).putExtra("title", title);
-            ui.post(() -> startActivity(i));
+            ui.post(() -> { stopMini(); startActivity(i); });
         }
 
         // ---------------- helper (works iPlayer and U for you)

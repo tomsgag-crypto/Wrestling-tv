@@ -744,7 +744,7 @@ var app = (function () {
       if ((c.play || (c.svc === 'pluto' && c.pid ? 'pluto' : '')) !== kind || ids[c.id]) return;
       ids[c.id] = 1;
       if (c.id === chId && at < 0) at = list.length;
-      list.push({ id: c.pid || c.id, name: c.name, num: c.num || 0, url: c.url || '', ua: kind === 'samsung' ? 'okhttp/4.12.0' : '', svc: c.playName || 'PLUTO TV',
+      list.push({ id: c.pid || c.id, gid: c.id, name: c.name, num: c.num || 0, url: c.url || '', ua: kind === 'samsung' ? 'okhttp/4.12.0' : '', svc: c.playName || 'PLUTO TV',
         ev: c.events.filter(function (e) { return e.e > now && e.s < now + 6 * 3600; }).map(function (e) { return [e.s, e.e, e.t]; }) });
     });
     if (!list.length || !(window.Native && Native.playPluto)) return false;
@@ -946,11 +946,13 @@ var app = (function () {
     else if (view === 'search') renderSearch();
     else if (view === 'apps') renderApps();
     renderHelp();
+    placeMini();
   }
   function renderHelp() {
     var h;
     if (zone === 'tabs') h = '<b>◀ ▶</b> choose a section · <b>▼</b> go in';
     else if (view === 'guide' && gZone === 'days') h = '<b>◀ ▶</b> choose a day, or <b>Filter & options</b> at the end · <b>OK</b> go to it';
+    else if (view === 'guide' && mini) h = '▶ <b>' + esc(mini.name) + '</b> is playing · <b>OK</b> on it for full screen · <b>Back</b> stops it · <b>OK</b> on another channel to switch';
     else if (view === 'guide') h = '<b>▲▼</b> channels · <b>◀▶</b> time · <b>OK</b> watch, or set a reminder · <b>hold OK</b> more · <b>▲</b> from the top: days, <b>filter & options</b>';
     else if (view === 'lists') h = '<b>OK</b> watch · <b>hold OK</b> remove, move or mark watched · <b>Menu</b> on a list: rename or delete';
     else if (view === 'apps') h = '<b>OK</b> open the app (or install it) · settings are at the end';
@@ -1067,6 +1069,7 @@ var app = (function () {
     else if (k === 'right') gT = Math.min(guideEnd() - 60, fp ? fp.e + 1 : gT + 1800);
     else if (k === 'left') gT = fp && fp.s > now ? Math.max(now, fp.s - 1) : now;
     else if (k === 'ff' || k === 'rw') { gT = Math.max(now, Math.min(guideEnd() - 60, gT + (k === 'ff' ? 86400 : -86400))); ws = 0; }
+    else if (k === 'ok' && mini && chans[gRow] && chans[gRow].id === mini.gid && (!fp || fp.s <= now)) { Native.miniFull(); return; }
     else if (k === 'ok') {
       var c = chans[gRow];
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
@@ -1438,8 +1441,26 @@ var app = (function () {
 
   // ---------------------------------------------------------------- pop-up menus
   var pop = null;             // {title, opts:[{label, tick, fn}], row, input}
-  function showPop(p) { pop = p; pop.row = pop.row || 0; renderPop(); }
-  function closePop() { pop = null; $('pop').classList.remove('show'); $('popIn').style.display = 'none'; $('popIn').blur(); }
+  function showPop(p) { pop = p; pop.row = pop.row || 0; placeMini(); renderPop(); }
+  function closePop() { pop = null; $('pop').classList.remove('show'); $('popIn').style.display = 'none'; $('popIn').blur(); setTimeout(placeMini, 0); }
+
+  // ---------------------------------------------------------------- the small window: a channel keeps playing in the guide
+  var mini = null;   // { gid, name }
+  function miniStarted(gid, name) {
+    mini = { gid: gid, name: name };
+    view = 'guide'; zone = 'main'; gZone = 'rows';
+    for (var i = 0; i < chans.length; i++) if (chans[i].id === gid) { gRow = i; break; }
+    gT = nowSec(); ws = 0;
+    render();
+  }
+  function miniStopped() { mini = null; placeMini(); if (view === 'guide') renderGuide(); }
+  function placeMini() {
+    if (!mini || !window.Native || !Native.miniRect) return;
+    var el = $('gImg'), r = el.getBoundingClientRect();
+    if (view === 'guide' && !pop && r.width < 10) { Native.miniStop(); mini = null; return; }   // no room for it (phone held upright)
+    if (view !== 'guide' || pop || r.width < 10) Native.miniRect(0, 0, 0, 0);
+    else Native.miniRect(r.left, r.top, r.width, r.height);
+  }
   function renderPop() {
     $('pop').classList.add('show');
     $('popTitle').textContent = pop.title;
@@ -1670,6 +1691,7 @@ var app = (function () {
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = odSrc; render(); return true; }
+    if (mini && view === 'guide') { Native.miniStop(); mini = null; toast('Stopped'); renderGuide(); return true; }
     if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = Math.max(0, Math.min(DAYS - 1, Math.floor((gT - day0) / 86400))); render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }
     if (zone === 'main') { zone = 'tabs'; render(); return true; }
@@ -1786,5 +1808,5 @@ var app = (function () {
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
-  return { key: key, back: back, _cb: _cb, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
+  return { key: key, back: back, _cb: _cb, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();

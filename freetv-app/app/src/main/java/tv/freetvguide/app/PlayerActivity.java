@@ -124,10 +124,11 @@ public class PlayerActivity extends Activity {
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
 
     /** Pluto's start-up call: gives the stream server, its settings and a session token (lasts a few hours). */
-    private void boot() throws Exception {
+    private void boot() throws Exception { boot(this); }
+    static synchronized void boot(android.content.Context ctx) throws Exception {
         if (jwt != null && System.currentTimeMillis() - bootAt < 3 * 3600 * 1000) return;
-        String id = getSharedPreferences("pluto", MODE_PRIVATE).getString("id", null);
-        if (id == null) { id = UUID.randomUUID().toString(); getSharedPreferences("pluto", MODE_PRIVATE).edit().putString("id", id).apply(); }
+        String id = ctx.getSharedPreferences("pluto", MODE_PRIVATE).getString("id", null);
+        if (id == null) { id = UUID.randomUUID().toString(); ctx.getSharedPreferences("pluto", MODE_PRIVATE).edit().putString("id", id).apply(); }
         String u = "https://boot.pluto.tv/v4/start?appName=web&appVersion=9.0.0&deviceVersion=120.0.0&deviceModel=web&deviceMake=chrome&deviceType=web&clientID=" + id +
                 "&clientModelNumber=1.0.0&serverSideAds=false&drmCapabilities=widevine%3AL3&blockingMode=&notificationVersion=1&appLaunchCount=0&lastAppLaunchDate=";
         JSONObject j = new JSONObject(get(u));
@@ -136,6 +137,24 @@ public class PlayerActivity extends Activity {
         jwt = j.getString("sessionToken");
         bootAt = System.currentTimeMillis();
     }
+    /** The stream address for a channel entry (Pluto ones need the start-up call first). Blocking: call off the main thread. */
+    static String streamUrl(android.content.Context ctx, JSONObject c) throws Exception {
+        String direct = c.optString("url");
+        if (!direct.isEmpty()) return direct;
+        boot(ctx);
+        return stitcher + "/v2/stitch/hls/channel/" + c.optString("id") + "/master.m3u8?" + params + "&jwt=" + jwt + "&masterJWTPassthrough=true";
+    }
+    static String userAgent(JSONObject c) {
+        return c != null && !c.optString("ua").isEmpty() ? c.optString("ua") : "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Safari/537.36";
+    }
+
+    /** Back: hand the channel to the guide, which keeps it playing in its small window. */
+    @Override
+    public void onBackPressed() {
+        if (episode == null && chans.length() > 0) setResult(RESULT_OK, new android.content.Intent().putExtra("channels", chans.toString()).putExtra("index", idx));
+        finish();
+    }
+
     private static String get(String u) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
         c.setConnectTimeout(15000); c.setReadTimeout(20000);
