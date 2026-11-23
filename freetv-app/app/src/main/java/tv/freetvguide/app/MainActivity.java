@@ -478,6 +478,11 @@ public class MainActivity extends Activity {
         public String virginOwned() { return getSharedPreferences("player", MODE_PRIVATE).getString("owned", ""); }
         /** Open Virgin TV Go briefly to read which channels you have. */
         /** Check your Virgin package in the background (no screen). */
+        /** Player switches kept on the TV (e.g. "webNoAds"). */
+        @JavascriptInterface
+        public boolean playerPref(String k, boolean def) { return getSharedPreferences("player", MODE_PRIVATE).getBoolean(k, def); }
+        @JavascriptInterface
+        public void setPlayerPref(String k, boolean v) { getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean(k, v).apply(); }
         @JavascriptInterface
         public void setZap(String json, int index) { zapList = json; zapIndex = index; }
         @JavascriptInterface

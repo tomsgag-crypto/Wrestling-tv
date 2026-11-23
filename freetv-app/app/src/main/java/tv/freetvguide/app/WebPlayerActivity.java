@@ -32,7 +32,7 @@ public class WebPlayerActivity extends Activity {
     /** The pointer is used whenever the page itself is showing (not the loading screen or full-screen video). */
     private boolean pointerOn() { return cursor != null && !watching() && cover.getVisibility() != View.VISIBLE; }
     private boolean pageFull = false;
-    private volatile boolean skyPage = false;
+    private volatile boolean skyPage = false, adPage = false;
     private volatile int adHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
@@ -54,10 +54,10 @@ public class WebPlayerActivity extends Activity {
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
             "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
-            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
+            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+(isFinite(v.duration)?Math.round(v.duration):0)+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
                 if (r == null) return;
                 int bar = r.indexOf('|');
-                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);
+                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);   // (length, position and paused follow)
                     if (onSky()) st += " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", true) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 long now2 = android.os.SystemClock.uptimeMillis();
@@ -65,7 +65,9 @@ public class WebPlayerActivity extends Activity {
                     String u0 = web.getUrl();
                     if (u0 != null && (u0.contains("itv.com/watch") || u0.contains("primevideo.com") || u0.contains("amazon.co.uk/gp/video"))) {
                         String[] pp = r.replace("\"", "").split("\\|");
-                        try { if (pp.length >= 2 && Double.parseDouble(pp[pp.length - 2]) > 1.5 && "0".equals(pp[pp.length - 1].trim())) { autoFilled = true; fsTries = 0; tries = 0; ui.post(fill); } } catch (Exception ignored) { }
+                        // a programme (over 4 minutes long, playing) – not a trailer or preview on the page
+                        try { if (pp.length >= 3 && Double.parseDouble(pp[pp.length - 3]) > 240 && Double.parseDouble(pp[pp.length - 2]) > 1.5 && "0".equals(pp[pp.length - 1].trim())) {
+                            autoFilled = true; fsTries = 0; tries = 0; web.evaluateJavascript("window.__ftvFillOK=1", null); ui.postDelayed(fill, 200); } } catch (Exception ignored) { }
                     }
                 }
                 // Sky: if the picture has stood still for 5 seconds (and you didn't pause it), restart at live – that's what fixes it
@@ -109,6 +111,18 @@ public class WebPlayerActivity extends Activity {
         android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_SHORT).show();
     }
     private static final int[] QS = {0, 1080, 720, 540, 360};
+    /** ◀ on ITVX / Prime: just the adverts switch. */
+    private void adMenu() {
+        boolean noAds = prefs().getBoolean("webNoAds", false);
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Player")
+            .setItems(new String[]{ "Adverts: " + (noAds ? "blocked – OK to allow (if the programme won't play)" : "allowed – OK to try blocking them") }, (d, w) -> {
+                prefs().edit().putBoolean("webNoAds", !noAds).apply();
+                android.widget.Toast.makeText(this, noAds ? "Adverts allowed – reloading" : "Trying to block adverts – reloading", android.widget.Toast.LENGTH_SHORT).show();
+                if (custom != null) { root.removeView(custom); custom = null; }
+                pageFull = false; autoFilled = false; web.reload();
+            }).show();
+    }
     private void qualityMenu() {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
@@ -516,7 +530,7 @@ public class WebPlayerActivity extends Activity {
     // Make the player fill the screen and start it, if the page hasn't already.
     // Make the player fill the screen: find the video (the BBC player keeps it inside sealed-off "shadow" parts of the page),
     // pin its outer box to the whole screen and hide everything else.
-    private static final String FILL = "(function(){try{if(!/bbc\\.co\\.uk\\/iplayer\\/(live|episode)|skysports\\.com\\/watch|itv\\.com\\/watch|primevideo\\.com|amazon\\.co\\.uk\\/gp\\/video/.test(location.href))return 'not player';var sky=/skysports/.test(location.host);function deep(root,depth){if(!root||depth>8)return null;var v=root.querySelector&&root.querySelector('video');if(v)return v; var all=root.querySelectorAll?root.querySelectorAll('*'):[];for(var i=0;i<all.length;i++){if(all[i].shadowRoot){var f=deep(all[i].shadowRoot,depth+1);if(f)return f;}}return null;}var v=deep(document,0);var t=null;if(v){t=v;while(t.getRootNode&&t.getRootNode()!==document){t=t.getRootNode().host;} var host=t;var p=t;while(p&&p.parentElement&&p.parentElement!==document.body){var r=p.parentElement.getBoundingClientRect(),q=t.getBoundingClientRect();if(r.width>q.width*1.15||r.height>q.height*1.3)break;p=p.parentElement;}t=p;}else if(sky){var pb=[].slice.call(document.querySelectorAll('button,[role=button],[class*=play],[class*=Play]')).filter(function(e){var r=e.getBoundingClientRect();return r.width>24&&r.width<260&&r.top>0&&/play/i.test((e.getAttribute('aria-label')||'')+' '+(typeof e.className==='string'?e.className:''))&&!/playlist|player-/i.test(e.className);})[0];if(pb&&(window.__ftvPb=(window.__ftvPb||0)+1)%6===1)pb.click();return 'waiting';}else{t=[].slice.call(document.querySelectorAll('iframe')).filter(function(x){return x.getBoundingClientRect().width>300;})[0]||null;}if(!t)return 'waiting';var W=window.innerWidth,H=window.innerHeight;var st=document.getElementById('ftv-fill');if(!st){st=document.createElement('style');st.id='ftv-fill';document.head.appendChild(st);}st.textContent='html,body{overflow:hidden!important;background:#000!important}'+ '.ftv-hide{visibility:hidden!important}.ftv-anc{transform:none!important;filter:none!important;contain:none!important;overflow:visible!important;z-index:auto!important;visibility:visible!important}'+ '.ftv-full{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important;transform:none!important}.ftv-big{position:fixed!important;left:0!important;top:0!important;width:'+W+'px!important;height:'+H+'px!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;z-index:2147483647!important;background:#000!important;visibility:visible!important;transform:none!important}';t.classList.add('ftv-big');if(v){var c=v,n=0;while(c&&c!==t&&n++<60){if(c.style){['width','height'].forEach(function(k){c.style.setProperty(k,'100%','important');});c.style.setProperty('max-width','none','important');c.style.setProperty('max-height','none','important');c.style.setProperty('transform','none','important');c.style.setProperty('padding','0','important');c.style.setProperty('margin','0','important');try{var cs=getComputedStyle(c);if(cs.position==='absolute'||cs.position==='fixed'){c.style.setProperty('top','0','important');c.style.setProperty('left','0','important');c.style.setProperty('bottom','auto','important');c.style.setProperty('right','auto','important');}}catch(e){}}c=c.parentElement||(c.getRootNode&&c.getRootNode().host)||null;}v.style.setProperty('object-fit','contain','important');}var a=t.parentElement;while(a&&a!==document.documentElement){a.classList.add('ftv-anc');[].forEach.call(a.children,function(c){if(c!==t&&!c.contains(t)&&!c.classList.contains('ftv-anc'))c.classList.add('ftv-hide');});a=a.parentElement;}window.scrollTo(0,0);if(v){v.style.objectFit='contain';if(v.paused&&!sky&&!window.__ftvUserPaused&&!window.__ftvStarted){try{v.play();}catch(e){}}if(!v.paused)window.__ftvStarted=1;}return 'filled';}catch(e){return 'err '+e;}})()";
+    private static final String FILL = "(function(){try{if(!/bbc\\.co\\.uk\\/iplayer\\/(live|episode)|skysports\\.com\\/watch/.test(location.href)&&!window.__ftvFillOK)return 'not player';var sky=/skysports/.test(location.host);function deep(root,depth){if(!root||depth>8)return null;var v=root.querySelector&&root.querySelector('video');if(v)return v; var all=root.querySelectorAll?root.querySelectorAll('*'):[];for(var i=0;i<all.length;i++){if(all[i].shadowRoot){var f=deep(all[i].shadowRoot,depth+1);if(f)return f;}}return null;}var v=deep(document,0);var t=null;if(v){t=v;while(t.getRootNode&&t.getRootNode()!==document){t=t.getRootNode().host;} var host=t;var p=t;while(p&&p.parentElement&&p.parentElement!==document.body){var r=p.parentElement.getBoundingClientRect(),q=t.getBoundingClientRect();if(r.width>q.width*1.15||r.height>q.height*1.3)break;p=p.parentElement;}t=p;}else if(sky){var pb=[].slice.call(document.querySelectorAll('button,[role=button],[class*=play],[class*=Play]')).filter(function(e){var r=e.getBoundingClientRect();return r.width>24&&r.width<260&&r.top>0&&/play/i.test((e.getAttribute('aria-label')||'')+' '+(typeof e.className==='string'?e.className:''))&&!/playlist|player-/i.test(e.className);})[0];if(pb&&(window.__ftvPb=(window.__ftvPb||0)+1)%6===1)pb.click();return 'waiting';}else{t=[].slice.call(document.querySelectorAll('iframe')).filter(function(x){return x.getBoundingClientRect().width>300;})[0]||null;}if(!t)return 'waiting';var W=window.innerWidth,H=window.innerHeight;var st=document.getElementById('ftv-fill');if(!st){st=document.createElement('style');st.id='ftv-fill';document.head.appendChild(st);}st.textContent='html,body{overflow:hidden!important;background:#000!important}'+ '.ftv-hide{visibility:hidden!important}.ftv-anc{transform:none!important;filter:none!important;contain:none!important;overflow:visible!important;z-index:auto!important;visibility:visible!important}'+ '.ftv-full{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important;transform:none!important}.ftv-big{position:fixed!important;left:0!important;top:0!important;width:'+W+'px!important;height:'+H+'px!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;z-index:2147483647!important;background:#000!important;visibility:visible!important;transform:none!important}';t.classList.add('ftv-big');if(v){var c=v,n=0;while(c&&c!==t&&n++<60){if(c.style){['width','height'].forEach(function(k){c.style.setProperty(k,'100%','important');});c.style.setProperty('max-width','none','important');c.style.setProperty('max-height','none','important');c.style.setProperty('transform','none','important');c.style.setProperty('padding','0','important');c.style.setProperty('margin','0','important');try{var cs=getComputedStyle(c);if(cs.position==='absolute'||cs.position==='fixed'){c.style.setProperty('top','0','important');c.style.setProperty('left','0','important');c.style.setProperty('bottom','auto','important');c.style.setProperty('right','auto','important');}}catch(e){}}c=c.parentElement||(c.getRootNode&&c.getRootNode().host)||null;}v.style.setProperty('object-fit','contain','important');}var a=t.parentElement;while(a&&a!==document.documentElement){a.classList.add('ftv-anc');[].forEach.call(a.children,function(c){if(c!==t&&!c.contains(t)&&!c.classList.contains('ftv-anc'))c.classList.add('ftv-hide');});a=a.parentElement;}window.scrollTo(0,0);if(v){v.style.objectFit='contain';if(v.paused&&!sky&&!window.__ftvUserPaused&&!window.__ftvStarted){try{v.play();}catch(e){}}if(!v.paused)window.__ftvStarted=1;}return 'filled';}catch(e){return 'err '+e;}})()";
 
     // Pressing F2 (sent by Free TV, so it counts as a real key press) asks the page for proper full screen on the video.
     private static final String ARM = "(function(){if(window.__ftvArmed)return 'armed';window.__ftvArmed=1;" +
@@ -645,16 +659,16 @@ public class WebPlayerActivity extends Activity {
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
                 String h = req.getUrl().getHost();
                 // adverts and promos (switch in the Sky Sports player menu): count them, and block them if asked
-                if (h != null && skyPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
+                if (h != null && adPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
                     adHits++;
-                    if (prefs().getBoolean("skyNoAds", true)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
+                    if (skyPage ? prefs().getBoolean("skyNoAds", true) : prefs().getBoolean("webNoAds", false)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
                 }
                 if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
                     return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
                 return null;
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
-                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); pageFull = false;
+                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); adPage = url != null && (skyPage || url.contains("itv.com") || url.contains("primevideo.com") || url.contains("amazon.co.uk")); pageFull = false;
                 if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(desktopJs(), null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
@@ -728,7 +742,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (watching() && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (onSky()) qualityMenu(); }
+                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (onSky()) qualityMenu(); else adMenu(); }
                 else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
             }
             return true;

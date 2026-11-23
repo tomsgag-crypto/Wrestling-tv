@@ -1682,6 +1682,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
     t.push({ kind: 'set', k: 'itvWeb', name: 'ITVX programmes', desc: itvWeb() ? 'Play in Free TV from the ITVX website, straight to the programme (sign in once). OK to use the ITVX app' : 'Open the ITVX app. OK to play in Free TV instead' });
     t.push({ kind: 'set', k: 'primeWeb', name: 'Prime Video titles', desc: primeWeb() ? 'Play in Free TV from the Prime Video website, straight to the title (sign in once). OK to use the Prime Video app' : 'Open the Prime Video app. OK to play in Free TV instead' });
+    if (window.Native && Native.playerPref) t.push({ kind: 'set', k: 'webNoAds', name: 'Adverts on ITVX and Prime (test)', desc: Native.playerPref('webNoAds', false) ? 'Free TV tries to block them – OK to allow (if a programme won\'t play)' : 'Allowed – OK to try blocking them (some programmes may then not play)' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
     if (!TOUCH) {
       var hOn = window.Native && Native.helperOn && Native.helperOn();
@@ -1765,6 +1766,7 @@ var app = (function () {
       }
       if (x.k === 'profile') { askText('Your iPlayer profile name (as shown on "Who\'s watching")', settings.profile, function (v) { settings.profile = v; saveSettings(); }); return; }
       if (x.k === 'record') { recordMenu(); return; }
+      if (x.k === 'webNoAds') { Native.setPlayerPref('webNoAds', !Native.playerPref('webNoAds', false)); render(); return; }
       if (x.k === 'itvWeb') { settings.itvWeb = !itvWeb(); saveSettings(); render(); return; }
       if (x.k === 'primeWeb') { settings.primeWeb = !primeWeb(); saveSettings(); render(); return; }
       if (x.k === 'vsync') { Native.virginSync(); return; }
