@@ -341,7 +341,7 @@ var app = (function () {
   }
 
   // ---------------------------------------------------------------- channel types (for filtering the guide)
-  var TYPES = ['Films', 'Sport', 'Entertainment', 'Drama & crime', 'Comedy', 'Factual', 'Reality', 'News', 'Kids', 'Music', 'Shopping'];
+  var TYPES = ['Films', 'Sport', 'Entertainment', 'Drama & crime', 'Comedy', 'Factual', 'Reality & game shows', 'News', 'Kids', 'Music', 'Shopping'];
   var TYPE_RE = [
     ['Shopping', /qvc|ideal world|shopping|jewellery|gems tv|hochanda|create & craft/i],
     ['News', /news|cnn|parliament|al jazeera|bloomberg|euronews|france 24|\bdw\b|cnbc|nbc now|weather|sky news|abc now/i],
@@ -351,13 +351,13 @@ var app = (function () {
     ['Music', /music|\bmtv\b|vevo|kerrang|now ?(70|80|90|00)|clubland|trace|country|\bhits\b|stingray|qello|radio|ambient|fireplace|aquarium|storm vibes|scenic/i],
     ['Drama & crime', /drama|crime|mystery|murder|detective|cops|\bcsi\b|\blaw\b|alibi|forensic|investigat|lockup|first 48|midsomer|poirot|marple|inspector|true crime/i],
     ['Comedy', /comedy|laugh|funny|sitcom|\bdave\b|fail ?army|conan|letterman|8 out of 10|graham norton|simpsons|futurama|family guy/i],
-    ['Factual', /documentar|history|discovery|nat ?geo|animal|nature|wild|science|food|cook|kitchen|chef|menu|travel|home|garden|antique|quest|really|blaze|yesterday|\bpbs\b|smithsonian|pets?\b|car|motor|mechanic|craft|diy|explor|planet|earth|diary of a ceo|history hit/i],
-    ['Reality', /reality|love island|housewives|kardashian|keeping up|dating|wedding|ink master|pawn|storage|deal or no deal|chase|pointless|tipping point|millionaire|family feud|game ?show|quiz|wipeout|cube|takeshi/i]
+    ['Factual', /documentar|history|discovery|nat ?geo|animal|nature|wild|science|food|cook|kitchen|chef|menu|travel|home|garden|antique|quest|really|blaze|yesterday|\bpbs\b|smithsonian|pets?\b|\bcars?\b|mechanic|craft|diy|explor|planet|earth|diary of a ceo|history hit/i],
+    ['Reality & game shows', /reality|love island|housewives|kardashian|keeping up|dating|wedding|ink master|pawn|storage|deal or no deal|chase|pointless|tipping point|millionaire|family feud|game ?show|quiz|wipeout|cube|takeshi/i]
   ];
   var CAT_MAP = { movies: 'Films', 'movies & series': 'Films', sports: 'Sport', sport: 'Sport', news: 'News', 'news + opinion': 'News', kids: 'Kids', 'kids & family': 'Kids', 'kids tv': 'Kids',
-    comedy: 'Comedy', crime: 'Drama & crime', 'crime & thriller': 'Drama & crime', drama: 'Drama & crime', 'tv series': 'Entertainment', reality: 'Reality', 'reality tv': 'Reality',
+    comedy: 'Comedy', crime: 'Drama & crime', 'crime & thriller': 'Drama & crime', drama: 'Drama & crime', 'tv series': 'Entertainment', reality: 'Reality & game shows', 'reality tv': 'Reality & game shows',
     documentaries: 'Factual', nature: 'Factual', 'food & travel': 'Factual', 'food & home': 'Factual', 'history & science': 'Factual', 'science & tech': 'Factual', lifestyle: 'Factual',
-    'music & ambient': 'Music', music: 'Music', 'music & radio': 'Music', 'game shows': 'Reality', entertainment: 'Entertainment', 'classic tv': 'Entertainment' };
+    'music & ambient': 'Music', music: 'Music', 'music & radio': 'Music', 'game shows': 'Reality & game shows', entertainment: 'Entertainment', 'classic tv': 'Entertainment' };
   function chanType(c) {
     if (/Pay TV – films/.test(c.sec)) return 'Films';
     if (/Pay TV – sport/.test(c.sec)) return 'Sport';
