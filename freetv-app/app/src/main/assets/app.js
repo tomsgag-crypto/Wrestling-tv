@@ -557,7 +557,17 @@ var app = (function () {
   ];
   /** US channels sit under "US TV", everything else under "UK TV". */
   function secGroup(sec) { return /\(US\)/.test(sec) ? 'US TV' : 'UK TV'; }
+  /** Read the Virgin package by itself when it's never been read or is over 2 days old (at most once every 6 hours). */
+  function autoVirginSync() {
+    if (!settings.virgin || !window.Native || !Native.virginSyncQuiet) return;
+    var o = owned(), last = settings.vsyncTry || 0;
+    if (o && Date.now() - (o.at || 0) < 2 * 86400000) return;
+    if (Date.now() - last < 6 * 3600000) return;
+    settings.vsyncTry = Date.now(); saveSettings();
+    Native.virginSyncQuiet();
+  }
   function loadGuide() {
+    setTimeout(autoVirginSync, 8000);
     status('guide', true);
     return Promise.all([loadFreely().catch(function () {}), detectCountry().then(loadPluto)]).then(function () {
       guideAt = Date.now();

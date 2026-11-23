@@ -164,6 +164,42 @@ public class MainActivity extends Activity {
     private long okDown = 0;
     private boolean okHeld = false, okArmed = false;
 
+    // Read your Virgin package quietly: a hidden copy of the Virgin TV Go page (same sign-in), closed as soon as it has the list
+    private WebView quiet;
+    private int quietTries = 0;
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private void quietVirginSync() {
+        if (quiet != null) return;
+        quiet = new WebView(this);
+        quiet.setAlpha(0f);
+        android.webkit.WebSettings qs = quiet.getSettings();
+        qs.setJavaScriptEnabled(true); qs.setDomStorageEnabled(true);
+        qs.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(quiet, true);
+        root.addView(quiet, 0, new android.widget.FrameLayout.LayoutParams(960, 540));
+        quietTries = 0;
+        quiet.loadUrl("https://virgintvgo.virginmedia.com/en/watchtv");
+        ui.postDelayed(quietPoll, 6000);
+    }
+    private final Runnable quietPoll = new Runnable() { @Override public void run() {
+        if (quiet == null) return;
+        quiet.evaluateJavascript(WebPlayerActivity.OWNED, r -> {
+            String v = null;
+            try { Object o = new org.json.JSONTokener(r).nextValue(); if (o instanceof String && ((String) o).startsWith("{")) v = (String) o; } catch (Exception ignored) { }
+            if (v != null) {
+                getSharedPreferences("player", MODE_PRIVATE).edit().putString("owned", v).apply();
+                stopQuiet();
+                js("window.app && app.key('resume')");
+                return;
+            }
+            if (++quietTries < 20) ui.postDelayed(quietPoll, 2000); else stopQuiet();
+        });
+    } };
+    private void stopQuiet() {
+        if (quiet == null) return;
+        ui.removeCallbacks(quietPoll);
+        root.removeView(quiet); quiet.destroy(); quiet = null;
+    }
     private void js(String code) { ui.post(() -> web.evaluateJavascript(code, null)); }
 
     @Override
@@ -431,6 +467,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String virginOwned() { return getSharedPreferences("player", MODE_PRIVATE).getString("owned", ""); }
         /** Open Virgin TV Go briefly to read which channels you have. */
+        /** Check your Virgin package in the background (no screen). */
+        @JavascriptInterface
+        public void virginSyncQuiet() { ui.post(MainActivity.this::quietVirginSync); }
         @JavascriptInterface
         public void virginSync() {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", "https://virgintvgo.virginmedia.com/en/watchtv").putExtra("title", "Checking which channels you have").putExtra("sync", true);
