@@ -115,11 +115,13 @@ public class WebPlayerActivity extends Activity {
     private static final String AUTOPLAY = "(function(T){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}" +
         "function vis(e){var r=e.getBoundingClientRect();return r.width>8&&r.height>8;}var want=n(T),h=location.host+location.pathname;" +
         "var v=document.querySelector('video');if(v&&!v.paused&&v.currentTime>1)return 'playing';" +
-        "var bad=/ad-?free|premium|subscribe|sign ?in|sign ?up|trial|buy|rent|channels|trailer|add to|watchlist|download|share|more like/i;" +
+        "var bad=/ad-?free|premium|subscribe|sign ?in|sign ?up|trial|buy|rent|channels|trailer|add to|watchlist|download|share|more like|parental|turn on|settings|set up|pin/i;" +
         "function lab(e){return ((e.getAttribute('aria-label')||'')+' '+(e.innerText||e.textContent||'')).trim();}" +
         "if(/primevideo|amazon/.test(h)&&/\\/search/.test(h)){var links=[].slice.call(document.querySelectorAll('a[href*=\"/detail/\"]')).filter(vis);" +
         "function tt(a){return n(a.getAttribute('aria-label')||(a.querySelector('img')?a.querySelector('img').alt:'')||a.innerText);}" +
         "var hit=links.filter(function(a){return want&&tt(a)===want;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)===0;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];if(hit){hit.click();return 'picked';}return 'looking';}" +
+        "var ok=[].slice.call(document.querySelectorAll('[role=dialog] button,[role=dialog] a,[class*=odal] button,[class*=ialog] button,[class*=uidance] button,button')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(continue( watching)?|i understand|i'?m (over|aged)|i am (over|aged)|yes|confirm|accept|ok|got it|watch anyway|proceed)\\b/i.test(l);})[0];" +
+        "if(ok){ok.click();return 'play';}" +
         "var btns=[].slice.call(document.querySelectorAll('button,a,[role=button]')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(play|watch|resume|continue|start|watch now|play now|watch from (the )?start|play (movie|episode|film|s\\d)|watch (movie|episode|film|s\\d))/i.test(l);});" +
         "var pb=btns.filter(function(b){return /play/i.test(lab(b));})[0]||btns[0]||document.querySelector('[data-automation-id*=play-button],[data-testid*=play],[class*=PlayButton],[class*=play-button]');" +
         "if(pb&&vis(pb)){pb.click();return 'play';}return 'looking';}catch(e){return 'err';}})";
