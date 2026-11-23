@@ -340,6 +340,47 @@ var app = (function () {
     else { from = rTop; to = rTop + Math.ceil($('rows').clientHeight / (innerHeight * 0.063)) + 2; }
     for (var i = from; i < Math.min(chans.length, to); i++) if (chans[i].play === 'plex') plexListings(chans[i], ws, ws + SPAN);
   }
+  // ---------------------------------------------------------------- Virgin TV Go: your Virgin channels, with Virgin's own listings
+  var VAPI = 'https://spark-prod-gb.gnp.cloud.virgintvgo.virginmedia.com/eng/web/linear-service/v2/channels?language=en&productClass=Orion-DASH&platform=web&cityId=';
+  var VEPG = 'https://staticqbr-prod-gb.gnp.cloud.virgintvgo.virginmedia.com/eng/web/epg-service-lite/gb/en/events/segments/';
+  var virgin = [], virginById = {}, vSegs = {};
+  var V_GENRE = { Movies: 'Films', Sports: 'Sport', Documentaries: 'Factual', Lifestyle: 'Factual', News: 'News', Kids: 'Kids', Music: 'Music', Shopping: 'Shopping' };
+  function loadVirgin() {
+    if (!settings.virgin || settings.hide['Virgin TV Go']) return Promise.resolve();
+    return getJSON(VAPI + (settings.virginCity || '240969')).then(function (j) {
+      var L = Array.isArray(j) ? j : (j.channels || []);
+      virgin = L.filter(function (c) {
+        return !c.isHidden && c.logicalChannelNumber < 850 && !/\+1\b|\+ 1|ja ?vu|uhd|ultra hd|^tnt|radio|highlights/i.test(c.name);
+      }).sort(function (a, b) { return a.logicalChannelNumber - b.logicalChannelNumber; }).map(function (c) {
+        var x = { id: 'v' + c.id, vid: c.id, vname: c.name, name: c.name.replace(/\s*HD$/, '').replace(/HD$/, ''), num: c.logicalChannelNumber,
+          cat: V_GENRE[(c.genre || [])[0]] || '', events: [] };
+        virginById[c.id] = x;
+        return x;
+      });
+    }).catch(function () { virgin = virgin || []; });
+  }
+  /** Virgin's listings come in 6-hour blocks; fetch the ones on screen. */
+  function virginListings(a, b) {
+    if (!virgin.length) return;
+    for (var t = Math.floor(a / 21600) * 21600; t < b; t += 21600) {
+      if (vSegs[t]) continue;
+      vSegs[t] = 1;
+      var d = new Date(t * 1000), key = d.getUTCFullYear() + ('0' + (d.getUTCMonth() + 1)).slice(-2) + ('0' + d.getUTCDate()).slice(-2) + ('0' + d.getUTCHours()).slice(-2) + '0000';
+      getJSON(VEPG + key).then(function (j) {
+        (j.entries || []).forEach(function (en) {
+          var x = virginById[en.channelId];
+          if (!x) return;
+          var seen = {};
+          x.events.forEach(function (e) { seen[e.s] = 1; });
+          (en.events || []).forEach(function (e) { if (!seen[e.startTime]) x.events.push({ s: e.startTime, e: e.endTime, t: e.title, sub: e.seriesName && e.seriesName !== e.title ? e.seriesName : '', img: '' }); });
+          x.events.sort(function (p, q) { return p.s - q.s; });
+        });
+        if (view === 'guide') renderGuide();
+        buildFilmsOnTV();
+      }).catch(function () { delete vSegs[t]; });
+    }
+  }
+
   /** Names that differ only in "TV", "Channel", "by …" and so on count as the same channel. */
   function dupKey(n) {
     return String(n).toLowerCase().replace(/\(.*?\)/g, '').replace(/powered by.*$/, '').replace(/ by [a-z0-9&+.' ]+$/, '')
@@ -406,6 +447,12 @@ var app = (function () {
       seen[dupKey(c.name)] = 1;
       out.push({ sec: 'Pluto TV', id: 'p' + c.slug, pid: c.id, num: c.num, name: c.name, svc: 'pluto', live: 'https://pluto.tv/en/live-tv/' + c.id + '\nhttps://pluto.tv/live-tv/' + c.slug, events: c.events, cat: c.cat });
     });
+    if (settings.virgin && !settings.hide['Virgin TV Go']) virgin.forEach(function (c) {
+      var k = dupKey(c.name);
+      if (!k || seen[k]) return;
+      seen[k] = 1;
+      out.push({ sec: 'Virgin TV Go', id: c.id, vid: c.vid, vname: c.vname, name: c.name, num: c.num, cat: c.cat, svc: '', events: c.events });
+    });
     [['Samsung TV Plus', samsung, 'samsung', 'SAMSUNG TV PLUS'], ['Plex', plex, 'plex', 'PLEX']].forEach(function (g) {
       if (settings.hide[g[0]]) return;
       g[1].forEach(function (c) {
@@ -416,6 +463,10 @@ var app = (function () {
       });
     });
     if (settings.pay) sky.list.forEach(function (c) {
+      if (/^tnt/i.test(c.name)) return;
+      var k = dupKey(c.name);
+      if (seen[k] && settings.virgin) return;
+      seen[k] = 1;
       out.push({ sec: c.sec, id: 's' + c.sid, name: c.name, svc: c.svc, live: '', pay: true, events: sky.ev[c.sid].list });
     });
     out = out.filter(function (c) { return !settings.hide[c.sec]; });
@@ -437,7 +488,7 @@ var app = (function () {
       status('guide', false);
       render();
       // pay channels after the free ones are showing
-      Promise.all([loadSamsung(), loadPlex()]).then(function () { buildChans(); buildFilmsOnTV(); render(); });
+      Promise.all([loadSamsung(), loadPlex(), loadVirgin()]).then(function () { buildChans(); buildFilmsOnTV(); render(); });
       if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); return Promise.all([loadSkyDay(0), loadSkyDay(1)]); }).then(function () { render(); });
     });
   }
@@ -779,8 +830,12 @@ var app = (function () {
   function helperReady() { return settings.helper && !TOUCH && window.Native && Native.helperOn && Native.helperOn(); }
   /** Before opening BBC iPlayer or U: tell the helper what to find there. */
   /** With Virgin TV Go switched on: U channels and pay channels (not Sky Sports) open on the Virgin TV Go website inside Free TV. */
-  function viaVirgin(svc, pay, name) {
+  function viaVirgin(svc, pay, name, ch) {
     if (!settings.virgin || !window.Native || !Native.openWebFind) return false;
+    if (ch && ch.vid) {
+      Native.openWebFind('https://virgintvgo.virginmedia.com/en/watchtv/linearplayer/' + encodeURIComponent(ch.vid) + '/' + encodeURIComponent(ch.vname), name, ch.vname);
+      return true;
+    }
     if (!(svc === 'u' || pay)) return false;
     var base = name.replace(/\s*HD$/i, ''), alt = base.replace(/^U&/, '');
     // Virgin's own names for some channels
@@ -810,7 +865,7 @@ var app = (function () {
         if (it.svc === 'pluto' && canPlayPluto() && playPlutoChannel(it.ch)) return;
         if (it.play && playPlutoChannel(it.ch)) { logOpen(it); return; }
         var cc = chans.filter(function (x) { return x.id === it.ch; })[0];
-        if (viaVirgin(it.svc, cc && cc.pay, it.chName)) { logOpen(it); return; }
+        if (viaVirgin(it.svc, cc && cc.pay, it.chName, cc)) { logOpen(it); return; }
         var hl = helperFor(it.svc, 'live', it.chName);
         openIn(it.svc, it.live, '', hl ? '' : it.chName);
         if (hl) toast('Opening ' + it.chName + ' in ' + SVC[it.svc].name + '…');
@@ -974,7 +1029,7 @@ var app = (function () {
   function renderHelp() {
     var h;
     if (zone === 'tabs') h = '<b>◀ ▶</b> choose a section · <b>▼</b> go in';
-    else if (view === 'guide' && gZone === 'days') h = '<b>◀ ▶</b> choose a day, or <b>Filter & options</b> at the end · <b>OK</b> go to it';
+    else if (view === 'guide' && gZone === 'days') h = '<b>◀ ▶</b> choose a day, <b>Filter & options</b>, or a section to jump to · <b>OK</b> go to it';
     else if (view === 'guide' && mini) h = '▶ <b>' + esc(mini.name) + '</b> is playing · <b>OK</b> on it for full screen · <b>Back</b> stops it · <b>OK</b> on another channel to switch';
     else if (view === 'guide') h = '<b>▲▼</b> channels · <b>◀▶</b> time · <b>OK</b> watch, or set a reminder · <b>hold OK</b> more · <b>▲</b> from the top: days, <b>filter & options</b>';
     else if (view === 'lists') h = '<b>OK</b> watch · <b>hold OK</b> remove, move or mark watched · <b>Menu</b> on a list: rename or delete';
@@ -987,6 +1042,13 @@ var app = (function () {
   // ---------------------------------------------------------------- guide view
   function floor30(t) { return Math.floor(t / 1800) * 1800; }
   function eventsAt(c, from, to) { return c.events.filter(function (e) { return e.e > from && e.s < to; }); }
+  /** The guide's sections, in order (Freeview channels, Pluto TV, Virgin TV Go…). */
+  function sections() { var out = []; chans.forEach(function (c) { if (out.indexOf(c.sec) < 0) out.push(c.sec); }); return out; }
+  function jumpTo(sec) {
+    for (var i = 0; i < chans.length; i++) if (chans[i].sec === sec) { gRow = i; rTop = i; break; }
+    gZone = 'rows'; zone = 'main';
+    if (TOUCH) setTimeout(function () { var el = $('rows').querySelectorAll('.grow')[gRow]; if (el) $('rows').scrollTop = el.offsetTop - 30; }, 30);
+  }
   function guideEnd() { return day0 + DAYS * 86400; }
   function focused() {
     var c = chans[gRow];
@@ -1021,7 +1083,11 @@ var app = (function () {
     for (var d = 0; d < DAYS; d++) dh += '<div class="day' + (d === curDay ? ' on' : '') + (gZone === 'days' && zone === 'main' && d === gDay ? ' sel' : '') + '" data-day="' + d + '">' + dayLabel(d) + '</div>';
     var nHide = Object.keys(settings.hide).length + (settings.favOnly ? 1 : 0);
     dh += '<div class="day opts' + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">☰ Filter & options' + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
+    var secs = sections();
+    secs.forEach(function (sc, i) { dh += '<div class="day sec' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 + i ? ' sel' : '') + (chans[gRow] && chans[gRow].sec === sc ? ' on' : '') + '" data-day="sec' + i + '">' + esc(sc) + '</div>'; });
     $('gDays').innerHTML = dh;
+    var dsel = $('gDays').querySelector('.day.sel');
+    if (dsel) { var gb = $('gDays'); if (dsel.offsetLeft + dsel.offsetWidth > gb.scrollLeft + gb.clientWidth) gb.scrollLeft = dsel.offsetLeft + dsel.offsetWidth - gb.clientWidth + 20; if (dsel.offsetLeft < gb.scrollLeft) gb.scrollLeft = Math.max(0, dsel.offsetLeft - 20); }
     var th = '';
     for (var t = ws; t < ws + SPAN; t += 1800) th += '<div class="tick" style="left:' + ((t - ws) / SPAN * 100) + '%">' + clock(t) + '</div>';
     $('gTimes').innerHTML = th;
@@ -1054,7 +1120,7 @@ var app = (function () {
           '<div class="bt">' + esc(p.t) + '</div><div class="bl">' + esc(p.sub || clock(p.s)) + '</div>' + (ic ? '<span class="ic">' + ic + '</span>' : '') +
           (live ? '<div class="pg" style="width:' + Math.round((now - p.s) / (p.e - p.s) * 100) + '%"></div>' : '') + '</div>';
       });
-      var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.svc === 'u') ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
+      var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.vid || c.svc === 'u') ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
       h += '<div class="grow' + (ci === gRow && rowSel ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
         '<div class="sv' + (c.svc || c.play ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline">' + blocks +
         (now >= ws && now < ws + SPAN ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div>';
@@ -1062,8 +1128,9 @@ var app = (function () {
     box.innerHTML = h;
     if (TOUCH) box.scrollTop = keepScroll;
     var ch = chans[gRow];
-    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.svc === 'u') ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
+    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.vid || ch.svc === 'u') ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
     plexOnScreen();
+    if (settings.virgin) virginListings(ws, ws + SPAN);
     if (fp) {
       $('gTitle').textContent = fp.t;
       var live = fp.s <= now && fp.e > now, past = fp.e <= now, rem = reminders.some(function (r) { return r.item.ch === ch.id && r.item.s === fp.s; });
@@ -1078,9 +1145,10 @@ var app = (function () {
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       if (k === 'left') gDay = Math.max(0, gDay - 1);
-      else if (k === 'right') gDay = Math.min(DAYS, gDay + 1);
+      else if (k === 'right') gDay = Math.min(DAYS + sections().length, gDay + 1);
       else if (k === 'ok' && gDay === DAYS) { optionsMenu(); return; }
-      else if (k === 'down' && gDay === DAYS) { gZone = 'rows'; }
+      else if (k === 'ok' && gDay > DAYS) { jumpTo(sections()[gDay - DAYS - 1]); }
+      else if (k === 'down' && gDay >= DAYS) { gZone = 'rows'; }
       else if (k === 'ok' || k === 'down') { goDay(gDay); gZone = 'rows'; }
       else if (k === 'menu') { optionsMenu(); return; }
       render(); return;
@@ -1096,10 +1164,10 @@ var app = (function () {
     else if (k === 'ok') {
       var c = chans[gRow];
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
-      if (fp && c && (c.svc || c.play || fp.e <= now || (c.pay && settings.virgin))) openItem(progItem(c, fp));
+      if (fp && c && (c.svc || c.play || fp.e <= now || ((c.pay || c.vid) && settings.virgin))) openItem(progItem(c, fp));
       else if (c && c.svc === 'pluto' && canPlayPluto() && playPlutoChannel(c.id)) {}
       else if (c && c.play && playPlutoChannel(c.id)) {}
-      else if (c && viaVirgin(c.svc, c.pay, c.name)) {}
+      else if (c && viaVirgin(c.svc, c.pay, c.name, c)) {}
       else if (c && c.svc) { var hl = helperFor(c.svc, 'live', c.name); openIn(c.svc, c.live, '', hl ? '' : c.name); }
       else if (c && c.pay) toast(c.name + ' is a pay channel – Free TV can only remind you about it');
       else if (fp && c) openItem(progItem(c, fp));
@@ -1444,7 +1512,7 @@ var app = (function () {
         return;
       }
       if (x.k === 'showhide') { showMenu(); return; }
-      if (x.k === 'virgin') { settings.virgin = !settings.virgin; saveSettings(); buildChans(); }
+      if (x.k === 'virgin') { settings.virgin = !settings.virgin; saveSettings(); if (settings.virgin && !virgin.length) loadVirgin().then(function () { buildChans(); render(); }); buildChans(); }
       if (x.k === 'bbcWeb') { settings.bbcWeb = !bbcWeb(); saveSettings(); }
       if (x.k === 'plutoInApp') { settings.plutoInApp = !settings.plutoInApp; saveSettings(); }
       if (x.k === 'helper') {
@@ -1512,6 +1580,8 @@ var app = (function () {
     $('popOpts').innerHTML = pop.opts.map(function (o, i) {
       return '<div class="opt' + (i === pop.row && !pop.inputFocus ? ' sel' : '') + '" data-i="' + i + '">' + esc(o.label) + (o.tick ? '<span class="tick2">✓</span>' : '') + '</div>';
     }).join('');
+    var selEl = $('popOpts').querySelector('.opt.sel');
+    if (selEl) scrollInto($('popBox'), selEl);
   }
   function popKey(k) {
     if (pop.input && pop.inputFocus) {
@@ -1652,10 +1722,12 @@ var app = (function () {
       opts.push({ label: label, tick: !H[key], fn: function (p) { if (H[key]) delete H[key]; else H[key] = 1; saveSettings();
         if (key === 'Samsung TV Plus' && !H[key] && !samsung.length) loadSamsung().then(function () { buildChans(); render(); });
         if (key === 'Plex' && !H[key] && !plex.length) loadPlex().then(function () { buildChans(); render(); });
+        if (key === 'Virgin TV Go' && !H[key] && !virgin.length) loadVirgin().then(function () { buildChans(); render(); });
         buildChans(); buildFilmsOnTV(); od = []; buildOD(); odSrc = 0; odCat = 0; odRow = 0; showMenu(p.row); } });
     };
     add('Freeview channels', 'Guide: Freeview channels');
     add('Pluto TV', 'Guide: Pluto TV channels');
+    if (settings.virgin) add('Virgin TV Go', 'Guide: Virgin TV Go channels');
     add('Samsung TV Plus', 'Guide: Samsung TV Plus channels');
     add('Plex', 'Guide: Plex channels');
     if (settings.pay) ['Pay TV – entertainment', 'Pay TV – films', 'Pay TV – sport', 'Pay TV – kids'].forEach(function (x) { add(x, 'Guide: ' + x); });
@@ -1797,7 +1869,8 @@ var app = (function () {
     var tn = e.target.closest('[data-tn]');
     if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var dy = e.target.closest('[data-day]');
-    if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
+    if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; }
+      if (/^sec/.test(dy.getAttribute('data-day'))) { jumpTo(sections()[+dy.getAttribute('data-day').slice(3)]); render(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
     if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'o') { optionsMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
