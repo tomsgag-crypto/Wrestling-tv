@@ -1679,7 +1679,7 @@ var app = (function () {
     keys.sort(function (a, b) { return rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b); });
     var t = keys.map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
     // first tile, top left: update Free TV
-    if (window.Native && Native.openGoogleMovies) t.unshift({ kind: 'set', k: 'gmovies', name: '🎬 My Google Movies', desc: 'Your film library on the Chromecast – YouTube and Google Play purchases' });
+    if (window.Native && Native.googleMoviesRoutes) t.unshift({ kind: 'set', k: 'gmovies', name: '🎬 My Google Movies', desc: settings.gmRoute ? 'Your film library – YouTube and Google Play purchases. Hold OK to choose a different way in' : 'Your film library – YouTube and Google Play purchases. First time: pick the way in that shows your films' });
     if (window.Native && Native.updateSelf) t.unshift({ kind: 'upd', k: 'update', name: '⟳ Update Free TV', desc: 'You have version ' + (Native.version ? Native.version() : '?') + '. OK to get the newest' });
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
@@ -1723,6 +1723,16 @@ var app = (function () {
     if (settings.pay && settings.payMine !== false && settings.virgin && !owned()) toast('Open any Virgin TV Go channel once (or "Check which channels I have" in Apps) so Free TV knows your package');
     buildChans(); buildFilmsOnTV(); render();
   }
+  /** My Google Movies: open the remembered way in, or let you try each one (the one you pick last is remembered). */
+  function googleMovies(choose) {
+    var names = []; try { names = JSON.parse(Native.googleMoviesRoutes()); } catch (e) { }
+    if (!names.length) { toast('No way into the film library found – use Library on the Google TV home screen'); return; }
+    var saved = settings.gmRoute ? names.indexOf(settings.gmRoute) : -1;
+    if (!choose && saved >= 0) { Native.openGoogleMoviesRoute(saved); return; }
+    showPop({ title: 'Which shows your films? Try one – if it\'s blank, press Back and try the next', opts: names.map(function (n, i) {
+      return { label: (i + 1) + '. ' + n, tick: n === settings.gmRoute, fn: function () { settings.gmRoute = n; saveSettings(); Native.openGoogleMoviesRoute(i); } };
+    }).concat([{ label: 'Cancel' }]) });
+  }
   function renderApps() {
     var t = tiles();
     if (apRow >= t.length) apRow = t.length - 1;
@@ -1735,6 +1745,7 @@ var app = (function () {
   }
   function appsKey(k) {
     var t = tiles(), els = $('appsGrid').querySelectorAll('.app');
+    if ((k === 'hold' || k === 'menu') && t[apRow] && t[apRow].k === 'gmovies') { googleMovies(true); return; }
     function moveV(dir) {
       var cur = els[apRow]; if (!cur) return;
       var cx = cur.offsetLeft + cur.offsetWidth / 2, best = -1, bd = 1e9;
@@ -1774,7 +1785,7 @@ var app = (function () {
       }
       if (x.k === 'profile') { askText('Your iPlayer profile name (as shown on "Who\'s watching")', settings.profile, function (v) { settings.profile = v; saveSettings(); }); return; }
       if (x.k === 'record') { recordMenu(); return; }
-      if (x.k === 'gmovies') { var got = Native.openGoogleMovies(); if (!got) toast('Couldn\'t open the film library – use Library on the Google TV home screen'); return; }
+      if (x.k === 'gmovies') { googleMovies(false); return; }
       if (x.k === 'webNoAds') { Native.setPlayerPref('webNoAds', !Native.playerPref('webNoAds', false)); render(); return; }
       if (x.k === 'itvWeb') { settings.itvWeb = !itvWeb(); saveSettings(); render(); return; }
       if (x.k === 'disneyWeb') { settings.disneyWeb = !disneyWeb(); saveSettings(); render(); return; }

@@ -483,29 +483,49 @@ public class MainActivity extends Activity {
         public boolean playerPref(String k, boolean def) { return getSharedPreferences("player", MODE_PRIVATE).getBoolean(k, def); }
         @JavascriptInterface
         public void setPlayerPref(String k, boolean v) { getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean(k, v).apply(); }
-        /** "My Google Movies": the film library on the Chromecast (YouTube / Google Play purchases). Tries the known ways in, best first. */
-        @JavascriptInterface
-        public String openGoogleMovies() {
+        /** "My Google Movies": every way into the film library this Chromecast offers (links, and library/purchases screens inside Google TV). */
+        private java.util.List<Intent> movieRoutes(java.util.List<String> names) {
             PackageManager pm = getPackageManager();
-            String[][] tries = {
-                { "com.google.android.apps.tv.launcherx", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
-                { "com.google.android.apps.tv.launcherx", "com.google.android.apps.tv.launcherx.intent.action.LAUNCH_LIBRARY", "" },
-                { "com.google.android.apps.tv.launcherx", "android.intent.action.VIEW", "https://tv.google.com/library" },
-                { "com.google.android.videos", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
-                { "com.android.vending", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
-                { "com.google.android.youtube.tv", "android.intent.action.VIEW", "https://www.youtube.com/feed/purchases" },
-                { "com.google.android.youtube.tvunplugged", "android.intent.action.VIEW", "https://www.youtube.com/feed/purchases" }
+            java.util.List<Intent> out = new java.util.ArrayList<>();
+            String[][] links = {
+                { "Google TV – your library", "com.google.android.apps.tv.launcherx", "com.google.android.apps.tv.launcherx.intent.action.LAUNCH_LIBRARY", "" },
+                { "Google TV – library link", "com.google.android.apps.tv.launcherx", "android.intent.action.VIEW", "https://tv.google.com/library" },
+                { "Google TV – purchases link", "com.google.android.apps.tv.launcherx", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
+                { "Google TV app – purchases", "com.google.android.videos", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
+                { "YouTube – your purchases", "com.google.android.youtube.tv", "android.intent.action.VIEW", "https://www.youtube.com/feed/purchases" }
             };
-            for (String[] t : tries) {
+            for (String[] t : links) {
                 try {
-                    Intent i = t[2].isEmpty() ? new Intent(t[1]) : new Intent(t[1], Uri.parse(t[2]));
-                    i.setPackage(t[0]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    if (i.resolveActivity(pm) == null) continue;
-                    startActivity(i);
-                    return t[0] + " " + (t[2].isEmpty() ? t[1] : t[2]);
+                    Intent i = t[3].isEmpty() ? new Intent(t[2]) : new Intent(t[2], Uri.parse(t[3]));
+                    i.setPackage(t[1]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    if (i.resolveActivity(pm) != null) { out.add(i); names.add(t[0]); }
                 } catch (Exception ignored) { }
             }
-            return "";
+            for (String pkg : new String[]{ "com.google.android.apps.tv.launcherx", "com.google.android.videos", "com.google.android.tvrecommendations" }) {
+                try {
+                    android.content.pm.PackageInfo pi = pm.getPackageInfo(pkg, PackageManager.GET_ACTIVITIES);
+                    if (pi.activities == null) continue;
+                    for (android.content.pm.ActivityInfo a : pi.activities) {
+                        if (!a.exported || !a.name.toLowerCase().matches(".*(librar|purchas|collection|mystuff|entitle|owned).*")) continue;
+                        Intent i = new Intent(Intent.ACTION_MAIN).setClassName(pkg, a.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        out.add(i); names.add("Screen: " + a.name.replaceAll(".*\\.", ""));
+                    }
+                } catch (Exception ignored) { }
+            }
+            return out;
+        }
+        @JavascriptInterface
+        public String googleMoviesRoutes() {
+            java.util.List<String> names = new java.util.ArrayList<>();
+            movieRoutes(names);
+            return new org.json.JSONArray(names).toString();
+        }
+        @JavascriptInterface
+        public boolean openGoogleMoviesRoute(int n) {
+            java.util.List<String> names = new java.util.ArrayList<>();
+            java.util.List<Intent> r = movieRoutes(names);
+            if (n < 0 || n >= r.size()) return false;
+            try { startActivity(r.get(n)); return true; } catch (Exception e) { return false; }
         }
         @JavascriptInterface
         public void setZap(String json, int index) { zapList = json; zapIndex = index; }
