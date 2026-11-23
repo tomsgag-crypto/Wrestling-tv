@@ -156,7 +156,22 @@ public class WebPlayerActivity extends Activity {
             else autoGiveUp("Couldn't start it by itself – pick it with the pointer");
         });
     } };
-    /** ◀ on ITVX / Prime: just the adverts switch. */
+    private boolean onDemandSite() { String u = web == null ? null : web.getUrl(); return u != null && (u.contains("itv.com") || u.contains("primevideo.com") || u.contains("amazon.co.uk")); }
+    private android.widget.Toast seekToast;
+    /** Jump through the programme (the longest video on the page is the programme). */
+    private void seekBy(int secs) {
+        web.evaluateJavascript("(function(s){var best=null;function all(r,o){o=o||[];[].push.apply(o,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)all(e.shadowRoot,o);});return o;}" +
+            "all(document).forEach(function(v){if(isFinite(v.duration)&&v.duration>240&&(!best||v.duration>best.duration))best=v;});if(!best)return '';" +
+            "var t=Math.max(0,Math.min(best.duration-2,best.currentTime+s));best.currentTime=t;if(best.paused&&!window.__ftvUserPaused)best.play();" +
+            "function f(x){x=Math.floor(x);var h=Math.floor(x/3600),m=Math.floor(x%3600/60),c=x%60;return (h?h+':'+('0'+m).slice(-2):m)+':'+('0'+c).slice(-2);}return f(t)+' / '+f(best.duration);})(" + secs + ")", r -> {
+            String t = r == null ? "" : r.replace("\"", "");
+            if (t.isEmpty()) return;
+            if (seekToast != null) seekToast.cancel();
+            seekToast = android.widget.Toast.makeText(this, (secs > 0 ? "▶▶ " : "◀◀ ") + t, android.widget.Toast.LENGTH_SHORT);
+            seekToast.show();
+        });
+    }
+    /** ▲ on ITVX / Prime: the adverts switch. */
     private void adMenu() {
         boolean noAds = prefs().getBoolean("webNoAds", false);
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -781,6 +796,18 @@ public class WebPlayerActivity extends Activity {
         int k = e.getKeyCode();
         if (watching() && zapOn && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) goZap();
+            return true;
+        }
+        // ITVX / Prime programmes: ◀ ▶ (and ⏪ ⏩) move through the programme; ▲ opens the player menu
+        if (watching() && onDemandSite() && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || k == KeyEvent.KEYCODE_MEDIA_REWIND || k == KeyEvent.KEYCODE_DPAD_UP)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (k == KeyEvent.KEYCODE_DPAD_UP) { if (e.getRepeatCount() == 0) adMenu(); }
+                else {
+                    int rep = Math.min(e.getRepeatCount(), 20);
+                    int secs = k == KeyEvent.KEYCODE_DPAD_RIGHT ? 30 + rep * 15 : k == KeyEvent.KEYCODE_DPAD_LEFT ? -(10 + rep * 10) : k == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD ? 60 : -60;
+                    seekBy(secs);
+                }
+            }
             return true;
         }
         if (watching() && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_CHANNEL_UP || k == KeyEvent.KEYCODE_CHANNEL_DOWN)) {
