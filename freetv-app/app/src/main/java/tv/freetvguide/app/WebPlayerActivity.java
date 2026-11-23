@@ -111,10 +111,12 @@ public class WebPlayerActivity extends Activity {
         if (pin.length() != 4 || web == null) return;
         float d = getResources().getDisplayMetrics().density, cx = web.getWidth() / 2f, cy = web.getHeight() / 2f;
         float[] col = {-129, 0, 129}, row = {43, 102, 159, 217};
+        // clear anything already in the boxes (delete key, bottom right), then type each number with a pause
+        for (int i = 0; i < 4; i++) ui.postDelayed(() -> tap(cx + col[2] * d, cy + row[3] * d), 200 + i * 350L);
         for (int i = 0; i < 4; i++) {
             int n = pin.charAt(i) - '0';
             float x = n == 0 ? cx : cx + col[(n - 1) % 3] * d, y = cy + (n == 0 ? row[3] : row[(n - 1) / 3]) * d;
-            ui.postDelayed(() -> tap(x, y), 300 + i * 450L);
+            ui.postDelayed(() -> tap(x, y), 1800 + i * 700L);
         }
     }
     private long lastToggle = 0;
@@ -315,7 +317,7 @@ public class WebPlayerActivity extends Activity {
                 }
                 if (act.equals("wait") && o.optString("why").startsWith("starting") && getIntent().getBooleanExtra("pin", false)) {
                     pinWaits++;
-                    if (pinWaits == 4 || pinWaits == 18) enterPin();
+                    if (pinWaits == 5 || pinWaits == 20 || pinWaits == 35) enterPin();
                 }
                 if (fromCache && act.equals("wait") && o.optString("why").startsWith("starting") && ++cacheWaits > 25) {
                     android.content.SharedPreferences.Editor ed = getSharedPreferences("virgin", MODE_PRIVATE).edit();
