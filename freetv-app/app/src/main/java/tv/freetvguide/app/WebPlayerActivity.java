@@ -90,6 +90,20 @@ public class WebPlayerActivity extends Activity {
                 .show();
         });
     }
+    // If a fixed picture quality won't start (Sky only allows some qualities on some devices), go back to Auto
+    private int qChecks = 0;
+    private final Runnable qualityWatch = new Runnable() { @Override public void run() {
+        if (web == null || quality() == 0 || !onSky()) return;
+        web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
+            "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);return v&&v.currentTime>2?'ok':'no';})()", r -> {
+            if (r != null && r.contains("ok")) return;
+            if (++qChecks < 12) { ui.postDelayed(this, 2500); return; }
+            int q = quality();
+            prefs().edit().putInt("skyq", 0).apply();
+            android.widget.Toast.makeText(WebPlayerActivity.this, q + "p wouldn't start on this TV – back to Auto", android.widget.Toast.LENGTH_LONG).show();
+            applyQuality();
+        });
+    } };
     /** Restart the channel with the new quality. */
     private void applyQuality() {
         try {
@@ -103,6 +117,7 @@ public class WebPlayerActivity extends Activity {
         if (custom != null) { root.removeView(custom); custom = null; }
         pageFull = false; fsTries = 0; tries = 0;
         web.reload();
+        qChecks = 0; ui.removeCallbacks(qualityWatch); ui.postDelayed(qualityWatch, 5000);
     }
     private int pinWaits = 0;
     /** Tap the saved PIN on Virgin's number pad (a dialog in the middle of the screen: 1-9 in a 3x3 grid, 0 below). */
@@ -530,6 +545,7 @@ public class WebPlayerActivity extends Activity {
         web.loadUrl(start);
         web.requestFocus();
         ui.post(cursorWatch);
+        ui.postDelayed(qualityWatch, 5000);
     }
 
     private final Runnable fill = new Runnable() {
@@ -591,5 +607,5 @@ public class WebPlayerActivity extends Activity {
 
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); }
-    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(keepPlaying); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }
