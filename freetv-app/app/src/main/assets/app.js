@@ -1726,11 +1726,12 @@ var app = (function () {
   /** My Google Movies: open the remembered way in, or let you try each one (the one you pick last is remembered). */
   function googleMovies(choose) {
     var names = []; try { names = JSON.parse(Native.googleMoviesRoutes()); } catch (e) { }
-    if (!names.length) { toast('No way into the film library found – use Library on the Google TV home screen'); return; }
-    var saved = settings.gmRoute ? names.indexOf(settings.gmRoute) : -1;
-    if (!choose && saved >= 0) { Native.openGoogleMoviesRoute(saved); return; }
-    showPop({ title: 'Which shows your films? Try one – if it\'s blank, press Back and try the next', opts: names.map(function (n, i) {
-      return { label: (i + 1) + '. ' + n, tick: n === settings.gmRoute, fn: function () { settings.gmRoute = n; saveSettings(); Native.openGoogleMoviesRoute(i); } };
+    var SEARCH = 'Google TV search for "Google Play Movies" (pick the result)';
+    var open = function (n) { if (n === SEARCH) Native.search('Google Play Movies'); else Native.openGoogleMoviesRoute(names.indexOf(n)); };
+    var all = [SEARCH].concat(names);
+    if (!choose && settings.gmRoute && all.indexOf(settings.gmRoute) >= 0) { open(settings.gmRoute); return; }
+    showPop({ title: 'Which shows your films? Try one – if it\'s blank, press Back and try the next', opts: all.map(function (n, i) {
+      return { label: (i + 1) + '. ' + n, tick: n === settings.gmRoute, fn: function () { settings.gmRoute = n; saveSettings(); open(n); } };
     }).concat([{ label: 'Cancel' }]) });
   }
   function renderApps() {
