@@ -115,6 +115,7 @@ public class WebPlayerActivity extends Activity {
     private static final String AUTOPLAY = "(function(T){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}" +
         "function vis(e){var r=e.getBoundingClientRect();return r.width>8&&r.height>8;}var want=n(T),h=location.host+location.pathname;" +
         "var v=document.querySelector('video');if(v&&!v.paused&&v.currentTime>1)return 'playing';" +
+        "if(/signin|sign-in|\\/ap\\/|login|account\\/(create|register)/i.test(location.href)||[].some.call(document.querySelectorAll('input[type=password],input[type=email]'),vis))return 'login';" +
         "var bad=/ad-?free|premium|subscribe|sign ?in|sign ?up|trial|buy|rent|channels|trailer|add to|watchlist|download|share|more like|parental|turn on|settings|set up|pin/i;" +
         "function lab(e){return ((e.getAttribute('aria-label')||'')+' '+(e.innerText||e.textContent||'')).trim();}" +
         "if(/primevideo|amazon/.test(h)&&/\\/search/.test(h)){var links=[].slice.call(document.querySelectorAll('a[href*=\"/detail/\"]')).filter(vis);" +
@@ -126,15 +127,23 @@ public class WebPlayerActivity extends Activity {
         "var pb=btns.filter(function(b){return /play/i.test(lab(b));})[0]||btns[0]||document.querySelector('[data-automation-id*=play-button],[data-testid*=play],[class*=PlayButton],[class*=play-button]');" +
         "if(pb&&vis(pb)){pb.click();return 'play';}return 'looking';}catch(e){return 'err';}})";
     private int apTries = 0;
+    private boolean autoMode = true;   // Free TV is doing the clicks behind the loading screen
+    private static boolean autoSite(String u) { return u != null && (u.contains("itv.com") || u.contains("primevideo.com") || u.contains("amazon.co.uk/gp/video")); }
+    private void autoGiveUp(String why) {
+        autoMode = false; reveal.run();
+        if (why != null) android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_LONG).show();
+    }
     private final Runnable autoplay = new Runnable() { @Override public void run() {
         if (web == null || watching() || autoFilled) return;
         String u = web.getUrl() == null ? "" : web.getUrl();
-        if (!(u.contains("itv.com/watch") || u.contains("primevideo.com") || u.contains("amazon.co.uk/gp/video"))) return;
+        if (!autoSite(u)) return;
         String want = getIntent().getStringExtra("title");
         web.evaluateJavascript(AUTOPLAY + "(" + org.json.JSONObject.quote(want == null ? "" : want) + ")", r -> {
             boolean clicked = r != null && (r.contains("play") || r.contains("picked"));
             if (r != null && r.contains("playing")) return;
+            if (r != null && r.contains("login")) { autoGiveUp("Sign in once with the pointer – after that Free TV starts things for you"); return; }
             if (++apTries < 30) ui.postDelayed(autoplay, clicked ? 3500 : 1500);
+            else autoGiveUp("Couldn't start it by itself – pick it with the pointer");
         });
     } };
     /** ◀ on ITVX / Prime: just the adverts switch. */
@@ -699,13 +708,14 @@ public class WebPlayerActivity extends Activity {
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
                 if (find != null) { /* the step loop decides */ }
+                else if (autoSite(url) && autoMode && getIntent().getStringExtra("title") != null) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
                 else if (getIntent().getBooleanExtra("sync", false)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
                 else if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); if (find == null) { tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 2500); } } else cover.setVisibility(View.GONE);
             }
             @Override public void onPageFinished(WebView v, String url) {
-                if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false)) cover.setVisibility(View.GONE);
+                if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false) && !(autoSite(url) && autoMode)) cover.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
-                if (url != null && (url.contains("itv.com/watch") || url.contains("primevideo.com") || url.contains("amazon.co.uk/gp/video"))) { apTries = 0; ui.removeCallbacks(autoplay); ui.postDelayed(autoplay, 2000); }
+                if (autoSite(url) && autoMode) { apTries = 0; ui.removeCallbacks(autoplay); ui.postDelayed(autoplay, 2000); }
                 if (url != null && url.contains("virgintvgo.virginmedia.com")) { ownedTries = 0; ui.removeCallbacks(ownedSync); ui.postDelayed(ownedSync, 3000); }
                 if (find != null) { ui.removeCallbacks(step); ui.postDelayed(step, 2000); return; }
                 tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 1500); }
