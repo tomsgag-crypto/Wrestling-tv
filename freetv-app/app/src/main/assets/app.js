@@ -122,7 +122,7 @@ var app = (function () {
   function _cb(id, body, err) { var f = cbs[id]; delete cbs[id]; if (f) f(body, err); }
 
   // ---------------------------------------------------------------- saved things
-  var settings = Object.assign({ plutoInApp: true, helper: true, profile: '', bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, hide: {}, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
+  var settings = Object.assign({ guideType: '', plutoInApp: true, helper: true, profile: '', bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, hide: {}, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
   var reminders = (load('reminders') || []).filter(function (r) { return r.item && r.item.e > Date.now() / 1000 - 3600; });
   var watched = load('watched') || {};          // key -> {at, item}
   var history = load('history') || [];          // [{at, item}] most recent first
@@ -340,6 +340,46 @@ var app = (function () {
       .replace(/\b(pluto ?tv|samsung|tv|channel|uk|hd|the|plus)\b/g, '').replace(/[^a-z0-9]/g, '');
   }
 
+  // ---------------------------------------------------------------- channel types (for filtering the guide)
+  var TYPES = ['Films', 'Sport', 'Entertainment', 'Drama & crime', 'Comedy', 'Factual', 'Reality', 'News', 'Kids', 'Music', 'Shopping'];
+  var TYPE_RE = [
+    ['Shopping', /qvc|ideal world|shopping|jewellery|gems tv|hochanda|create & craft/i],
+    ['News', /news|cnn|parliament|al jazeera|bloomberg|euronews|france 24|\bdw\b|cnbc|nbc now|weather|sky news|abc now/i],
+    ['Kids', /kids|cbbc|cbeebies|^pop|tiny pop|cartoon|nick|baby|junior|toon|ketchup|pok[eé]mon|barbie|teletubbies|peppa|paw patrol|lego|anime|inazuma|duck ?tv|boomerang|cbeebies/i],
+    ['Sport', /sport|football|\bf1\b|racing|golf|tennis|cricket|boxing|wrestl|fight|\bnfl\b|dazn|eurosport|tnt sports|fifa|darts|snooker|rugby|motor|\bufc\b|bundesliga|\bwwe\b|outdoor/i],
+    ['Films', /film|movie|cinema|talking pictures|great!|legend|horror|western|blockbuster|miramax|hallmark|sony one action|action hits|thriller tv|\bmgm\b/i],
+    ['Music', /music|\bmtv\b|vevo|kerrang|now ?(70|80|90|00)|clubland|trace|country|\bhits\b|stingray|qello|radio|ambient|fireplace|aquarium|storm vibes|scenic/i],
+    ['Drama & crime', /drama|crime|mystery|murder|detective|cops|\bcsi\b|\blaw\b|alibi|forensic|investigat|lockup|first 48|midsomer|poirot|marple|inspector|true crime/i],
+    ['Comedy', /comedy|laugh|funny|sitcom|\bdave\b|fail ?army|conan|letterman|8 out of 10|graham norton|simpsons|futurama|family guy/i],
+    ['Factual', /documentar|history|discovery|nat ?geo|animal|nature|wild|science|food|cook|kitchen|chef|menu|travel|home|garden|antique|quest|really|blaze|yesterday|\bpbs\b|smithsonian|pets?\b|car|motor|mechanic|craft|diy|explor|planet|earth|diary of a ceo|history hit/i],
+    ['Reality', /reality|love island|housewives|kardashian|keeping up|dating|wedding|ink master|pawn|storage|deal or no deal|chase|pointless|tipping point|millionaire|family feud|game ?show|quiz|wipeout|cube|takeshi/i]
+  ];
+  var CAT_MAP = { movies: 'Films', 'movies & series': 'Films', sports: 'Sport', sport: 'Sport', news: 'News', 'news + opinion': 'News', kids: 'Kids', 'kids & family': 'Kids', 'kids tv': 'Kids',
+    comedy: 'Comedy', crime: 'Drama & crime', 'crime & thriller': 'Drama & crime', drama: 'Drama & crime', 'tv series': 'Entertainment', reality: 'Reality', 'reality tv': 'Reality',
+    documentaries: 'Factual', nature: 'Factual', 'food & travel': 'Factual', 'food & home': 'Factual', 'history & science': 'Factual', 'science & tech': 'Factual', lifestyle: 'Factual',
+    'music & ambient': 'Music', music: 'Music', 'music & radio': 'Music', 'game shows': 'Reality', entertainment: 'Entertainment', 'classic tv': 'Entertainment' };
+  function chanType(c) {
+    if (/Pay TV – films/.test(c.sec)) return 'Films';
+    if (/Pay TV – sport/.test(c.sec)) return 'Sport';
+    if (/Pay TV – kids/.test(c.sec)) return 'Kids';
+    var byName = '';
+    for (var i = 0; i < TYPE_RE.length; i++) if (TYPE_RE[i][1].test(c.name)) { byName = TYPE_RE[i][0]; break; }
+    if (byName) return byName;
+    var cat = String(c.cat || '').toLowerCase();
+    if (CAT_MAP[cat]) return CAT_MAP[cat];
+    for (var k in CAT_MAP) if (cat && cat.indexOf(k) >= 0) return CAT_MAP[k];
+    return 'Entertainment';
+  }
+  function typeMenu() {
+    var all = [], save = settings.guideType;
+    settings.guideType = ''; buildChans(); all = chans.slice(); settings.guideType = save;
+    var count = function (t) { var n = 0, seen = {}; all.forEach(function (c) { if (c.type === t && !seen[c.id]) { seen[c.id] = 1; n++; } }); return n; };
+    var opts = [{ label: 'All channels', tick: !settings.guideType, fn: function () { setType(''); } }];
+    TYPES.forEach(function (t) { var n = count(t); if (n) opts.push({ label: t + '  (' + n + ')', tick: settings.guideType === t, fn: function () { setType(t); } }); });
+    showPop({ title: 'Show only…', opts: opts });
+  }
+  function setType(t) { settings.guideType = t; saveSettings(); buildChans(); gRow = 0; rTop = 0; gZone = 'rows'; render(); }
+
   function buildChans() {
     var out = [];
     var region = settings.bbc1, two = /Wales/.test(region) ? 'BBC Two Wales' : /NI$/.test(region) ? 'BBC Two NI' : 'BBC Two';
@@ -366,13 +406,15 @@ var app = (function () {
         var k = dupKey(c.name);
         if (!k || seen[k] || /^pluto tv/i.test(c.name)) return;
         seen[k] = 1;
-        out.push({ sec: g[0], id: c.id, name: c.name, num: c.num, svc: '', play: g[2], playName: g[3], url: c.url, events: c.events });
+        out.push({ sec: g[0], id: c.id, name: c.name, num: c.num, cat: c.group || '', svc: '', play: g[2], playName: g[3], url: c.url, events: c.events });
       });
     });
     if (settings.pay) sky.list.forEach(function (c) {
       out.push({ sec: c.sec, id: 's' + c.sid, name: c.name, svc: c.svc, live: '', pay: true, events: sky.ev[c.sid].list });
     });
     out = out.filter(function (c) { return !settings.hide[c.sec]; });
+    out.forEach(function (c) { c.type = chanType(c); });
+    if (settings.guideType) out = out.filter(function (c) { return c.type === settings.guideType; });
     // favourites at the top (or on their own)
     var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
       .map(function (c) { return Object.assign({}, c, { sec: 'Favourites', fav: true }); });
@@ -953,7 +995,7 @@ var app = (function () {
     if (gZone !== 'days') gDay = curDay;
     for (var d = 0; d < DAYS; d++) dh += '<div class="day' + (d === curDay ? ' on' : '') + (gZone === 'days' && zone === 'main' && d === gDay ? ' sel' : '') + '" data-day="' + d + '">' + dayLabel(d) + '</div>';
     var nHide = Object.keys(settings.hide).length + (settings.favOnly ? 1 : 0);
-    dh += '<div class="day opts' + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">☰ Filter & options' + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
+    dh += '<div class="day opts' + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">☰ Filter & options' + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
     $('gDays').innerHTML = dh;
     var th = '';
     for (var t = ws; t < ws + SPAN; t += 1800) th += '<div class="tick" style="left:' + ((t - ws) / SPAN * 100) + '%">' + clock(t) + '</div>';
@@ -1581,7 +1623,8 @@ var app = (function () {
   }
   function appsToggle(k) { var t = tiles(); for (var i = 0; i < t.length; i++) if (t[i].k === k) { var keep = apRow; apRow = i; appsKey('ok'); apRow = keep; return; } }
   function optionsMenu() {
-    var c = view === 'guide' && zone === 'main' && gZone === 'rows' ? chans[gRow] : null, opts = [{ label: 'Filter: show or hide channels and apps (e.g. Pluto TV)…', fn: function () { showMenu(); } }];
+    var c = view === 'guide' && zone === 'main' && gZone === 'rows' ? chans[gRow] : null, opts = [{ label: 'Channel type: ' + (settings.guideType || 'All channels') + ' (films, sport, entertainment…)', fn: function () { typeMenu(); } },
+      { label: 'Filter: show or hide channels and apps (e.g. Pluto TV)…', fn: function () { showMenu(); } }];
     if (c) {
       opts.push({ label: (c.fav ? 'Remove ' : 'Add ') + c.name + (c.fav ? ' from' : ' to') + ' favourites', fn: function () { toggleFav(c); } });
       if (c.fav && c.sec === 'Favourites') {
