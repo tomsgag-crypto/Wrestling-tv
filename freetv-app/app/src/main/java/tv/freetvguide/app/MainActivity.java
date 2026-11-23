@@ -421,6 +421,36 @@ public class MainActivity extends Activity {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title).putExtra("find", find);
             ui.post(() -> { stopMini(); startActivity(i); });
         }
+        /** Same, for a programme rated 12+: type the saved parental PIN on Virgin's number pad. */
+        @JavascriptInterface
+        public void openWebFindPin(String url, String title, String find) {
+            Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title).putExtra("find", find).putExtra("pin", true);
+            ui.post(() -> { stopMini(); startActivity(i); });
+        }
+        @JavascriptInterface
+        public boolean hasVirginPin() { return !getSharedPreferences("player", MODE_PRIVATE).getString("vpin", "").isEmpty(); }
+        /** Ask for the Virgin TV Go parental PIN; it stays on this TV only. */
+        @JavascriptInterface
+        public void setVirginPin() {
+            ui.post(() -> {
+                android.widget.EditText in = new android.widget.EditText(MainActivity.this);
+                in.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+                in.setFilters(new android.text.InputFilter[]{ new android.text.InputFilter.LengthFilter(4) });
+                in.setHint("4 digits");
+                new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Virgin TV Go parental PIN")
+                    .setMessage("Saved on this TV only. Leave empty and choose Save to remove it.")
+                    .setView(in)
+                    .setPositiveButton("Save", (d, w) -> {
+                        String v = in.getText().toString().replaceAll("[^0-9]", "");
+                        getSharedPreferences("player", MODE_PRIVATE).edit().putString("vpin", v.length() == 4 ? v : "").apply();
+                        android.widget.Toast.makeText(MainActivity.this, v.length() == 4 ? "PIN saved" : "PIN removed", android.widget.Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+                in.requestFocus();
+            });
+        }
         /** Where the small window goes (in page pixels); w = 0 hides it. */
         @JavascriptInterface
         public void miniRect(final double x, final double y, final double w, final double h) {

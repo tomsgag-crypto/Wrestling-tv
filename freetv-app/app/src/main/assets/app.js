@@ -373,7 +373,7 @@ var app = (function () {
           if (!x) return;
           var seen = {};
           x.events.forEach(function (e) { seen[e.s] = 1; });
-          (en.events || []).forEach(function (e) { if (!seen[e.startTime]) x.events.push({ s: e.startTime, e: e.endTime, t: e.title, sub: e.seriesName && e.seriesName !== e.title ? e.seriesName : '', img: '' }); });
+          (en.events || []).forEach(function (e) { if (!seen[e.startTime]) x.events.push({ s: e.startTime, e: e.endTime, age: e.minimumAge || 0, t: e.title, sub: e.seriesName && e.seriesName !== e.title ? e.seriesName : '', img: '' }); });
           x.events.sort(function (p, q) { return p.s - q.s; });
         });
         if (view === 'guide') renderGuide();
@@ -863,7 +863,11 @@ var app = (function () {
     if (!settings.virgin || !window.Native || !Native.openWebFind) return false;
     if (ch && ch.vweb) { Native.openWeb(ch.vweb, name); return true; }   // Sky Sports: Virgin hands these to skysports.com
     if (ch && ch.vid) {
-      Native.openWebFind('https://virgintvgo.virginmedia.com/en/watchtv/linearplayer/' + encodeURIComponent(ch.vid) + '/' + encodeURIComponent(ch.vname), name, ch.vname);
+      var nowS = Date.now() / 1000, cur = (ch.events || []).filter(function (e) { return e.s <= nowS && e.e > nowS; })[0];
+      var url = 'https://virgintvgo.virginmedia.com/en/watchtv/linearplayer/' + encodeURIComponent(ch.vid) + '/' + encodeURIComponent(ch.vname);
+      // Virgin asks for the parental PIN on programmes rated 12 and over; Free TV types it if you've saved it
+      if (cur && cur.age >= 12 && Native.openWebFindPin) Native.openWebFindPin(url, name, ch.vname);
+      else Native.openWebFind(url, name, ch.vname);
       return true;
     }
     if (!(svc === 'u' || pay)) return false;
@@ -1482,6 +1486,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
+    if (settings.virgin && window.Native && Native.hasVirginPin) t.push({ kind: 'set', k: 'vpin', name: 'Virgin TV Go PIN', desc: Native.hasVirginPin() ? 'Saved on this TV – typed in for you on 12+ programmes. OK to change or remove' : 'Not saved – OK to type your parental PIN once, so 12+ programmes start without asking' });
     t.push({ kind: 'set', k: 'virgin', name: 'Virgin TV Go', desc: settings.virgin ? 'On – U and pay channels open on the Virgin TV Go website (sign in once). OK to switch off' : 'Off – OK to open U and pay channels with your Virgin TV account' });
     t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
@@ -1541,6 +1546,7 @@ var app = (function () {
         return;
       }
       if (x.k === 'showhide') { showMenu(); return; }
+      if (x.k === 'vpin') { Native.setVirginPin(); setTimeout(render, 1500); }
       if (x.k === 'virgin') { settings.virgin = !settings.virgin; saveSettings(); if (settings.virgin && !virgin.length) loadVirgin().then(function () { buildChans(); render(); }); buildChans(); }
       if (x.k === 'bbcWeb') { settings.bbcWeb = !bbcWeb(); saveSettings(); }
       if (x.k === 'plutoInApp') { settings.plutoInApp = !settings.plutoInApp; saveSettings(); }

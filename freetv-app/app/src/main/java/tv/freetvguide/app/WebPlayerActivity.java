@@ -97,6 +97,19 @@ public class WebPlayerActivity extends Activity {
         if (custom != null) { root.removeView(custom); custom = null; }
         web.reload();
     }
+    private int pinWaits = 0;
+    /** Tap the saved PIN on Virgin's number pad (a dialog in the middle of the screen: 1-9 in a 3x3 grid, 0 below). */
+    private void enterPin() {
+        String pin = getSharedPreferences("player", MODE_PRIVATE).getString("vpin", "");
+        if (pin.length() != 4 || web == null) return;
+        float d = getResources().getDisplayMetrics().density, cx = web.getWidth() / 2f, cy = web.getHeight() / 2f;
+        float[] col = {-129, 0, 129}, row = {43, 102, 159, 217};
+        for (int i = 0; i < 4; i++) {
+            int n = pin.charAt(i) - '0';
+            float x = n == 0 ? cx : cx + col[(n - 1) % 3] * d, y = cy + (n == 0 ? row[3] : row[(n - 1) / 3]) * d;
+            ui.postDelayed(() -> tap(x, y), 300 + i * 450L);
+        }
+    }
     private long lastToggle = 0;
     private void togglePause() {
         long now = android.os.SystemClock.uptimeMillis();
@@ -292,6 +305,10 @@ public class WebPlayerActivity extends Activity {
                             "a.dispatchEvent(new InputEvent('input',{bubbles:true,data:t,inputType:'insertText'}));a.dispatchEvent(new Event('change',{bubbles:true}));n++;});return n;})(" + org.json.JSONObject.quote(text) + ")", null);
                     }, 1600);
                     next = 3000;
+                }
+                if (act.equals("wait") && o.optString("why").startsWith("starting") && getIntent().getBooleanExtra("pin", false)) {
+                    pinWaits++;
+                    if (pinWaits == 4 || pinWaits == 18) enterPin();
                 }
                 if (fromCache && act.equals("wait") && o.optString("why").startsWith("starting") && ++cacheWaits > 25) {
                     android.content.SharedPreferences.Editor ed = getSharedPreferences("virgin", MODE_PRIVATE).edit();
