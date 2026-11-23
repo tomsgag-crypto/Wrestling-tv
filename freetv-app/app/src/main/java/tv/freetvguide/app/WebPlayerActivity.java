@@ -32,6 +32,19 @@ public class WebPlayerActivity extends Activity {
     /** The pointer is used whenever the page itself is showing (not the loading screen or full-screen video). */
     private boolean pointerOn() { return cursor != null && custom == null && cover.getVisibility() != View.VISIBLE; }
     private void showCursor() { if (cursor != null) { cursor.setVisibility(pointerOn() ? View.VISIBLE : View.GONE); cursor.bringToFront(); cursor.invalidate(); } }
+    private boolean userPaused = false;
+    private final Runnable keepPlaying = new Runnable() { @Override public void run() {
+        if (web == null) return;
+        if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
+            "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(v&&v.paused&&!v.ended&&v.currentTime>1){v.play();return 'resumed';}return '';})()", null);
+        ui.postDelayed(this, 2000);
+    } };
+    private void togglePause() {
+        userPaused = !userPaused;
+        web.evaluateJavascript("(function(p){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
+            "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(v){if(p)v.pause();else v.play();}})(" + userPaused + ")", null);
+        android.widget.Toast.makeText(this, userPaused ? "Paused" : "Playing", android.widget.Toast.LENGTH_SHORT).show();
+    }
     private final Runnable cursorWatch = new Runnable() { @Override public void run() { showCursor(); ui.postDelayed(this, 500); } };
     private void tap(float x, float y) {
         long t = android.os.SystemClock.uptimeMillis();
@@ -299,7 +312,11 @@ public class WebPlayerActivity extends Activity {
         "var ua={brands:brands,mobile:false,platform:'Linux',getHighEntropyValues:function(h){return Promise.resolve({brands:brands,mobile:false,platform:'Linux',platformVersion:'6.5.0',architecture:'x86',bitness:'64',model:'',uaFullVersion:'124.0.6367.207',wow64:false," +
         "fullVersionList:[{brand:'Chromium',version:'124.0.6367.207'},{brand:'Google Chrome',version:'124.0.6367.207'},{brand:'Not-A.Brand',version:'99.0.0.0'}]});},toJSON:function(){return {brands:brands,mobile:false,platform:'Linux'};}};" +
         "g('userAgentData',ua);g('platform','Linux x86_64');g('maxTouchPoints',0);g('vendor','Google Inc.');" +
-        "try{delete window.ontouchstart;}catch(e){}}catch(e){}})();";
+        "try{delete window.ontouchstart;}catch(e){}" +
+        "if(/skysports|sky\\.com/.test(location.host)){var D=Document.prototype;try{Object.defineProperty(D,'hidden',{get:function(){return false;},configurable:true});Object.defineProperty(D,'visibilityState',{get:function(){return 'visible';},configurable:true});}catch(e){}" +
+        "D.hasFocus=function(){return true;};var ae=EventTarget.prototype.addEventListener;EventTarget.prototype.addEventListener=function(t,f,o){if(t==='visibilitychange'||t==='webkitvisibilitychange'||(t==='blur'&&this===window)||t==='pagehide'||t==='freeze')return;return ae.call(this,t,f,o);};" +
+        "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
+        "}catch(e){}})();";
     private void looksLikeDesktop(WebSettings s) {
         try {
             if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
@@ -411,6 +428,15 @@ public class WebPlayerActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
+        if (custom != null && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                || k == KeyEvent.KEYCODE_MEDIA_PAUSE || k == KeyEvent.KEYCODE_MEDIA_PLAY)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                if (k == KeyEvent.KEYCODE_MEDIA_PAUSE) { if (!userPaused) togglePause(); }
+                else if (k == KeyEvent.KEYCODE_MEDIA_PLAY) { if (userPaused) togglePause(); }
+                else togglePause();
+            }
+            return true;
+        }
         if (pointerOn() && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT
                 || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
             if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
@@ -437,7 +463,7 @@ public class WebPlayerActivity extends Activity {
         return super.dispatchKeyEvent(e);
     }
 
-    @Override protected void onPause() { super.onPause(); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
-    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); }
-    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
+    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); }
+    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(keepPlaying); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }
