@@ -109,7 +109,7 @@ public class WebPlayerActivity extends Activity {
         "if(L&&L.length){var ws=T.split('|').map(nn).filter(Boolean),hit=null;" +
         "L.forEach(function(c){if(!hit&&!c.isHidden&&ws.indexOf(nn(c.name))>=0)hit=c;});" +
         "if(!hit)L.forEach(function(c){if(!hit&&!c.isHidden&&!/\\+1|javu/i.test(c.name)&&ws.some(function(w){return w.length>3&&nn(c.name).indexOf(w)===0;}))hit=c;});" +
-        "if(hit){location.assign('/en/watchtv/linearplayer/'+encodeURIComponent(hit.id)+'/'+encodeURIComponent(hit.name));return JSON.stringify({act:'wait',why:'opening '+hit.name});}" +
+        "if(hit){return JSON.stringify({act:'go',path:'/en/watchtv/linearplayer/'+encodeURIComponent(hit.id)+'/'+encodeURIComponent(hit.name),why:'opening '+hit.name});}" +
         "if(!window.__ftvNoHit){window.__ftvNoHit=1;}}" +
         "var ph=qa('flt-semantics-placeholder')[0];" +
         "var labelled=qa('flt-semantics,a').filter(function(e){return (e.getAttribute('aria-label')||(e.querySelector('flt-semantics')?'':e.textContent)||'').trim().length>2;}).length;" +
@@ -150,6 +150,11 @@ public class WebPlayerActivity extends Activity {
         "return JSON.stringify({act:'wait',why:(inp?'searching for the channel':(list.length?'looking at the channel list':'waiting for the page'))+info});}catch(x){return JSON.stringify({act:'wait',why:'err '+x});}})";
     private int steps = 0;
     private boolean loginShown = false;
+    private boolean fromCache = false;
+    private int cacheWaits = 0;
+    static String norm(String s) {
+        return s == null ? "" : s.toLowerCase(java.util.Locale.UK).replace("&", " and ").replaceAll("\\bhd\\b", "").replaceAll("[^a-z0-9]", "").replaceAll("hd$", "");
+    }
     private final Runnable step = new Runnable() {
         @Override public void run() {
             if (web == null || find == null || custom != null) return;
@@ -158,7 +163,7 @@ public class WebPlayerActivity extends Activity {
                 try { o = new org.json.JSONObject(new org.json.JSONTokener(r).nextValue().toString()); } catch (Exception x) { o = new org.json.JSONObject(); }
                 String act = o.optString("act", "wait");
                 float d = getResources().getDisplayMetrics().density;
-                long next = 1500;
+                long next = 800;
                 String why = o.optString("why", act);
                 if (!act.equals("login") && cover.getVisibility() != View.VISIBLE && loginShown) { cover.setVisibility(View.VISIBLE); loginShown = false; }
                 cover.setText("Loading " + getIntent().getStringExtra("title") + "…\n\n(" + why + ")");
@@ -173,6 +178,15 @@ public class WebPlayerActivity extends Activity {
                     web.dispatchKeyEvent(new KeyEvent(t, t + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_SPACE, 0));
                     tap((float) o.optDouble("x") * d + 1, (float) o.optDouble("y") * d + 1);
                     next = 2000;
+                }
+                else if (act.equals("go")) {
+                    String path = o.optString("path");
+                    android.content.SharedPreferences.Editor ed = getSharedPreferences("virgin", MODE_PRIVATE).edit();
+                    for (String t : find.split("\\|")) if (!norm(t).isEmpty()) ed.putString(norm(t), path);
+                    ed.apply();
+                    fromCache = true;
+                    web.loadUrl("https://virgintvgo.virginmedia.com" + path);
+                    next = 1500;
                 }
                 else if (act.equals("scroll")) { wheel((float) o.optDouble("x") * d, (float) o.optDouble("y") * d, -2f); next = 1200; }
                 else if (act.equals("tap")) { tap((float) o.optDouble("x") * d, (float) o.optDouble("y") * d); next = 2500; }
@@ -191,6 +205,15 @@ public class WebPlayerActivity extends Activity {
                             "a.dispatchEvent(new InputEvent('input',{bubbles:true,data:t,inputType:'insertText'}));a.dispatchEvent(new Event('change',{bubbles:true}));n++;});return n;})(" + org.json.JSONObject.quote(text) + ")", null);
                     }, 1600);
                     next = 3000;
+                }
+                if (fromCache && act.equals("wait") && o.optString("why").startsWith("starting") && ++cacheWaits > 25) {
+                    android.content.SharedPreferences.Editor ed = getSharedPreferences("virgin", MODE_PRIVATE).edit();
+                    for (String t : find.split("\\|")) ed.remove(norm(t));
+                    ed.apply();
+                    fromCache = false; cacheWaits = 0;
+                    web.loadUrl("https://virgintvgo.virginmedia.com/en/watchtv");
+                    ui.postDelayed(step, 2000);
+                    return;
                 }
                 if (++steps > 45) {                                             // stuck: keep a note of the page for Claude
                     reveal.run();
@@ -322,7 +345,14 @@ public class WebPlayerActivity extends Activity {
         });
         start = getIntent().getStringExtra("url");
         find = getIntent().getStringExtra("find");
-        if (find != null) { cover.setVisibility(View.VISIBLE); ui.postDelayed(step, 4000); }
+        if (find != null) {
+            android.content.SharedPreferences sp = getSharedPreferences("virgin", MODE_PRIVATE);
+            for (String t : find.split("\\|")) {
+                String path = sp.getString(norm(t), null);
+                if (path != null) { start = "https://virgintvgo.virginmedia.com" + path; fromCache = true; break; }
+            }
+        }
+        if (find != null) { cover.setVisibility(View.VISIBLE); ui.postDelayed(step, 1500); }
         web.loadUrl(start);
         web.requestFocus();
         ui.post(cursorWatch);
