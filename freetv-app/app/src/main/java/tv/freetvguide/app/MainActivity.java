@@ -87,7 +87,8 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    protected void onPause() { super.onPause(); visible = false; }
+    protected void onPause() {
+        okArmed = false; super.onPause(); visible = false; }
 
     @Override
     protected void onResume() {
@@ -103,7 +104,7 @@ public class MainActivity extends Activity {
     }
 
     private long okDown = 0;
-    private boolean okHeld = false;
+    private boolean okHeld = false, okArmed = false;
 
     private void js(String code) { ui.post(() -> web.evaluateJavascript(code, null)); }
 
@@ -113,11 +114,12 @@ public class MainActivity extends Activity {
         int kc = e.getKeyCode();
         if (kc == KeyEvent.KEYCODE_DPAD_CENTER || kc == KeyEvent.KEYCODE_NUMPAD_ENTER || (kc == KeyEvent.KEYCODE_ENTER && e.getDeviceId() != KeyCharacterMap.VIRTUAL_KEYBOARD && !e.isFromSource(android.view.InputDevice.SOURCE_KEYBOARD))) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) {
-                if (e.getRepeatCount() == 0) { okDown = e.getEventTime(); okHeld = false; }
-                else if (!okHeld && e.getEventTime() - okDown > 650) { okHeld = true; js("app.key('hold')"); }
+                if (e.getRepeatCount() == 0) { okDown = e.getEventTime(); okHeld = false; okArmed = true; }
+                else if (okArmed && !okHeld && e.getEventTime() - okDown > 650) { okHeld = true; js("app.key('hold')"); }
             } else if (e.getAction() == KeyEvent.ACTION_UP) {
-                if (!okHeld && !e.isCanceled()) js(e.getEventTime() - okDown > 650 ? "app.key('hold')" : "app.key('ok')");
-                okHeld = false;
+                // only count a press that started here (returning from another app can deliver just the "up")
+                if (okArmed && !okHeld && !e.isCanceled()) js(e.getEventTime() - okDown > 650 ? "app.key('hold')" : "app.key('ok')");
+                okHeld = false; okArmed = false;
             }
             return true;
         }

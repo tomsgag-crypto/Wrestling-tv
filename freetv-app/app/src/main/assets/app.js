@@ -908,8 +908,8 @@ var app = (function () {
   function renderHelp() {
     var h;
     if (zone === 'tabs') h = '<b>◀ ▶</b> choose a section · <b>▼</b> go in';
-    else if (view === 'guide' && gZone === 'days') h = '<b>◀ ▶</b> choose a day · <b>OK</b> or <b>▼</b> go to it';
-    else if (view === 'guide') h = '<b>▲▼</b> channels · <b>◀▶</b> time · <b>OK</b> watch, or set a reminder · <b>hold OK</b> more · <b>CH −/+</b> page · <b>FF/RW</b> a day';
+    else if (view === 'guide' && gZone === 'days') h = '<b>◀ ▶</b> choose a day, or <b>Filter & options</b> at the end · <b>OK</b> go to it';
+    else if (view === 'guide') h = '<b>▲▼</b> channels · <b>◀▶</b> time · <b>OK</b> watch, or set a reminder · <b>hold OK</b> more · <b>▲</b> from the top: days, <b>filter & options</b>';
     else if (view === 'lists') h = '<b>OK</b> watch · <b>hold OK</b> remove, move or mark watched · <b>Menu</b> on a list: rename or delete';
     else if (view === 'apps') h = '<b>OK</b> open the app (or install it) · settings are at the end';
     else h = '<b>OK</b> watch in its app · <b>hold OK</b> add to a list or mark watched · <b>CH −/+</b> page';
@@ -952,6 +952,8 @@ var app = (function () {
     var curDay = Math.floor((gT - day0) / 86400), dh = '';
     if (gZone !== 'days') gDay = curDay;
     for (var d = 0; d < DAYS; d++) dh += '<div class="day' + (d === curDay ? ' on' : '') + (gZone === 'days' && zone === 'main' && d === gDay ? ' sel' : '') + '" data-day="' + d + '">' + dayLabel(d) + '</div>';
+    var nHide = Object.keys(settings.hide).length + (settings.favOnly ? 1 : 0);
+    dh += '<div class="day opts' + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">☰ Filter & options' + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
     $('gDays').innerHTML = dh;
     var th = '';
     for (var t = ws; t < ws + SPAN; t += 1800) th += '<div class="tick" style="left:' + ((t - ws) / SPAN * 100) + '%">' + clock(t) + '</div>';
@@ -1009,7 +1011,9 @@ var app = (function () {
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       if (k === 'left') gDay = Math.max(0, gDay - 1);
-      else if (k === 'right') gDay = Math.min(DAYS - 1, gDay + 1);
+      else if (k === 'right') gDay = Math.min(DAYS, gDay + 1);
+      else if (k === 'ok' && gDay === DAYS) { optionsMenu(); return; }
+      else if (k === 'down' && gDay === DAYS) { gZone = 'rows'; }
       else if (k === 'ok' || k === 'down') { goDay(gDay); gZone = 'rows'; }
       else if (k === 'menu') { optionsMenu(); return; }
       render(); return;
@@ -1117,7 +1121,8 @@ var app = (function () {
     var act = zone === 'main';
     $('odSrc').innerHTML = od.map(function (s, i) {
       return '<div class="chip' + (i === odSrc ? ' on' : '') + (act && odZone === 'src' && odChip === i ? ' sel' : '') + '" data-s="' + i + '">' + esc(s.name) + (s.id !== 'tv' && s.id !== 'bbc' && s.id !== 'pluto' && s.id !== 'free' && has(s.id) ? ' ✓' : '') + '</div>';
-    }).join('') + '<div class="chip gen' + (act && odZone === 'src' && odChip === od.length ? ' sel' : '') + '" data-s="g">' + esc(odGenre ? '▼ ' + OD_GENRES[odGenre][0] : '▼ All genres') + '</div>';
+    }).join('') + '<div class="chip gen' + (act && odZone === 'src' && odChip === od.length ? ' sel' : '') + '" data-s="g">' + esc(odGenre ? '▼ ' + OD_GENRES[odGenre][0] : '▼ All genres') + '</div>' +
+      '<div class="chip gen' + (act && odZone === 'src' && odChip === od.length + 1 ? ' sel' : '') + '" data-s="o">☰ Filter & options</div>';
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
     $('odCats').innerHTML = cats.map(function (c, i) {
@@ -1139,8 +1144,9 @@ var app = (function () {
     if (odZone === 'src') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       if (k === 'left') { odChip = Math.max(0, odChip - 1); if (odChip < od.length) pickSrc(odChip); }
-      else if (k === 'right') { odChip = Math.min(od.length, odChip + 1); if (odChip < od.length) pickSrc(odChip); }
+      else if (k === 'right') { odChip = Math.min(od.length + 1, odChip + 1); if (odChip < od.length) pickSrc(odChip); }
       else if (k === 'ok' && odChip === od.length) { genreMenu(); return; }
+      else if (k === 'ok' && odChip === od.length + 1) { optionsMenu(); return; }
       else if (k === 'down' || k === 'ok') odZone = 'cats';
       else if (k === 'menu') { optionsMenu(); return; }
     } else if (odZone === 'cats') {
@@ -1575,7 +1581,7 @@ var app = (function () {
   }
   function appsToggle(k) { var t = tiles(); for (var i = 0; i < t.length; i++) if (t[i].k === k) { var keep = apRow; apRow = i; appsKey('ok'); apRow = keep; return; } }
   function optionsMenu() {
-    var c = view === 'guide' && zone === 'main' ? chans[gRow] : null, opts = [];
+    var c = view === 'guide' && zone === 'main' && gZone === 'rows' ? chans[gRow] : null, opts = [{ label: 'Filter: show or hide channels and apps (e.g. Pluto TV)…', fn: function () { showMenu(); } }];
     if (c) {
       opts.push({ label: (c.fav ? 'Remove ' : 'Add ') + c.name + (c.fav ? ' from' : ' to') + ' favourites', fn: function () { toggleFav(c); } });
       if (c.fav && c.sec === 'Favourites') {
@@ -1584,7 +1590,6 @@ var app = (function () {
       }
     }
     if (settings.favs.length) opts.push({ label: settings.favOnly ? 'Show all channels' : 'Show only my favourites', fn: function () { settings.favOnly = !settings.favOnly; saveSettings(); buildChans(); gRow = 0; } });
-    opts.push({ label: 'Show or hide channels and apps (e.g. Pluto TV)…', fn: function () { showMenu(); } });
     if (isOD()) opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
     if (view === 'guide') opts.push({ label: settings.pay ? 'Hide pay TV channels' : 'Show pay TV channels (for reminders)', fn: function () { appsToggle('pay'); } });
     showPop({ title: c ? c.name : 'Options', opts: opts.concat([
@@ -1683,9 +1688,9 @@ var app = (function () {
     var tn = e.target.closest('[data-tn]');
     if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var dy = e.target.closest('[data-day]');
-    if (dy) { zone = 'main'; gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
+    if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
-    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
+    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'o') { optionsMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
     var t = e.target.closest('.tab, .blk, .gch, .cat, .card, .app, .opt');
     if (!t) return;
