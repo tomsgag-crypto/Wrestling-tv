@@ -28,6 +28,24 @@ public class WebPlayerActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private int tries = 0;
     private android.widget.TextView cover;
+    private CursorView cursor;
+    /** The pointer is used whenever the page itself is showing (not the loading screen or full-screen video). */
+    private boolean pointerOn() { return cursor != null && custom == null && cover.getVisibility() != View.VISIBLE; }
+    private void showCursor() { if (cursor != null) { cursor.setVisibility(pointerOn() ? View.VISIBLE : View.GONE); cursor.bringToFront(); cursor.invalidate(); } }
+    private final Runnable cursorWatch = new Runnable() { @Override public void run() { showCursor(); ui.postDelayed(this, 500); } };
+    private void tap(float x, float y) {
+        long t = android.os.SystemClock.uptimeMillis();
+        android.view.MotionEvent d = android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_DOWN, x, y, 0);
+        android.view.MotionEvent u = android.view.MotionEvent.obtain(t, t + 60, android.view.MotionEvent.ACTION_UP, x, y, 0);
+        d.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN); u.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+        web.dispatchTouchEvent(d); web.dispatchTouchEvent(u); d.recycle(); u.recycle();
+    }
+    private void scrollAt(float x, float y, int dy) {
+        float dpr = getResources().getDisplayMetrics().density;
+        web.evaluateJavascript("(function(x,y,dy){var e=document.elementFromPoint(x,y);while(e&&e!==document.body){var s=getComputedStyle(e);" +
+            "if(/(auto|scroll)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight){e.scrollBy(0,dy);return;}e=e.parentElement;}window.scrollBy(0,dy);})(" +
+            (x / dpr) + "," + (y / dpr) + "," + dy + ")", null);
+    }
     private final Runnable reveal = () -> { if (cover != null) cover.setVisibility(View.GONE); };
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
     private boolean isPlayer(String u) { return find == null && (u != null && u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*")); }
@@ -128,6 +146,9 @@ public class WebPlayerActivity extends Activity {
         String what = getIntent().getStringExtra("title");
         cover.setText("Loading " + (what == null || what.isEmpty() ? "BBC iPlayer" : what) + "…");
         root.addView(cover, new FrameLayout.LayoutParams(-1, -1));
+        cursor = new CursorView(this);
+        root.addView(cursor, new FrameLayout.LayoutParams(-1, -1));
+        root.post(() -> { cursor.x = root.getWidth() / 2f; cursor.y = root.getHeight() / 2f; showCursor(); });
         setContentView(root);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -175,6 +196,7 @@ public class WebPlayerActivity extends Activity {
         if (find != null) { cover.setVisibility(View.GONE); ui.postDelayed(step, 5000); }
         web.loadUrl(start);
         web.requestFocus();
+        ui.post(cursorWatch);
     }
 
     private final Runnable fill = new Runnable() {
@@ -190,6 +212,20 @@ public class WebPlayerActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        int k = e.getKeyCode();
+        if (pointerOn() && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT
+                || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
+            if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+            if (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER) { if (e.getRepeatCount() == 0) tap(cursor.x, cursor.y); return true; }
+            float d = getResources().getDisplayMetrics().density, step = Math.min(42, 10 + e.getRepeatCount() * 4) * d;
+            float w = root.getWidth(), h = root.getHeight();
+            if (k == KeyEvent.KEYCODE_DPAD_LEFT) cursor.x = Math.max(0, cursor.x - step);
+            if (k == KeyEvent.KEYCODE_DPAD_RIGHT) cursor.x = Math.min(w - 4, cursor.x + step);
+            if (k == KeyEvent.KEYCODE_DPAD_UP) { if (cursor.y <= 8 * d) scrollAt(cursor.x, 40 * d, -(int) (h / d / 3)); cursor.y = Math.max(0, cursor.y - step); }
+            if (k == KeyEvent.KEYCODE_DPAD_DOWN) { if (cursor.y >= h - 30 * d) scrollAt(cursor.x, h - 40 * d, (int) (h / d / 3)); cursor.y = Math.min(h - 26 * d, cursor.y + step); }
+            cursor.invalidate();
+            return true;
+        }
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && e.getAction() == KeyEvent.ACTION_UP) {
             if (custom != null) { finish(); return true; }
             if (find != null) { web.evaluateJavascript(DUMP, d -> { lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""); finish(); }); return true; }
@@ -205,5 +241,5 @@ public class WebPlayerActivity extends Activity {
 
     @Override protected void onPause() { super.onPause(); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); }
-    @Override protected void onDestroy() { ui.removeCallbacks(fill); ui.removeCallbacks(step); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }
