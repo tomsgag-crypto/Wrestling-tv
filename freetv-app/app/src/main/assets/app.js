@@ -1552,8 +1552,8 @@ var app = (function () {
     $('popIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var v = $('popIn').value.trim(); closePop(); done(v); render(); } };
   }
   function helperHowTo() {
-    showPop({ title: 'Switch on the helper: in the next screen choose "Free TV helper" (it may be under "Downloaded apps" or "Services"), turn it on and press OK to allow. Then press Back to return here.',
-      opts: [{ label: 'Open Accessibility settings', fn: function () { Native.openHelperSettings(); } }, { label: 'Not now' }] });
+    showPop({ title: 'To switch on the helper: press Home, go to Settings → System → Accessibility, choose "Free TV helper", turn it on and press OK to allow. Then come back to Free TV.',
+      opts: [{ label: 'OK' }] });
   }
   function recordMenu() {
     showPop({ title: 'Recording helps me tune the helper. Start it, then open BBC iPlayer and U and move around them for a few minutes (profiles, Channels, Search, typing a title, a result). Then come back here and share.', opts: [
