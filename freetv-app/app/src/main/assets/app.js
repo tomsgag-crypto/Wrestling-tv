@@ -353,7 +353,7 @@ var app = (function () {
         return !c.isHidden && c.logicalChannelNumber < 850 && !/\+1\b|\+ 1|ja ?vu|uhd|ultra hd|^tnt|radio|highlights/i.test(c.name);
       }).sort(function (a, b) { return a.logicalChannelNumber - b.logicalChannelNumber; }).map(function (c) {
         var x = { id: 'v' + c.id, vid: c.id, vname: c.name, name: c.name.replace(/\s*HD$/, '').replace(/HD$/, ''), num: c.logicalChannelNumber,
-          cat: V_GENRE[(c.genre || [])[0]] || '', events: [],
+          cat: (c.genre || [])[0] || '', events: [],
           vweb: c.streamedViaExternalApp ? ((c.streamingApplications || []).filter(function (a) { return a.deviceCode === 'web'; })[0] || {}).url || '' : '' };
         virginById[c.id] = x;
         return x;
@@ -402,7 +402,7 @@ var app = (function () {
     ['Factual', /documentar|history|discovery|nat ?geo|animal|nature|wild|science|food|cook|kitchen|chef|menu|travel|home|garden|antique|quest|really|blaze|yesterday|\bpbs\b|smithsonian|pets?\b|\bcars?\b|mechanic|craft|diy|explor|planet|earth|diary of a ceo|history hit/i],
     ['Reality & game shows', /reality|love island|housewives|kardashian|keeping up|dating|wedding|ink master|pawn|storage|deal or no deal|chase|pointless|tipping point|millionaire|family feud|game ?show|quiz|wipeout|cube|takeshi/i]
   ];
-  var CAT_MAP = { movies: 'Films', 'movies & series': 'Films', sports: 'Sport', sport: 'Sport', news: 'News', 'news + opinion': 'News', kids: 'Kids', 'kids & family': 'Kids', 'kids tv': 'Kids',
+  var CAT_MAP = { movies: 'Films', films: 'Films', shopping: 'Shopping', 'movies & series': 'Films', sports: 'Sport', sport: 'Sport', news: 'News', 'news + opinion': 'News', kids: 'Kids', 'kids & family': 'Kids', 'kids tv': 'Kids',
     comedy: 'Comedy', crime: 'Drama & crime', 'crime & thriller': 'Drama & crime', drama: 'Drama & crime', 'tv series': 'Entertainment', reality: 'Reality & game shows', 'reality tv': 'Reality & game shows',
     documentaries: 'Factual', nature: 'Factual', 'food & travel': 'Factual', 'food & home': 'Factual', 'history & science': 'Factual', 'science & tech': 'Factual', lifestyle: 'Factual',
     'music & ambient': 'Music', music: 'Music', 'music & radio': 'Music', 'game shows': 'Reality & game shows', entertainment: 'Entertainment', 'classic tv': 'Entertainment' };
@@ -426,6 +426,33 @@ var app = (function () {
     TYPES.forEach(function (t) { var n = count(t); if (n) opts.push({ label: t + '  (' + n + ')', tick: settings.guideType === t, fn: function () { setType(t); } }); });
     showPop({ title: 'Show only…', opts: opts });
   }
+  /** "Channels from" drop-down: pick a place (Virgin TV Go, Pluto TV…), then all of it or one type (Sport, Films…). */
+  function allChans() {
+    var st = settings.guideType, ss = settings.guideSec;
+    settings.guideType = ''; settings.guideSec = ''; buildChans();
+    var all = chans.slice(); settings.guideType = st; settings.guideSec = ss; buildChans();
+    return all;
+  }
+  function sourceMenu() {
+    var all = allChans(), secs = [];
+    all.forEach(function (c) { if (secs.indexOf(c.sec) < 0) secs.push(c.sec); });
+    var opts = [{ label: 'Everything (' + all.length + ' channels)', tick: !settings.guideSec && !settings.guideType, fn: function () { setSource('', ''); } }];
+    secs.forEach(function (sc) {
+      var n = all.filter(function (c) { return c.sec === sc; }).length;
+      opts.push({ label: sc + '  (' + n + ')  ▸', tick: settings.guideSec === sc, fn: function () { sourceTypeMenu(sc, all); } });
+    });
+    showPop({ title: 'Channels from…', opts: opts, row: Math.max(0, secs.indexOf(settings.guideSec) + 1) });
+  }
+  function sourceTypeMenu(sc, all) {
+    var mine = all.filter(function (c) { return c.sec === sc; });
+    var opts = [{ label: 'All ' + sc + '  (' + mine.length + ')', tick: settings.guideSec === sc && !settings.guideType, fn: function () { setSource(sc, ''); } }];
+    TYPES.forEach(function (t) {
+      var n = mine.filter(function (c) { return c.type === t; }).length;
+      if (n) opts.push({ label: t + '  (' + n + ')', tick: settings.guideSec === sc && settings.guideType === t, fn: function () { setSource(sc, t); } });
+    });
+    setTimeout(function () { showPop({ title: sc, opts: opts }); }, 0);
+  }
+  function setSource(sc, t) { settings.guideSec = sc; settings.guideType = t; saveSettings(); buildChans(); gRow = 0; rTop = 0; gZone = 'rows'; render(); }
   function setType(t) { settings.guideType = t; saveSettings(); buildChans(); gRow = 0; rTop = 0; gZone = 'rows'; render(); }
 
   function buildChans() {
@@ -473,6 +500,7 @@ var app = (function () {
     out = out.filter(function (c) { return !settings.hide[c.sec]; });
     out.forEach(function (c) { c.type = chanType(c); });
     if (settings.guideType) out = out.filter(function (c) { return c.type === settings.guideType; });
+    if (settings.guideSec && out.some(function (c) { return c.sec === settings.guideSec; })) out = out.filter(function (c) { return c.sec === settings.guideSec; });
     // favourites at the top (or on their own)
     var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
       .map(function (c) { return Object.assign({}, c, { sec: 'Favourites', fav: true }); });
@@ -1031,7 +1059,7 @@ var app = (function () {
   function renderHelp() {
     var h;
     if (zone === 'tabs') h = '<b>◀ ▶</b> choose a section · <b>▼</b> go in';
-    else if (view === 'guide' && gZone === 'days') h = '<b>◀ ▶</b> choose a day, <b>Filter & options</b>, or a section to jump to · <b>OK</b> go to it';
+    else if (view === 'guide' && gZone === 'days') h = '<b>◀ ▶</b> choose a day, <b>Filter & options</b>, or <b>Channels</b> to pick where they come from · <b>OK</b> go to it';
     else if (view === 'guide' && mini) h = '▶ <b>' + esc(mini.name) + '</b> is playing · <b>OK</b> on it for full screen · <b>Back</b> stops it · <b>OK</b> on another channel to switch';
     else if (view === 'guide') h = '<b>▲▼</b> channels · <b>◀▶</b> time · <b>OK</b> watch, or set a reminder · <b>hold OK</b> more · <b>▲</b> from the top: days, <b>filter & options</b>';
     else if (view === 'lists') h = '<b>OK</b> watch · <b>hold OK</b> remove, move or mark watched · <b>Menu</b> on a list: rename or delete';
@@ -1085,8 +1113,7 @@ var app = (function () {
     for (var d = 0; d < DAYS; d++) dh += '<div class="day' + (d === curDay ? ' on' : '') + (gZone === 'days' && zone === 'main' && d === gDay ? ' sel' : '') + '" data-day="' + d + '">' + dayLabel(d) + '</div>';
     var nHide = Object.keys(settings.hide).length + (settings.favOnly ? 1 : 0);
     dh += '<div class="day opts' + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">☰ Filter & options' + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
-    var secs = sections();
-    secs.forEach(function (sc, i) { dh += '<div class="day sec' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 + i ? ' sel' : '') + (chans[gRow] && chans[gRow].sec === sc ? ' on' : '') + '" data-day="sec' + i + '">' + esc(sc) + '</div>'; });
+    dh += '<div class="day sec on' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 ? ' sel' : '') + '" data-day="src">▾ Channels: ' + esc(settings.guideSec || 'All') + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + '</div>';
     $('gDays').innerHTML = dh;
     var dsel = $('gDays').querySelector('.day.sel');
     if (dsel) { var gb = $('gDays'); if (dsel.offsetLeft + dsel.offsetWidth > gb.scrollLeft + gb.clientWidth) gb.scrollLeft = dsel.offsetLeft + dsel.offsetWidth - gb.clientWidth + 20; if (dsel.offsetLeft < gb.scrollLeft) gb.scrollLeft = Math.max(0, dsel.offsetLeft - 20); }
@@ -1147,9 +1174,9 @@ var app = (function () {
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       if (k === 'left') gDay = Math.max(0, gDay - 1);
-      else if (k === 'right') gDay = Math.min(DAYS + sections().length, gDay + 1);
+      else if (k === 'right') gDay = Math.min(DAYS + 1, gDay + 1);
       else if (k === 'ok' && gDay === DAYS) { optionsMenu(); return; }
-      else if (k === 'ok' && gDay > DAYS) { jumpTo(sections()[gDay - DAYS - 1]); }
+      else if (k === 'ok' && gDay > DAYS) { sourceMenu(); return; }
       else if (k === 'down' && gDay >= DAYS) { gZone = 'rows'; }
       else if (k === 'ok' || k === 'down') { goDay(gDay); gZone = 'rows'; }
       else if (k === 'menu') { optionsMenu(); return; }
@@ -1762,7 +1789,7 @@ var app = (function () {
   }
   function appsToggle(k) { var t = tiles(); for (var i = 0; i < t.length; i++) if (t[i].k === k) { var keep = apRow; apRow = i; appsKey('ok'); apRow = keep; return; } }
   function optionsMenu() {
-    var c = view === 'guide' && zone === 'main' && gZone === 'rows' ? chans[gRow] : null, opts = [{ label: 'Channel type: ' + (settings.guideType || 'All channels') + ' (films, sport, entertainment…)', fn: function () { typeMenu(); } },
+    var c = view === 'guide' && zone === 'main' && gZone === 'rows' ? chans[gRow] : null, opts = [{ label: 'Channels from: ' + (settings.guideSec || 'Everything') + (settings.guideType ? ' · ' + settings.guideType : '') + '  ▸', fn: function () { setTimeout(sourceMenu, 0); } }, { label: 'Channel type: ' + (settings.guideType || 'All channels') + ' (films, sport, entertainment…)', fn: function () { typeMenu(); } },
       { label: 'Filter: show or hide channels and apps (e.g. Pluto TV)…', fn: function () { showMenu(); } }];
     if (c) {
       opts.push({ label: (c.fav ? 'Remove ' : 'Add ') + c.name + (c.fav ? ' from' : ' to') + ' favourites', fn: function () { toggleFav(c); } });
@@ -1872,7 +1899,7 @@ var app = (function () {
     if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var dy = e.target.closest('[data-day]');
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; }
-      if (/^sec/.test(dy.getAttribute('data-day'))) { jumpTo(sections()[+dy.getAttribute('data-day').slice(3)]); render(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
+      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
     if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'o') { optionsMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
