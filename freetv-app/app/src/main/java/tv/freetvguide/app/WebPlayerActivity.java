@@ -41,14 +41,20 @@ public class WebPlayerActivity extends Activity {
             "if(!v.__ftvW){v.__ftvW=1;window.__ftvLog=window.__ftvLog||[];v.addEventListener('pause',function(){if(window.__ftvUserPaused||v.ended)return;window.__ftvLog.push('paused');setTimeout(function(){if(v.paused&&!window.__ftvUserPaused)v.play();},150);});" +
             "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});}" +
             "if(v.paused&&!v.ended&&v.currentTime>1){v.play();window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('paused');}" +
-            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L;})()", r -> {
+            "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
+            "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
+            "window.__ftvStat='ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing');" +
+            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat;})()", r -> {
                 if (r == null) return;
+                int bar = r.indexOf('|');
+                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); stats.setText(st); stats.setVisibility(custom != null ? View.VISIBLE : View.GONE); if (custom != null) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 if (r.contains("paused")) note("Sky paused it – restarting");
                 else if (r.contains("buffering")) note("Buffering…");
             });
         ui.postDelayed(this, 1000);
     } };
+    private android.widget.TextView stats;   // playback figures in the corner (to work out the buffering)
     private long lastNote = 0;
     private void note(String m) {
         long t = android.os.SystemClock.uptimeMillis();
@@ -341,8 +347,10 @@ public class WebPlayerActivity extends Activity {
         "[].forEach.call(x.getElementsByTagName('AdaptationSet'),function(a){var reps=[].slice.call(a.getElementsByTagName('Representation'));var vid=/video/.test((a.getAttribute('mimeType')||'')+(a.getAttribute('contentType')||''))||reps.some(function(r){return /video/.test(r.getAttribute('mimeType')||'')||r.hasAttribute('height');});if(!vid||reps.length<2)return;" +
         "var keep=reps.filter(function(r){return +r.getAttribute('bandwidth')<=CAP;});if(!keep.length)keep=[reps.sort(function(p,q){return p.getAttribute('bandwidth')-q.getAttribute('bandwidth');})[0]];reps.forEach(function(r){if(keep.indexOf(r)<0){r.parentNode.removeChild(r);n++;}});});" +
         "if(n){window.__ftvLog=window.__ftvLog||[];if(!window.__ftvCapped){window.__ftvCapped=1;window.__ftvLog.push('capped');}}return n?new XMLSerializer().serializeToString(x):t;}catch(e){return t;}}" +
-        "var F=window.fetch;window.fetch=function(i,o){return F.apply(this,arguments).then(function(r){try{var u=r.url||'';var ct=r.headers.get('content-type')||'';if(!/\\.mpd|dash/i.test(u+ct))return r;return r.clone().text().then(function(t){var c=capMpd(t);if(c===t)return r;var nr=new Response(c,{status:r.status,statusText:r.statusText,headers:r.headers});try{Object.defineProperty(nr,'url',{value:u});}catch(e){}return nr;});}catch(e){return r;}});};" +
-        "var XP=XMLHttpRequest.prototype,xo=XP.open;XP.open=function(m,u){this.__ftvU=String(u||'');return xo.apply(this,arguments);};" +
+        "var N=window.__ftvNet={ok:0,bad:0,codes:{},kb:0,ms:0,seg:0};function cnt(st,u,t0,b){if(st>=400||st===0){N.bad++;N.codes[st]=(N.codes[st]||0)+1;}else N.ok++;if(/\\.(m4s|mp4|m4v|ts|cmfv)|segment|chunk/i.test(u)&&b){N.seg++;N.kb+=b/1024;N.ms+=Date.now()-t0;}}" +
+        "var F=window.fetch;window.fetch=function(i,o){var t0=Date.now(),U=String(i&&i.url||i);return F.apply(this,arguments).then(function(r){try{var cl=+r.headers.get('content-length')||0;cnt(r.status,U,t0,cl);}catch(e){}try{var u=r.url||'';var ct=r.headers.get('content-type')||'';if(!/\\.mpd|dash/i.test(u+ct))return r;return r.clone().text().then(function(t){var c=capMpd(t);if(c===t)return r;var nr=new Response(c,{status:r.status,statusText:r.statusText,headers:r.headers});try{Object.defineProperty(nr,'url',{value:u});}catch(e){}return nr;});}catch(e){return r;}});};" +
+        "var XP=XMLHttpRequest.prototype,xo=XP.open,xs=XP.send;XP.open=function(m,u){this.__ftvU=String(u||'');return xo.apply(this,arguments);};" +
+        "XP.send=function(){var x=this,t0=Date.now();x.addEventListener('loadend',function(){var b=0;try{b=x.response&&x.response.byteLength||0;}catch(e){}cnt(x.status,x.__ftvU||'',t0,b);});return xs.apply(this,arguments);};" +
         "['responseText','response'].forEach(function(k){var d=Object.getOwnPropertyDescriptor(XP,k);if(!d||!d.get)return;Object.defineProperty(XP,k,{configurable:true,get:function(){var v=d.get.call(this);try{if(this.readyState!==4||!/\\.mpd/i.test(this.__ftvU||''))return v;if(this.__ftvC&&this.__ftvC[0]===v)return this.__ftvC[1];var out=v;" +
         "if(typeof v==='string')out=capMpd(v);else if(v instanceof ArrayBuffer){var t=new TextDecoder().decode(v),c=capMpd(t);out=c===t?v:new TextEncoder().encode(c).buffer;}this.__ftvC=[v,out];return out;}catch(e){return v;}}});});" +
         "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
@@ -383,6 +391,10 @@ public class WebPlayerActivity extends Activity {
         root.addView(cover, new FrameLayout.LayoutParams(-1, -1));
         cursor = new CursorView(this);
         root.addView(cursor, new FrameLayout.LayoutParams(-1, -1));
+        stats = new android.widget.TextView(this);
+        stats.setTextColor(0xFFFFFFFF); stats.setBackgroundColor(0x99000000); stats.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+        stats.setPadding(12, 6, 12, 6); stats.setVisibility(View.GONE);
+        root.addView(stats, new FrameLayout.LayoutParams(-2, -2));
         root.post(() -> { cursor.x = root.getWidth() / 2f; cursor.y = root.getHeight() / 2f; showCursor(); });
         setContentView(root);
         WebSettings s = web.getSettings();
