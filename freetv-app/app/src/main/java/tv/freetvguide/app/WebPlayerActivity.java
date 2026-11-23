@@ -60,7 +60,7 @@ public class WebPlayerActivity extends Activity {
     }
     private final Runnable reveal = () -> { if (cover != null) cover.setVisibility(View.GONE); };
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
-    private boolean isPlayer(String u) { return find == null && (u != null && u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*")); }
+    private boolean isPlayer(String u) { return find != null || (u != null && u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*")); }
 
     /** What the last stuck page looked like (shared on the home network with "Record app screens for Claude"). */
     static String lastDump = "";
@@ -113,9 +113,14 @@ public class WebPlayerActivity extends Activity {
         "if(w.tile<2){var t=sem.filter(function(e){var m=/^\\s*\\[([^\\]]+)\\]/.exec(own(e));return m&&want.indexOf(n(m[1]))>=0&&vis(e);})[0];if(t){w.tile++;return at(t,'tap',{why:'channel'});}}" +
         "if(w.tile>0&&w.play<2){var b=sem.filter(function(e){return vis(e)&&/^(watch( live| now)?|play( live)?|start watching)\\b/i.test(own(e).trim());})[0];if(b){w.play++;return at(b,'tap',{why:'watch'});}}" +
         "var inp=sem.filter(function(e){return vis(e)&&/^search channel/i.test((e.getAttribute('aria-label')||'').trim());})[0]||[].slice.call(document.querySelectorAll('input')).filter(function(e){return vis(e)&&/search/i.test(e.placeholder||'');})[0];" +
-        "if(inp&&w.typed<2&&w.tile===0){w.typed++;var name=T.split('|')[1]||T.split('|')[0];return at(inp,'type',{text:name.replace(/\\s*HD$/i,'')});}" +
-        "return JSON.stringify({act:'wait',why:'looking'});}catch(x){return JSON.stringify({act:'wait',why:'err '+x});}})";
+        "var boxText=inp?(inp.getAttribute('aria-label')||'')+' '+((inp.querySelector('input')||{}).value||''):'';" +
+        "if(inp&&w.typed>=1&&w.typed<4&&w.tile===0&&(w.wait=(w.wait||0)+1)%3===0&&!/\\w{3,}/.test(boxText.replace(/search channel/i,''))){w.typed++;var nm=T.split('|')[1]||T.split('|')[0];return at(inp,'type',{text:nm.replace(/\\s*HD$/i,''),why:'typing again'});}" +
+        "if(inp&&w.typed<1&&w.tile===0){w.typed++;var name=T.split('|')[1]||T.split('|')[0];return at(inp,'type',{text:name.replace(/\\s*HD$/i,'')});}" +
+        "var list=sem.filter(function(e){return /^\\s*\\[/.test(own(e))&&vis(e);});" +
+        "if(list.length&&w.tile===0&&(w.sc=(w.sc||0)+1)<25&&w.typed>=2){var lr=list[0].getBoundingClientRect();return JSON.stringify({act:'scroll',x:lr.left+lr.width/2,y:lr.top+lr.height/2,why:'scrolling the channel list'});}" +
+        "return JSON.stringify({act:'wait',why:inp?'searching for the channel':(list.length?'looking at the channel list':'waiting for the page')});}catch(x){return JSON.stringify({act:'wait',why:'err '+x});}})";
     private int steps = 0;
+    private boolean loginShown = false;
     private final Runnable step = new Runnable() {
         @Override public void run() {
             if (web == null || find == null || custom != null) return;
@@ -125,17 +130,28 @@ public class WebPlayerActivity extends Activity {
                 String act = o.optString("act", "wait");
                 float d = getResources().getDisplayMetrics().density;
                 long next = 1500;
-                if (act.equals("login")) reveal.run();                            // let you sign in
+                String why = o.optString("why", act);
+                if (!act.equals("login") && cover.getVisibility() != View.VISIBLE && loginShown) { cover.setVisibility(View.VISIBLE); loginShown = false; }
+                cover.setText("Loading " + getIntent().getStringExtra("title") + "…\n\n(" + why + ")");
+                if (act.equals("login")) { reveal.run(); loginShown = true; steps = 0; }   // let you sign in
                 else if (act.equals("playing")) { if (fsTries == 0) { cover.setText("Starting " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); goFull(); } return; }
+                else if (act.equals("scroll")) { wheel((float) o.optDouble("x") * d, (float) o.optDouble("y") * d, -2f); next = 1200; }
                 else if (act.equals("tap")) { tap((float) o.optDouble("x") * d, (float) o.optDouble("y") * d); next = 2500; }
                 else if (act.equals("type")) {
                     tap((float) o.optDouble("x") * d, (float) o.optDouble("y") * d);
                     final String text = o.optString("text");
-                    ui.postDelayed(() -> typeText(text), 700);
+                    ui.postDelayed(() -> {
+                        typeText(text);
+                        // backup: put the text into the box the page is using, in case key presses didn't arrive
+                        web.evaluateJavascript("(function(t){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a.value!==t){" +
+                            "var s=Object.getOwnPropertyDescriptor(a.tagName==='INPUT'?HTMLInputElement.prototype:HTMLTextAreaElement.prototype,'value').set;s.call(a,t);" +
+                            "a.dispatchEvent(new InputEvent('input',{bubbles:true,data:t,inputType:'insertText'}));return 'set';}return a?a.tagName:'none';})(" + org.json.JSONObject.quote(text) + ")", null);
+                    }, 700);
                     next = 3000;
                 }
-                if (++steps > 40) {                                             // stuck: keep a note of the page for Claude
+                if (++steps > 45) {                                             // stuck: keep a note of the page for Claude
                     reveal.run();
+                    android.widget.Toast.makeText(WebPlayerActivity.this, "Couldn't start " + getIntent().getStringExtra("title") + " – pick it yourself with the pointer", android.widget.Toast.LENGTH_LONG).show();
                     web.evaluateJavascript(DUMP, dd -> lastDump = dd == null ? "" : dd.replace("\\n", "\n").replace("\\\"", "\""));
                     return;
                 }
@@ -224,10 +240,11 @@ public class WebPlayerActivity extends Activity {
                 fsTries = 0;
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
-                if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, find != null ? 60000 : 15000); } else cover.setVisibility(View.GONE);
+                if (find != null) { /* the step loop decides */ }
+                else if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); } else cover.setVisibility(View.GONE);
             }
             @Override public void onPageFinished(WebView v, String url) {
-                if (!isPlayer(url)) cover.setVisibility(View.GONE);
+                if (!isPlayer(url) && find == null) cover.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
                 if (find != null) { ui.removeCallbacks(step); ui.postDelayed(step, 2000); return; }
                 tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 1500); }
@@ -252,7 +269,7 @@ public class WebPlayerActivity extends Activity {
         });
         start = getIntent().getStringExtra("url");
         find = getIntent().getStringExtra("find");
-        if (find != null) { cover.setVisibility(View.GONE); ui.postDelayed(step, 5000); }
+        if (find != null) { cover.setVisibility(View.VISIBLE); ui.postDelayed(step, 4000); }
         web.loadUrl(start);
         web.requestFocus();
         ui.post(cursorWatch);
