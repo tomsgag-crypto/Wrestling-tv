@@ -30,7 +30,13 @@ public class WebPlayerActivity extends Activity {
     private android.widget.TextView cover;
     private CursorView cursor;
     /** The pointer is used whenever the page itself is showing (not the loading screen or full-screen video). */
-    private boolean pointerOn() { return cursor != null && custom == null && cover.getVisibility() != View.VISIBLE; }
+    private boolean pointerOn() { return cursor != null && !watching() && cover.getVisibility() != View.VISIBLE; }
+    private boolean pageFull = false;
+    private volatile boolean skyPage = false;   // Sky's page player stretched to fill the screen (instead of TV full screen)
+    private boolean watching() { return custom != null || pageFull; }
+    private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
+    private boolean onSky() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("skysports.com"); }
+    private boolean pageMode() { return onSky() && prefs().getBoolean("skypage", false); }
     private void showCursor() { if (cursor != null) { cursor.setVisibility(pointerOn() ? View.VISIBLE : View.GONE); cursor.bringToFront(); cursor.invalidate(); } }
     private boolean userPaused = false;
     private final Runnable keepPlaying = new Runnable() { @Override public void run() {
@@ -47,7 +53,7 @@ public class WebPlayerActivity extends Activity {
             "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat;})()", r -> {
                 if (r == null) return;
                 int bar = r.indexOf('|');
-                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); stats.setText(st); stats.setVisibility(custom != null && showStats ? View.VISIBLE : View.GONE); if (custom != null) stats.bringToFront(); }
+                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 if (r.contains("paused")) note("Sky paused it – restarting");
                 else if (r.contains("buffering")) note("Buffering…");
@@ -59,7 +65,7 @@ public class WebPlayerActivity extends Activity {
     private long lastNote = 0;
     private void note(String m) {
         long t = android.os.SystemClock.uptimeMillis();
-        if (t - lastNote < 4000 || custom == null) return;
+        if (t - lastNote < 4000 || !watching()) return;
         lastNote = t;
         android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_SHORT).show();
     }
@@ -67,18 +73,18 @@ public class WebPlayerActivity extends Activity {
     private void qualityMenu() {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
-            String[] names = new String[QS.length];
-            int cur = quality(), sel = 0;
-            for (int i = 0; i < QS.length; i++) {
-                names[i] = QS[i] == 0 ? "Auto – Sky chooses" : QS[i] + "p";
-                if (QS[i] == cur) sel = i;
-            }
+            int cur = quality();
+            String[] names = new String[QS.length + 2];
+            for (int i = 0; i < QS.length; i++) names[i] = (QS[i] == cur ? "✓ " : "    ") + (QS[i] == 0 ? "Picture: Auto – Sky chooses" : "Picture: " + QS[i] + "p");
+            boolean clock = prefs().getBoolean("skyclock", true), page = prefs().getBoolean("skypage", false);
+            names[QS.length] = "Page clock: " + (clock ? "8 seconds behind (on) – OK for normal" : "normal – OK for 8 seconds behind");
+            names[QS.length + 1] = "Full screen: " + (page ? "stretch Sky's page player – OK for TV full screen" : "TV full screen – OK to stretch Sky's page player instead");
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Picture quality" + (offers.isEmpty() ? "" : "  (Sky offers " + offers + ")"))
-                .setSingleChoiceItems(names, sel, (d, which) -> {
-                    d.dismiss();
-                    if (QS[which] == quality()) return;
-                    getSharedPreferences("player", MODE_PRIVATE).edit().putInt("skyq", QS[which]).apply();
+                .setTitle("Sky Sports player" + (offers.isEmpty() ? "" : "  (Sky offers " + offers + ")"))
+                .setItems(names, (d, which) -> {
+                    if (which < QS.length) { if (QS[which] == quality()) return; prefs().edit().putInt("skyq", QS[which]).apply(); }
+                    else if (which == QS.length) prefs().edit().putBoolean("skyclock", !clock).apply();
+                    else prefs().edit().putBoolean("skypage", !page).apply();
                     applyQuality();
                 })
                 .show();
@@ -95,6 +101,7 @@ public class WebPlayerActivity extends Activity {
         cover.setText("Changing picture quality…");
         cover.setVisibility(View.VISIBLE);
         if (custom != null) { root.removeView(custom); custom = null; }
+        pageFull = false; fsTries = 0; tries = 0;
         web.reload();
     }
     private int pinWaits = 0;
@@ -414,7 +421,7 @@ public class WebPlayerActivity extends Activity {
         "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
         "}catch(e){}})();";
     private int quality() { return getSharedPreferences("player", MODE_PRIVATE).getInt("skyq", 0); }
-    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";"); }
+    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", true) ? 8000 : 0) + ","); }
     private Object startScript;   // the script handle, so a new quality can replace it
     private void looksLikeDesktop(WebSettings s) {
         try {
@@ -470,8 +477,14 @@ public class WebPlayerActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         web.setWebViewClient(new WebViewClient() {
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
+                String h = req.getUrl().getHost();
+                if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
+                    return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                return null;
+            }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
-                fsTries = 0;
+                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); pageFull = false;
                 if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(desktopJs(), null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
@@ -522,7 +535,8 @@ public class WebPlayerActivity extends Activity {
             if (web == null) return;
             web.evaluateJavascript(FILL, r -> {
                 boolean ok = r != null && r.contains("filled");
-                if (ok && custom == null && fsTries == 0) ui.postDelayed(WebPlayerActivity.this::goFull, 300);
+                if (ok && pageMode()) { if (!pageFull) { pageFull = true; ui.postDelayed(reveal, 1200); } }
+                else if (ok && custom == null && fsTries == 0) ui.postDelayed(WebPlayerActivity.this::goFull, 300);
                 if (custom == null && tries++ < 20) ui.postDelayed(fill, ok ? 4000 : 800);
             });
         }
@@ -531,14 +545,14 @@ public class WebPlayerActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
-        if (custom != null && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN)) {
+        if (watching() && (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
                 if (k == KeyEvent.KEYCODE_DPAD_UP) qualityMenu();
                 else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
             }
             return true;
         }
-        if (custom != null && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+        if (watching() && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
                 || k == KeyEvent.KEYCODE_MEDIA_PAUSE || k == KeyEvent.KEYCODE_MEDIA_PLAY)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
                 if (k == KeyEvent.KEYCODE_MEDIA_PAUSE) { if (!userPaused) togglePause(); }
@@ -561,7 +575,7 @@ public class WebPlayerActivity extends Activity {
             return true;
         }
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && e.getAction() == KeyEvent.ACTION_UP) {
-            if (custom != null) { finish(); return true; }
+            if (watching()) { finish(); return true; }
             if (find != null) { web.evaluateJavascript(DUMP, d -> { lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""); finish(); }); return true; }
             String u = web.getUrl();
             // during sign-in, Back steps back a page; on the player it returns to the guide
