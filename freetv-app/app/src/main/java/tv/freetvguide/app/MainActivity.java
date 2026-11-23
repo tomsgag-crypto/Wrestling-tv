@@ -10,6 +10,7 @@ import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -385,6 +386,20 @@ public class MainActivity extends Activity {
         /** Show the recorded layouts on the home network for 10 minutes; returns the address to open on a phone. */
         @JavascriptInterface
         public String shareLayouts() { return LayoutServer.start(MainActivity.this); }
+
+        /** Update Free TV in place (also lifts Android's block on the helper for downloaded apps). */
+        @JavascriptInterface
+        public String updateSelf() {
+            if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+                ui.post(() -> {
+                    try { startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))); }
+                    catch (Exception e) { Toast.makeText(MainActivity.this, "Allow Free TV to install apps in Settings → Apps → Security & restrictions → Unknown sources", Toast.LENGTH_LONG).show(); }
+                });
+                return "allow";
+            }
+            pool.execute(() -> SelfUpdate.run(MainActivity.this, msg -> ui.post(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show())));
+            return "started";
+        }
 
         /** The device's own search (Google TV / Google): finds a title across all your apps and can play it. */
         @JavascriptInterface

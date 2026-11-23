@@ -1315,6 +1315,7 @@ var app = (function () {
       t.push({ kind: 'set', k: 'profile', name: 'Your iPlayer profile', desc: (settings.profile ? '"' + settings.profile + '"' : 'Not set') + ' – the name on iPlayer\'s "Who\'s watching" screen' });
       t.push({ kind: 'set', k: 'record', name: 'Record app screens for Claude', desc: (window.Native && Native.layoutCount ? Native.layoutCount() + ' screens recorded' : '') + ' – OK to start or share' });
     }
+    if (window.Native && Native.updateSelf) t.push({ kind: 'set', k: 'update', name: 'Update Free TV', desc: 'Download and install the newest version – no need for Downloader' });
     t.push({ kind: 'set', k: 'showhide', name: 'Show or hide', desc: (Object.keys(settings.hide).length ? Object.keys(settings.hide).length + ' hidden' : 'Everything shown') + ' – choose which channels and apps appear (e.g. hide Pluto TV)' });
     t.push({ kind: 'set', k: 'pay', name: 'Pay TV channels in the guide', desc: (settings.pay ? 'Shown' : 'Hidden') + ' – Sky / pay channels, so you can set reminders' });
     t.push({ kind: 'set', k: 'remindMins', name: 'Reminder time', desc: settings.remindMins + ' minutes before – OK to change' });
@@ -1353,6 +1354,12 @@ var app = (function () {
     else if (k === 'up') moveV(-1);
     else if (k === 'ok') {
       var x = t[apRow];
+      if (x.k === 'update') {
+        var r = Native.updateSelf();
+        if (r === 'allow') showPop({ title: 'First allow Free TV to install updates: turn on "Allow from this source" on the next screen, press Back, then choose Update Free TV again.', opts: [{ label: 'OK' }] });
+        else toast('Downloading the newest Free TV…');
+        return;
+      }
       if (x.k === 'showhide') { showMenu(); return; }
       if (x.k === 'plutoInApp') { settings.plutoInApp = !settings.plutoInApp; saveSettings(); }
       if (x.k === 'helper') {
