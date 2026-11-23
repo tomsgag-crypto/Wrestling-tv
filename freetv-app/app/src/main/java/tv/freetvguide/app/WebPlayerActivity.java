@@ -36,13 +36,29 @@ public class WebPlayerActivity extends Activity {
     private final Runnable keepPlaying = new Runnable() { @Override public void run() {
         if (web == null) return;
         if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
-            "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(v&&v.paused&&!v.ended&&v.currentTime>1){v.play();return 'resumed';}return '';})()", null);
-        ui.postDelayed(this, 2000);
+            "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(!v)return '';" +
+            // watch the picture: restart it the moment the site pauses it, and note buffering, so we can tell which is happening
+            "if(!v.__ftvW){v.__ftvW=1;window.__ftvLog=window.__ftvLog||[];v.addEventListener('pause',function(){if(window.__ftvUserPaused||v.ended)return;window.__ftvLog.push('paused');setTimeout(function(){if(v.paused&&!window.__ftvUserPaused)v.play();},150);});" +
+            "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});}" +
+            "if(v.paused&&!v.ended&&v.currentTime>1){v.play();window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('paused');}" +
+            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L;})()", r -> {
+                if (r == null) return;
+                if (r.contains("paused")) note("Sky paused it – restarting");
+                else if (r.contains("buffering")) note("Buffering…");
+            });
+        ui.postDelayed(this, 1000);
     } };
+    private long lastNote = 0;
+    private void note(String m) {
+        long t = android.os.SystemClock.uptimeMillis();
+        if (t - lastNote < 4000 || custom == null) return;
+        lastNote = t;
+        android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_SHORT).show();
+    }
     private void togglePause() {
         userPaused = !userPaused;
         web.evaluateJavascript("(function(p){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
-            "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(v){if(p)v.pause();else v.play();}})(" + userPaused + ")", null);
+            "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}window.__ftvUserPaused=p;var v=deep(document,0);if(v){if(p)v.pause();else v.play();}})(" + userPaused + ")", null);
         android.widget.Toast.makeText(this, userPaused ? "Paused" : "Playing", android.widget.Toast.LENGTH_SHORT).show();
     }
     private final Runnable cursorWatch = new Runnable() { @Override public void run() { showCursor(); ui.postDelayed(this, 500); } };
