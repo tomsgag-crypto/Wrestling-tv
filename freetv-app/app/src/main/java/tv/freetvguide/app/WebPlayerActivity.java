@@ -292,6 +292,31 @@ public class WebPlayerActivity extends Activity {
         });
     }
 
+    // Sky Sports only plays in a computer's browser (on phones and TVs it says "open our app"), so look like Chrome on a Linux PC throughout:
+    // the browser hints sent to sites, and what the page's scripts can see.
+    private static final String DESKTOP = "(function(){try{var P=Navigator.prototype;function g(k,v){try{Object.defineProperty(P,k,{get:function(){return v;},configurable:true});}catch(e){}}" +
+        "var brands=[{brand:'Chromium',version:'124'},{brand:'Google Chrome',version:'124'},{brand:'Not-A.Brand',version:'99'}];" +
+        "var ua={brands:brands,mobile:false,platform:'Linux',getHighEntropyValues:function(h){return Promise.resolve({brands:brands,mobile:false,platform:'Linux',platformVersion:'6.5.0',architecture:'x86',bitness:'64',model:'',uaFullVersion:'124.0.6367.207',wow64:false," +
+        "fullVersionList:[{brand:'Chromium',version:'124.0.6367.207'},{brand:'Google Chrome',version:'124.0.6367.207'},{brand:'Not-A.Brand',version:'99.0.0.0'}]});},toJSON:function(){return {brands:brands,mobile:false,platform:'Linux'};}};" +
+        "g('userAgentData',ua);g('platform','Linux x86_64');g('maxTouchPoints',0);g('vendor','Google Inc.');" +
+        "try{delete window.ontouchstart;}catch(e){}}catch(e){}})();";
+    private void looksLikeDesktop(WebSettings s) {
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
+                java.util.List<androidx.webkit.UserAgentMetadata.BrandVersion> b = java.util.Arrays.asList(
+                    new androidx.webkit.UserAgentMetadata.BrandVersion.Builder().setBrand("Chromium").setMajorVersion("124").setFullVersion("124.0.6367.207").build(),
+                    new androidx.webkit.UserAgentMetadata.BrandVersion.Builder().setBrand("Google Chrome").setMajorVersion("124").setFullVersion("124.0.6367.207").build(),
+                    new androidx.webkit.UserAgentMetadata.BrandVersion.Builder().setBrand("Not-A.Brand").setMajorVersion("99").setFullVersion("99.0.0.0").build());
+                androidx.webkit.WebSettingsCompat.setUserAgentMetadata(s, new androidx.webkit.UserAgentMetadata.Builder()
+                    .setBrandVersionList(b).setFullVersion("124.0.6367.207").setPlatform("Linux").setPlatformVersion("6.5.0")
+                    .setArchitecture("x86").setModel("").setMobile(false).setBitness(64).setWow64(false).build());
+            }
+        } catch (Throwable ignored) { }
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT))
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, DESKTOP, java.util.Collections.singleton("*"));
+        } catch (Throwable ignored) { }
+    }
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle b) {
@@ -321,11 +346,13 @@ public class WebPlayerActivity extends Activity {
         s.setLoadWithOverviewMode(false);
         web.setInitialScale(0);
         s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+        looksLikeDesktop(s);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
                 fsTries = 0;
+                if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(DESKTOP, null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
                 if (find != null) { /* the step loop decides */ }
