@@ -793,6 +793,36 @@ var app = (function () {
       return L;
     }, function () { return {}; });
   }
+  // ITVX and Prime Video programmes: play the programme's own web page in Free TV (their TV apps only open at the home screen)
+  function itvWeb() { return window.Native && Native.openWeb && (settings.itvWeb == null ? !TOUCH : settings.itvWeb); }
+  function primeWeb() { return window.Native && Native.openWeb && (settings.primeWeb == null ? !TOUCH : settings.primeWeb); }
+  function slugify(t) { return String(t).toLowerCase().replace(/&/g, 'and').replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+  /** The programme's page on itv.com, found with ITVX's own search. */
+  function itvPage(title) {
+    var q = 'https://textsearch.prd.oasvc.itv.com/search?broadcaster=itv&featureSet=clearkey,outband-webvtt,hls,aes,playready,widevine,fairplay,bbts,progressive,hd,rtmpe&onlyFree=false&platform=dotcom&query=' + encodeURIComponent(title);
+    return getJSON(q).then(function (j) {
+      var rs = (j.results || []).map(function (r) {
+        var d = r.data || {}, t = d.programmeTitle || d.specialTitle || d.filmTitle || d.title || '', id = d.programmeCCId || d.specialCCId || d.filmCCId || '';
+        return { t: t, id: id };
+      }).filter(function (r) { return r.id && r.t; });
+      var want = slugify(title), best = rs.filter(function (r) { return slugify(r.t) === want; })[0] || rs[0];
+      return best ? 'https://www.itv.com/watch/' + slugify(best.t) + '/' + best.id : '';
+    }).catch(function () { return ''; });
+  }
+  /** Open a title in a streaming service: ITVX and Prime on their websites inside Free TV, everything else in its app. */
+  function openService(k, url, what, title) {
+    if (k === 'itv' && itvWeb()) {
+      toast('Finding ' + what + ' on ITVX…');
+      itvPage(title).then(function (u) { Native.openWeb(u || 'https://www.itv.com/watch/search?q=' + encodeURIComponent(title), 'ITVX'); });
+      return;
+    }
+    if (k === 'prime' && primeWeb()) {
+      var direct = String(url || '').split('\n').filter(function (u) { return /primevideo\.com\/detail|amazon\.co\.uk\/gp\/video/.test(u); })[0];
+      Native.openWeb(direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title), 'Prime Video');
+      return;
+    }
+    openIn(k, url, what);
+  }
   function openTMDB(it) {
     toast('Finding "' + it.title + '"…');
     Promise.all([whereToWatch(it), serviceLinks(it)]).then(function (r) {
@@ -800,7 +830,10 @@ var app = (function () {
       ws.forEach(function (w) { w.exact = links[w.k] || ''; });
       // a straight link in an app you have: just go
       var direct = ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0];
-      if (direct) { openIn(direct.k, direct.exact, '"' + it.title + '"'); return; }
+      if (direct) { openService(direct.k, direct.exact, '"' + it.title + '"', it.title); return; }
+      // ITVX / Prime on the web don't need the app
+      var webOne = ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
+      if (webOne) { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title); return; }
       return ws;
     }).then(function (ws) {
       if (!ws) return;
@@ -811,7 +844,7 @@ var app = (function () {
       var gsearch = { label: TOUCH ? 'Search Google for it' : 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } };
       showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [].concat(ws.map(function (w) {
         return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (has(w.k) ? '' : ' (not installed)'),
-          fn: function () { openIn(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), '"' + it.title + '"'); } };
+          fn: function () { openService(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), '"' + it.title + '"', it.title); } };
       })).concat(TOUCH ? [gsearch] : [], [{ label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
   }
@@ -1025,8 +1058,8 @@ var app = (function () {
       }
       if (it.e <= now) {
         if (helperFor(it.svc, 'find', it.title)) { openIn(it.svc, it.url, ''); toast('Finding "' + it.title + '" in ' + SVC[it.svc].name + '…'); return; }
-        if (it.url) openIn(it.svc, it.url, '"' + it.title + '"');
-        else if (it.svc) openIn(it.svc, '', '"' + it.title + '"');
+        if (it.url) openService(it.svc, it.url, '"' + it.title + '"', it.title);
+        else if (it.svc) openService(it.svc, '', '"' + it.title + '"', it.title);
         else toast('That was on ' + it.chName + ' – it isn\'t available on demand here');
         return;
       }
@@ -1036,7 +1069,7 @@ var app = (function () {
     if (it.src === 'tmdb') { openTMDB(it); return; }
     if (it.src === 'pluto' && it.pid && canPlayPluto()) { playPlutoVOD(it); return; }
     if (helperFor(it.svc, 'find', it.title)) { openIn(it.svc, it.url, ''); toast('Finding "' + it.title + '" in ' + SVC[it.svc].name + '…'); return; }
-    openIn(it.svc, it.url, '"' + it.title + '"');
+    openService(it.svc, it.url, '"' + it.title + '"', it.title);
   }
 
   // ---------------------------------------------------------------- reminders
@@ -1300,7 +1333,14 @@ var app = (function () {
       if (seen[c.id]) return; seen[c.id] = 1;
       var ev = c.events.filter(function (e) { return e.e > now; }).slice(0, 2);
       if (i === gRow) idx = list.length;
-      list.push({ id: c.id, name: c.name, sec: c.sec, now: ev[0] && ev[0].s <= now ? ev[0].t : '', next: ev[0] && ev[0].s > now ? clock(ev[0].s) + ' ' + ev[0].t : ev[1] ? clock(ev[1].s) + ' ' + ev[1].t : '' });
+      var z = { id: c.id, name: c.name, sec: c.sec, now: ev[0] && ev[0].s <= now ? ev[0].t : '', next: ev[0] && ev[0].s > now ? clock(ev[0].s) + ' ' + ev[0].t : ev[1] ? clock(ev[1].s) + ' ' + ev[1].t : '' };
+      // channels the player can switch to by itself (faster than starting again)
+      if (settings.virgin && c.vweb) { z.kind = 'sky'; z.url = c.vweb; }
+      else if (settings.virgin && c.vid) {
+        z.kind = 'virgin'; z.url = 'https://virgintvgo.virginmedia.com/en/watchtv/linearplayer/' + encodeURIComponent(c.vid) + '/' + encodeURIComponent(c.vname); z.find = c.vname;
+        z.pin = !!(ev[0] && ev[0].s <= now && ev[0].age >= 12);
+      }
+      list.push(z);
     });
     Native.setZap(JSON.stringify(list), idx);
   }
@@ -1637,6 +1677,8 @@ var app = (function () {
     if (settings.virgin && window.Native && Native.hasVirginPin) t.push({ kind: 'set', k: 'vpin', name: 'Virgin TV Go PIN', desc: Native.hasVirginPin() ? 'Saved on this TV – typed in for you on 12+ programmes. OK to change or remove' : 'Not saved – OK to type your parental PIN once, so 12+ programmes start without asking' });
     t.push({ kind: 'set', k: 'virgin', name: 'Virgin TV Go', desc: settings.virgin ? 'On – U and pay channels open on the Virgin TV Go website (sign in once). OK to switch off' : 'Off – OK to open U and pay channels with your Virgin TV account' });
     t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
+    t.push({ kind: 'set', k: 'itvWeb', name: 'ITVX programmes', desc: itvWeb() ? 'Play in Free TV from the ITVX website, straight to the programme (sign in once). OK to use the ITVX app' : 'Open the ITVX app. OK to play in Free TV instead' });
+    t.push({ kind: 'set', k: 'primeWeb', name: 'Prime Video titles', desc: primeWeb() ? 'Play in Free TV from the Prime Video website, straight to the title (sign in once). OK to use the Prime Video app' : 'Open the Prime Video app. OK to play in Free TV instead' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
     if (!TOUCH) {
       var hOn = window.Native && Native.helperOn && Native.helperOn();
@@ -1720,6 +1762,8 @@ var app = (function () {
       }
       if (x.k === 'profile') { askText('Your iPlayer profile name (as shown on "Who\'s watching")', settings.profile, function (v) { settings.profile = v; saveSettings(); }); return; }
       if (x.k === 'record') { recordMenu(); return; }
+      if (x.k === 'itvWeb') { settings.itvWeb = !itvWeb(); saveSettings(); render(); return; }
+      if (x.k === 'primeWeb') { settings.primeWeb = !primeWeb(); saveSettings(); render(); return; }
       if (x.k === 'vsync') { Native.virginSync(); return; }
       if (x.k === 'pay') { cyclePay(); return; }
       if (x.k === 'payOld') { settings.pay = !settings.pay; saveSettings(); if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); loadSkyDay(0).then(render); }); buildChans(); buildFilmsOnTV(); }
