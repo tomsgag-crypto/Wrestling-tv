@@ -94,23 +94,62 @@ public class WebPlayerActivity extends Activity {
         "return 'looking';}catch(x){return 'err '+x;}})";
     private static final String DUMP = "(function(){var o=['URL '+location.href];[].slice.call(document.querySelectorAll('a,button,[role],img[alt],[aria-label],input')).slice(0,400).forEach(function(e){" +
         "var r=e.getBoundingClientRect();if(r.width<=0)return;o.push(e.tagName+' '+(e.getAttribute('role')||'')+' |'+(e.getAttribute('aria-label')||'')+'|'+(e.getAttribute('alt')||'')+'|'+String(e.children.length<3?e.textContent:'').trim().slice(0,60)+'| '+(e.getAttribute('href')||'')+' @'+Math.round(r.left)+','+Math.round(r.top));});return o.join('\\n');})()";
+    // Virgin TV Go is a Flutter app: switch on its accessibility layer to see its buttons, then say where to tap or what to type.
+    private static final String STEP2 = "(function(T){try{" +
+        "function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
+        "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}" +
+        "var v=deep(document,0);if(v&&!v.paused&&v.currentTime>0.5)return JSON.stringify({act:'playing'});" +
+        "var pw=document.querySelector('input[type=password]');if(pw&&pw.getBoundingClientRect().width>0)return JSON.stringify({act:'login'});" +
+        "var ph=document.querySelector('flt-semantics-placeholder');if(ph&&document.querySelectorAll('flt-semantics').length<5){ph.click();return JSON.stringify({act:'wait',why:'semantics'});}" +
+        "var lt=[].slice.call(document.querySelectorAll('a,flt-semantics')).filter(function(e){return /^live tv\b/i.test((e.textContent||'').trim())&&!e.querySelector('a,flt-semantics')&&e.getBoundingClientRect().width>0;})[0];" +
+        "if(!/watchtv/.test(location.pathname)&&lt&&(window.__ftvNav=(window.__ftvNav||0)+1)<4){var rr=lt.getBoundingClientRect();return JSON.stringify({act:'tap',x:rr.left+rr.width/2,y:rr.top+rr.height/2,why:'live tv'});}" +
+        "function n(s){return String(s||'').toLowerCase().replace(/&/g,' and ').replace(/\\bhd\\b/g,'').replace(/[^a-z0-9]/g,'');}" +
+        "var want=T.split('|').map(n).filter(Boolean);" +
+        "function own(e){return e.getAttribute('aria-label')||(e.querySelector('flt-semantics')?'':e.textContent)||'';}" +
+        "function vis(e){var r=e.getBoundingClientRect();return r.width>20&&r.height>20&&r.top>=0&&r.top<innerHeight-30&&r.left<innerWidth-20;}" +
+        "function at(e,act,extra){var r=e.getBoundingClientRect();var o={act:act,x:r.left+r.width/2,y:r.top+Math.min(r.height/2,60)};for(var k in extra)o[k]=extra[k];return JSON.stringify(o);}" +
+        "var w=window.__ftv=window.__ftv||{typed:0,tile:0,play:0};" +
+        "var sem=[].slice.call(document.querySelectorAll('flt-semantics,a,button'));" +
+        "if(w.tile<2){var t=sem.filter(function(e){var m=/^\\s*\\[([^\\]]+)\\]/.exec(own(e));return m&&want.indexOf(n(m[1]))>=0&&vis(e);})[0];if(t){w.tile++;return at(t,'tap',{why:'channel'});}}" +
+        "if(w.tile>0&&w.play<2){var b=sem.filter(function(e){return vis(e)&&/^(watch( live| now)?|play( live)?|start watching)\\b/i.test(own(e).trim());})[0];if(b){w.play++;return at(b,'tap',{why:'watch'});}}" +
+        "var inp=sem.filter(function(e){return vis(e)&&/^search channel/i.test((e.getAttribute('aria-label')||'').trim());})[0]||[].slice.call(document.querySelectorAll('input')).filter(function(e){return vis(e)&&/search/i.test(e.placeholder||'');})[0];" +
+        "if(inp&&w.typed<2&&w.tile===0){w.typed++;var name=T.split('|')[1]||T.split('|')[0];return at(inp,'type',{text:name.replace(/\\s*HD$/i,'')});}" +
+        "return JSON.stringify({act:'wait',why:'looking'});}catch(x){return JSON.stringify({act:'wait',why:'err '+x});}})";
     private int steps = 0;
     private final Runnable step = new Runnable() {
         @Override public void run() {
             if (web == null || find == null || custom != null) return;
-            web.evaluateJavascript(STEP + "(" + org.json.JSONObject.quote(find) + ")", r -> {
-                String st = r == null ? "" : r.replace("\"", "");
-                if (st.equals("login")) { reveal.run(); }                       // let you sign in
-                if (st.equals("playing")) { if (fsTries == 0) { cover.setText("Starting " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); goFull(); } return; }
-                if (++steps > 30) {                                            // stuck: show the page and keep a note of it for Claude
+            web.evaluateJavascript(STEP2 + "(" + org.json.JSONObject.quote(find) + ")", r -> {
+                org.json.JSONObject o;
+                try { o = new org.json.JSONObject(new org.json.JSONTokener(r).nextValue().toString()); } catch (Exception x) { o = new org.json.JSONObject(); }
+                String act = o.optString("act", "wait");
+                float d = getResources().getDisplayMetrics().density;
+                long next = 1500;
+                if (act.equals("login")) reveal.run();                            // let you sign in
+                else if (act.equals("playing")) { if (fsTries == 0) { cover.setText("Starting " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); goFull(); } return; }
+                else if (act.equals("tap")) { tap((float) o.optDouble("x") * d, (float) o.optDouble("y") * d); next = 2500; }
+                else if (act.equals("type")) {
+                    tap((float) o.optDouble("x") * d, (float) o.optDouble("y") * d);
+                    final String text = o.optString("text");
+                    ui.postDelayed(() -> typeText(text), 700);
+                    next = 3000;
+                }
+                if (++steps > 40) {                                             // stuck: keep a note of the page for Claude
                     reveal.run();
-                    web.evaluateJavascript(DUMP, d -> lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""));
+                    web.evaluateJavascript(DUMP, dd -> lastDump = dd == null ? "" : dd.replace("\\n", "\n").replace("\\\"", "\""));
                     return;
                 }
-                ui.postDelayed(step, st.equals("looking") || st.equals("login") ? 1500 : 2500);
+                ui.postDelayed(step, next);
             });
         }
     };
+    /** Type like a keyboard would (the Flutter page only listens to real key presses). */
+    private void typeText(String text) {
+        if (web == null) return;
+        android.view.KeyCharacterMap km = android.view.KeyCharacterMap.load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD);
+        KeyEvent[] evs = km.getEvents(text.toCharArray());
+        if (evs != null) for (KeyEvent e : evs) web.dispatchKeyEvent(e);
+    }
 
     // Make the player fill the screen and start it, if the page hasn't already.
     // Make the player fill the screen: find the video (the BBC player keeps it inside sealed-off "shadow" parts of the page),

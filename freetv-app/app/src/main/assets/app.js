@@ -783,7 +783,7 @@ var app = (function () {
     if (!settings.virgin || !window.Native || !Native.openWebFind) return false;
     if (!(svc === 'u' || pay) || /sky sports/i.test(name)) return false;
     var base = name.replace(/\s*HD$/i, ''), alt = base.replace(/^U&/, '');
-    Native.openWebFind('https://virgintvgo.virginmedia.com/', name, [base, alt, base + ' HD', alt + ' HD'].join('|'));
+    Native.openWebFind('https://virgintvgo.virginmedia.com/en/watchtv', name, [base, alt, base + ' HD', alt + ' HD'].join('|'));
     if (!settings.virginTold) { settings.virginTold = true; saveSettings(); toast('First time: sign in with your My Virgin Media details – it stays signed in after that'); }
     return true;
   }
