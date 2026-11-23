@@ -1353,6 +1353,7 @@ var app = (function () {
     keys.sort(function (a, b) { return rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b); });
     var t = keys.map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
     MINE.forEach(function (m) { if (has(m[1])) t.push({ kind: 'mine', k: m[1], name: m[0], desc: m[2], ok: true }); });
+    if (window.Native && Native.updateSelf) t.push({ kind: 'set', k: 'update', name: 'Update Free TV', desc: 'You have version ' + (Native.version ? Native.version() : '?') + '. OK to download and install the newest – no need for Downloader' });
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
@@ -1363,7 +1364,6 @@ var app = (function () {
       t.push({ kind: 'set', k: 'profile', name: 'Your iPlayer profile', desc: (settings.profile ? '"' + settings.profile + '"' : 'Not set') + ' – the name on iPlayer\'s "Who\'s watching" screen' });
       t.push({ kind: 'set', k: 'record', name: 'Record app screens for Claude', desc: (window.Native && Native.layoutCount ? Native.layoutCount() + ' screens recorded' : '') + ' – OK to start or share' });
     }
-    if (window.Native && Native.updateSelf) t.push({ kind: 'set', k: 'update', name: 'Update Free TV', desc: 'Download and install the newest version – no need for Downloader' });
     t.push({ kind: 'set', k: 'showhide', name: 'Show or hide', desc: (Object.keys(settings.hide).length ? Object.keys(settings.hide).length + ' hidden' : 'Everything shown') + ' – choose which channels and apps appear (e.g. hide Pluto TV)' });
     t.push({ kind: 'set', k: 'pay', name: 'Pay TV channels in the guide', desc: (settings.pay ? 'Shown' : 'Hidden') + ' – Sky / pay channels, so you can set reminders' });
     t.push({ kind: 'set', k: 'remindMins', name: 'Reminder time', desc: settings.remindMins + ' minutes before – OK to change' });

@@ -389,6 +389,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String shareLayouts() { return LayoutServer.start(MainActivity.this); }
 
+        @JavascriptInterface
+        public String version() { try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return ""; } }
+
         /** Update Free TV in place (also lifts Android's block on the helper for downloaded apps). */
         @JavascriptInterface
         public String updateSelf() {
