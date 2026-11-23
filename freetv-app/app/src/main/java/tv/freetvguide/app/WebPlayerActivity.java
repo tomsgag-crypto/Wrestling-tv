@@ -41,8 +41,20 @@ public class WebPlayerActivity extends Activity {
         "function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
         "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}" +
         "window.addEventListener('keydown',function(e){if(e.keyCode!==113)return;e.preventDefault();e.stopPropagation();" +
-        "var v=deep(document,0);if(!v)return;var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;" +
+        "var v=deep(document,0);if(!v)return;v.removeAttribute('controls');v.controls=false;var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;" +
         "try{var p=f.call(v);if(p&&p.catch)p.catch(function(){});}catch(x){}},true);return 'ok';})()";
+
+    private static final String PLAYING = "(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;" +
+        "var a=r.querySelectorAll?r.querySelectorAll('*'):[];for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}" +
+        "var v=deep(document,0);if(!v)return 'no';v.removeAttribute('controls');v.controls=false;" +
+        "if(v.paused){try{v.play();}catch(e){}}return (!v.paused&&v.readyState>=3&&v.currentTime>0.5)?'yes':'no';})()";
+    private void waitForPicture(int n) {
+        if (web == null) return;
+        web.evaluateJavascript(PLAYING, r -> {
+            if ((r != null && r.contains("yes")) || n > 30) ui.postDelayed(reveal, 400);
+            else ui.postDelayed(() -> waitForPicture(n + 1), 400);
+        });
+    }
 
     private int fsTries = 0;
     private void goFull() {
@@ -95,8 +107,14 @@ public class WebPlayerActivity extends Activity {
                 if (!isPlayer(url)) cover.setVisibility(View.GONE); tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 1500); CookieManager.getInstance().flush(); }
         });
         web.setWebChromeClient(new WebChromeClient() {
+            @Override public android.graphics.Bitmap getDefaultVideoPoster() {
+                android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888);
+                b.eraseColor(Color.BLACK);
+                return b;
+            }
             @Override public void onShowCustomView(View view, CustomViewCallback cb) {
-                custom = view; root.addView(view, new FrameLayout.LayoutParams(-1, -1)); reveal.run();
+                custom = view; root.addView(view, root.indexOfChild(cover), new FrameLayout.LayoutParams(-1, -1));
+                waitForPicture(0);
             }
             @Override public void onHideCustomView() {
                 if (custom != null) root.removeView(custom); custom = null;
