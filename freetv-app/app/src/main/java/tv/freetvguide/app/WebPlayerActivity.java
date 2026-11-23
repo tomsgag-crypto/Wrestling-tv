@@ -100,7 +100,11 @@ public class WebPlayerActivity extends Activity {
         "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}" +
         "var v=deep(document,0);if(v&&!v.paused&&v.currentTime>0.5)return JSON.stringify({act:'playing'});" +
         "var pw=document.querySelector('input[type=password]');if(pw&&pw.getBoundingClientRect().width>0)return JSON.stringify({act:'login'});" +
-        "var ph=document.querySelector('flt-semantics-placeholder');if(ph&&document.querySelectorAll('flt-semantics').length<5){ph.click();return JSON.stringify({act:'wait',why:'semantics'});}" +
+        "var ph=document.querySelector('flt-semantics-placeholder');" +
+        "var labelled=[].slice.call(document.querySelectorAll('flt-semantics,a')).filter(function(e){return (e.getAttribute('aria-label')||(e.querySelector('flt-semantics')?'':e.textContent)||'').trim().length>2;}).length;" +
+        "var info=' · s='+document.querySelectorAll('flt-semantics').length+' l='+labelled+(ph?' ph':'')+' '+location.pathname;" +
+        "if(ph&&labelled<4){window.__ftvEn=(window.__ftvEn||0)+1;try{ph.click();}catch(x){}ph.setAttribute('tabindex','0');ph.focus();var r0=ph.getBoundingClientRect();" +
+        "return JSON.stringify({act:'enable',x:Math.max(0,r0.left+r0.width/2),y:Math.max(0,r0.top+r0.height/2),why:'switching on accessibility'+info});}" +
         "var lt=[].slice.call(document.querySelectorAll('a,flt-semantics')).filter(function(e){return /^live tv\b/i.test((e.textContent||'').trim())&&!e.querySelector('a,flt-semantics')&&e.getBoundingClientRect().width>0;})[0];" +
         "if(!/watchtv/.test(location.pathname)&&lt&&(window.__ftvNav=(window.__ftvNav||0)+1)<4){var rr=lt.getBoundingClientRect();return JSON.stringify({act:'tap',x:rr.left+rr.width/2,y:rr.top+rr.height/2,why:'live tv'});}" +
         "function n(s){return String(s||'').toLowerCase().replace(/&/g,' and ').replace(/\\bhd\\b/g,'').replace(/[^a-z0-9]/g,'');}" +
@@ -118,7 +122,7 @@ public class WebPlayerActivity extends Activity {
         "if(inp&&w.typed<1&&w.tile===0){w.typed++;var name=T.split('|')[1]||T.split('|')[0];return at(inp,'type',{text:name.replace(/\\s*HD$/i,'')});}" +
         "var list=sem.filter(function(e){return /^\\s*\\[/.test(own(e))&&vis(e);});" +
         "if(list.length&&w.tile===0&&(w.sc=(w.sc||0)+1)<25&&w.typed>=2){var lr=list[0].getBoundingClientRect();return JSON.stringify({act:'scroll',x:lr.left+lr.width/2,y:lr.top+lr.height/2,why:'scrolling the channel list'});}" +
-        "return JSON.stringify({act:'wait',why:inp?'searching for the channel':(list.length?'looking at the channel list':'waiting for the page')});}catch(x){return JSON.stringify({act:'wait',why:'err '+x});}})";
+        "return JSON.stringify({act:'wait',why:(inp?'searching for the channel':(list.length?'looking at the channel list':'waiting for the page'))+info});}catch(x){return JSON.stringify({act:'wait',why:'err '+x});}})";
     private int steps = 0;
     private boolean loginShown = false;
     private final Runnable step = new Runnable() {
@@ -135,6 +139,16 @@ public class WebPlayerActivity extends Activity {
                 cover.setText("Loading " + getIntent().getStringExtra("title") + "…\n\n(" + why + ")");
                 if (act.equals("login")) { reveal.run(); loginShown = true; steps = 0; }   // let you sign in
                 else if (act.equals("playing")) { if (fsTries == 0) { cover.setText("Starting " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); goFull(); } return; }
+                else if (act.equals("enable")) {
+                    long t = android.os.SystemClock.uptimeMillis();
+                    web.requestFocus();
+                    web.dispatchKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0));
+                    web.dispatchKeyEvent(new KeyEvent(t, t + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0));
+                    web.dispatchKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SPACE, 0));
+                    web.dispatchKeyEvent(new KeyEvent(t, t + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_SPACE, 0));
+                    tap((float) o.optDouble("x") * d + 1, (float) o.optDouble("y") * d + 1);
+                    next = 2000;
+                }
                 else if (act.equals("scroll")) { wheel((float) o.optDouble("x") * d, (float) o.optDouble("y") * d, -2f); next = 1200; }
                 else if (act.equals("tap")) { tap((float) o.optDouble("x") * d, (float) o.optDouble("y") * d); next = 2500; }
                 else if (act.equals("type")) {
