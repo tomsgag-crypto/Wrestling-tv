@@ -53,12 +53,25 @@ public class WebPlayerActivity extends Activity {
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
             "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
-            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat;})()", r -> {
+            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
                 if (r == null) return;
                 int bar = r.indexOf('|');
-                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
+                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 long now2 = android.os.SystemClock.uptimeMillis();
+                // Sky: if the picture has stood still for 5 seconds (and you didn't pause it), restart at live – that's what fixes it
+                if (onSky() && watching()) {
+                    String[] parts = r.replace("\"", "").split("\\|");
+                    double ct = -1; boolean paused = false;
+                    try { ct = Double.parseDouble(parts[parts.length - 2]); paused = "1".equals(parts[parts.length - 1].trim()); } catch (Exception ignored) { }
+                    if (ct > 0 && !userPaused && Math.abs(ct - lastCt) < 0.3) stillSecs++; else stillSecs = 0;
+                    if (ct >= 0) lastCt = ct;
+                    if (stillSecs >= 5 && now2 - lastLiveReload > 45000) {
+                        stillSecs = 0; lastLiveReload = now2;
+                        applyQuality(); cover.setText("Restarting at live…");
+                        return;
+                    }
+                }
                 if (r.contains("buffering")) lastBuffer = now2;
                 // Sky says it's behind live after buffering (and you didn't pause it): restart the channel at live, like a quality change does
                 if (r.contains("behind") && !userPaused && now2 - lastToggle > 300000 && now2 - lastBuffer < 120000) behindSecs++; else if (!r.contains("behind")) behindSecs = 0;
@@ -76,7 +89,8 @@ public class WebPlayerActivity extends Activity {
     private boolean showStats = false;
     private android.widget.TextView stats;   // playback figures in the corner (to work out the buffering)
     private long lastNote = 0, lastBuffer = 0, lastLiveReload = 0;
-    private int behindSecs = 0;
+    private int behindSecs = 0, stillSecs = 0;
+    private double lastCt = -1;
     private final long openedAt = android.os.SystemClock.uptimeMillis();
     private void note(String m) {
         long t = android.os.SystemClock.uptimeMillis();
