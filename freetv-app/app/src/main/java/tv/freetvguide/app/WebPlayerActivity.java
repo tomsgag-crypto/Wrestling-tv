@@ -44,7 +44,7 @@ public class WebPlayerActivity extends Activity {
         if (web == null) return;
         // ITVX / Prime with "Adverts" switched off: adverts are short separate videos – mute them and run them at 16x so they're over in seconds
         String cu = web.getUrl();
-        if (cu != null && (cu.contains("itv.com") || cu.contains("primevideo.com") || cu.contains("amazon.co.uk")) && prefs().getBoolean("webNoAds", false))
+        if ((autoSite(cu) || (cu != null && cu.contains("amazon.co.uk"))) && prefs().getBoolean("webNoAds", false))
             web.evaluateJavascript("(function(){var n=0;function all(r,o){o=o||[];[].push.apply(o,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)all(e.shadowRoot,o);});return o;}" +
                 "all(document).forEach(function(v){var d=v.duration;if(isFinite(d)&&d>0&&d<=240&&!v.paused){if(!v.__ftvAd){v.__ftvAd={m:v.muted};}v.muted=true;try{v.playbackRate=16;}catch(e){}n++;}else if(v.__ftvAd&&isFinite(d)&&d>240){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
                     if (r != null && !r.equals("0") && cover.getVisibility() == View.VISIBLE && autoMode) cover.setText("Skipping adverts – " + getIntent().getStringExtra("title") + " starts in a moment…");
@@ -70,7 +70,7 @@ public class WebPlayerActivity extends Activity {
                 long now2 = android.os.SystemClock.uptimeMillis();
                 if (!watching() && !autoFilled) {
                     String u0 = web.getUrl();
-                    if (u0 != null && (u0.contains("itv.com/watch") || u0.contains("primevideo.com") || u0.contains("amazon.co.uk/gp/video"))) {
+                    if (autoSite(u0)) {
                         String[] pp = r.replace("\"", "").split("\\|");
                         // a short video playing behind the loading screen is an advert break
                         try { if (autoMode && cover.getVisibility() == View.VISIBLE && pp.length >= 3 && Double.parseDouble(pp[pp.length - 3]) > 0 && Double.parseDouble(pp[pp.length - 3]) <= 240 && "0".equals(pp[pp.length - 1].trim()))
@@ -128,7 +128,7 @@ public class WebPlayerActivity extends Activity {
         "if(/signin|sign-in|\\/ap\\/|login|account\\/(create|register)/i.test(location.href)||[].some.call(document.querySelectorAll('input[type=password],input[type=email]'),vis))return 'login';" +
         "var bad=/ad-?free|premium|subscribe|sign ?in|sign ?up|trial|buy|rent|channels|trailer|add to|watchlist|download|share|more like|parental|turn on|settings|set up|pin/i;" +
         "function lab(e){return ((e.getAttribute('aria-label')||'')+' '+(e.innerText||e.textContent||'')).trim();}" +
-        "if(/primevideo|amazon/.test(h)&&/\\/search/.test(h)){var links=[].slice.call(document.querySelectorAll('a[href*=\"/detail/\"]')).filter(vis);" +
+        "if(/primevideo|amazon|disneyplus/.test(h)&&/\\/search/.test(h)){var links=[].slice.call(document.querySelectorAll('a[href*=\"/detail/\"],a[href*=\"/browse/entity\"],a[href*=\"/movies/\"],a[href*=\"/series/\"]')).filter(vis);" +
         "function tt(a){return n(a.getAttribute('aria-label')||(a.querySelector('img')?a.querySelector('img').alt:'')||a.innerText);}" +
         "var hit=links.filter(function(a){return want&&tt(a)===want;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)===0;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];if(hit){hit.click();return 'picked';}return 'looking';}" +
         "var ok=[].slice.call(document.querySelectorAll('[role=dialog] button,[role=dialog] a,[class*=odal] button,[class*=ialog] button,[class*=uidance] button,button')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(continue( watching)?|i understand|i'?m (over|aged)|i am (over|aged)|yes|confirm|accept|ok|got it|watch anyway|proceed)\\b/i.test(l);})[0];" +
@@ -138,7 +138,7 @@ public class WebPlayerActivity extends Activity {
         "if(pb&&vis(pb)){pb.click();return 'play';}return 'looking';}catch(e){return 'err';}})";
     private int apTries = 0;
     private boolean autoMode = true;   // Free TV is doing the clicks behind the loading screen
-    private static boolean autoSite(String u) { return u != null && (u.contains("itv.com") || u.contains("primevideo.com") || u.contains("amazon.co.uk/gp/video")); }
+    private static boolean autoSite(String u) { return u != null && (u.contains("itv.com") || u.contains("primevideo.com") || u.contains("amazon.co.uk/gp/video") || u.contains("disneyplus.com")); }
     private void autoGiveUp(String why) {
         autoMode = false; reveal.run();
         if (why != null) android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_LONG).show();
@@ -156,7 +156,7 @@ public class WebPlayerActivity extends Activity {
             else autoGiveUp("Couldn't start it by itself – pick it with the pointer");
         });
     } };
-    private boolean onDemandSite() { String u = web == null ? null : web.getUrl(); return u != null && (u.contains("itv.com") || u.contains("primevideo.com") || u.contains("amazon.co.uk")); }
+    private boolean onDemandSite() { String u = web == null ? null : web.getUrl(); return autoSite(u) || (u != null && u.contains("amazon.co.uk")); }
     private android.widget.Toast seekToast;
     /** Jump through the programme (the longest video on the page is the programme). */
     private void seekBy(int secs) {
@@ -728,7 +728,7 @@ public class WebPlayerActivity extends Activity {
                 return null;
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
-                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); adPage = url != null && (skyPage || url.contains("itv.com") || url.contains("primevideo.com") || url.contains("amazon.co.uk")); pageFull = false;
+                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); adPage = url != null && (skyPage || autoSite(url) || url.contains("amazon.co.uk")); pageFull = false;
                 if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(desktopJs(), null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);

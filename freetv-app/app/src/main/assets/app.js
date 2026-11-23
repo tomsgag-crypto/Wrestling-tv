@@ -798,6 +798,7 @@ var app = (function () {
   }
   // ITVX and Prime Video programmes: play the programme's own web page in Free TV (their TV apps only open at the home screen)
   function itvWeb() { return window.Native && Native.openWeb && (settings.itvWeb == null ? !TOUCH : settings.itvWeb); }
+  function disneyWeb() { return window.Native && Native.openWeb && (settings.disneyWeb == null ? !TOUCH : settings.disneyWeb); }
   function primeWeb() { return window.Native && Native.openWeb && (settings.primeWeb == null ? !TOUCH : settings.primeWeb); }
   function slugify(t) { return String(t).toLowerCase().replace(/&/g, 'and').replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
   /** The programme's page on itv.com, found with ITVX's own search. */
@@ -819,6 +820,11 @@ var app = (function () {
       itvPage(title).then(function (u) { Native.openWeb(u || 'https://www.itv.com/watch/search?q=' + encodeURIComponent(title), title); });
       return;
     }
+    if (k === 'disney' && disneyWeb()) {
+      var dl = String(url || '').split('\n').filter(function (u) { return /disneyplus\.com\/(browse|movies|series|video)/.test(u); })[0];
+      Native.openWeb(dl || 'https://www.disneyplus.com/search?q=' + encodeURIComponent(title), title);
+      return;
+    }
     if (k === 'prime' && primeWeb()) {
       var direct = String(url || '').split('\n').filter(function (u) { return /primevideo\.com\/detail|amazon\.co\.uk\/gp\/video/.test(u); })[0];
       Native.openWeb(direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title), title);
@@ -835,7 +841,7 @@ var app = (function () {
       var direct = ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0];
       if (direct) { openService(direct.k, direct.exact, '"' + it.title + '"', it.title); return; }
       // ITVX / Prime on the web don't need the app
-      var webOne = ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
+      var webOne = ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()) || (w.k === 'disney' && disneyWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
       if (webOne) { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title); return; }
       return ws;
     }).then(function (ws) {
@@ -1673,6 +1679,7 @@ var app = (function () {
     keys.sort(function (a, b) { return rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b); });
     var t = keys.map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
     // first tile, top left: update Free TV
+    if (window.Native && Native.openGoogleMovies) t.unshift({ kind: 'set', k: 'gmovies', name: '🎬 My Google Movies', desc: 'Your film library on the Chromecast – YouTube and Google Play purchases' });
     if (window.Native && Native.updateSelf) t.unshift({ kind: 'upd', k: 'update', name: '⟳ Update Free TV', desc: 'You have version ' + (Native.version ? Native.version() : '?') + '. OK to get the newest' });
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
@@ -1681,8 +1688,9 @@ var app = (function () {
     t.push({ kind: 'set', k: 'virgin', name: 'Virgin TV Go', desc: settings.virgin ? 'On – U and pay channels open on the Virgin TV Go website (sign in once). OK to switch off' : 'Off – OK to open U and pay channels with your Virgin TV account' });
     t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
     t.push({ kind: 'set', k: 'itvWeb', name: 'ITVX programmes', desc: itvWeb() ? 'Play in Free TV from the ITVX website, straight to the programme (sign in once). OK to use the ITVX app' : 'Open the ITVX app. OK to play in Free TV instead' });
+    t.push({ kind: 'set', k: 'disneyWeb', name: 'Disney+ titles (test)', desc: disneyWeb() ? 'Play in Free TV from the Disney+ website, straight to the title (sign in once). OK to use the Disney+ app' : 'Open the Disney+ app. OK to try playing in Free TV instead' });
     t.push({ kind: 'set', k: 'primeWeb', name: 'Prime Video titles', desc: primeWeb() ? 'Play in Free TV from the Prime Video website, straight to the title (sign in once). OK to use the Prime Video app' : 'Open the Prime Video app. OK to play in Free TV instead' });
-    if (window.Native && Native.playerPref) t.push({ kind: 'set', k: 'webNoAds', name: 'Adverts on ITVX and Prime', desc: Native.playerPref('webNoAds', false) ? 'Skipped – muted and run at 16x speed (and blocked where possible). OK to allow' : 'Allowed – OK to skip them (muted and run at 16x speed)' });
+    if (window.Native && Native.playerPref) t.push({ kind: 'set', k: 'webNoAds', name: 'Adverts on ITVX, Prime and Disney+', desc: Native.playerPref('webNoAds', false) ? 'Skipped – muted and run at 16x speed (and blocked where possible). OK to allow' : 'Allowed – OK to skip them (muted and run at 16x speed)' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
     if (!TOUCH) {
       var hOn = window.Native && Native.helperOn && Native.helperOn();
@@ -1766,8 +1774,10 @@ var app = (function () {
       }
       if (x.k === 'profile') { askText('Your iPlayer profile name (as shown on "Who\'s watching")', settings.profile, function (v) { settings.profile = v; saveSettings(); }); return; }
       if (x.k === 'record') { recordMenu(); return; }
+      if (x.k === 'gmovies') { var got = Native.openGoogleMovies(); if (!got) toast('Couldn\'t open the film library – use Library on the Google TV home screen'); return; }
       if (x.k === 'webNoAds') { Native.setPlayerPref('webNoAds', !Native.playerPref('webNoAds', false)); render(); return; }
       if (x.k === 'itvWeb') { settings.itvWeb = !itvWeb(); saveSettings(); render(); return; }
+      if (x.k === 'disneyWeb') { settings.disneyWeb = !disneyWeb(); saveSettings(); render(); return; }
       if (x.k === 'primeWeb') { settings.primeWeb = !primeWeb(); saveSettings(); render(); return; }
       if (x.k === 'vsync') { Native.virginSync(); return; }
       if (x.k === 'pay') { cyclePay(); return; }

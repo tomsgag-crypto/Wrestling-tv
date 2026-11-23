@@ -483,6 +483,30 @@ public class MainActivity extends Activity {
         public boolean playerPref(String k, boolean def) { return getSharedPreferences("player", MODE_PRIVATE).getBoolean(k, def); }
         @JavascriptInterface
         public void setPlayerPref(String k, boolean v) { getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean(k, v).apply(); }
+        /** "My Google Movies": the film library on the Chromecast (YouTube / Google Play purchases). Tries the known ways in, best first. */
+        @JavascriptInterface
+        public String openGoogleMovies() {
+            PackageManager pm = getPackageManager();
+            String[][] tries = {
+                { "com.google.android.apps.tv.launcherx", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
+                { "com.google.android.apps.tv.launcherx", "com.google.android.apps.tv.launcherx.intent.action.LAUNCH_LIBRARY", "" },
+                { "com.google.android.apps.tv.launcherx", "android.intent.action.VIEW", "https://tv.google.com/library" },
+                { "com.google.android.videos", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
+                { "com.android.vending", "android.intent.action.VIEW", "https://play.google.com/store/movies/collection/purchased" },
+                { "com.google.android.youtube.tv", "android.intent.action.VIEW", "https://www.youtube.com/feed/purchases" },
+                { "com.google.android.youtube.tvunplugged", "android.intent.action.VIEW", "https://www.youtube.com/feed/purchases" }
+            };
+            for (String[] t : tries) {
+                try {
+                    Intent i = t[2].isEmpty() ? new Intent(t[1]) : new Intent(t[1], Uri.parse(t[2]));
+                    i.setPackage(t[0]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    if (i.resolveActivity(pm) == null) continue;
+                    startActivity(i);
+                    return t[0] + " " + (t[2].isEmpty() ? t[1] : t[2]);
+                } catch (Exception ignored) { }
+            }
+            return "";
+        }
         @JavascriptInterface
         public void setZap(String json, int index) { zapList = json; zapIndex = index; }
         @JavascriptInterface
