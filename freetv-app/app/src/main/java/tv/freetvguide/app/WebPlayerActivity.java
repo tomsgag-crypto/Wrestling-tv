@@ -122,7 +122,7 @@ public class WebPlayerActivity extends Activity {
     }
     private static final int[] QS = {0, 1080, 720, 540, 360};
     // ITVX / Prime: do the clicks their apps do for you – pick the title from the search results, then press Play
-    private static final String AUTOPLAY = "(function(T,S){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}" +
+    private static final String AUTOPLAY = "(function(T,S,E){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}" +
         "function vis(e){var r=e.getBoundingClientRect();return r.width>8&&r.height>8;}var want=n(T),h=location.host+location.pathname;" +
         "if([].some.call(document.querySelectorAll('video'),function(v){return !v.paused&&v.currentTime>1&&isFinite(v.duration)&&v.duration>240;}))return 'playing';" +
         "if(/signin|sign-in|\\/ap\\/|login|account\\/(create|register)/i.test(location.href)||[].some.call(document.querySelectorAll('input[type=password],input[type=email]'),vis))return 'login';" +
@@ -133,10 +133,29 @@ public class WebPlayerActivity extends Activity {
         "var hit=links.filter(function(a){return want&&tt(a)===want;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)===0;})[0]||links.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];if(hit){hit.click();return 'picked';}return 'looking';}" +
         "var ok=[].slice.call(document.querySelectorAll('[role=dialog] button,[role=dialog] a,[class*=odal] button,[class*=ialog] button,[class*=uidance] button,button')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(continue( watching)?|i understand|i'?m (over|aged)|i am (over|aged)|yes|confirm|accept|ok|got it|watch anyway|proceed)\\b/i.test(l);})[0];" +
         "if(ok){ok.click();return 'play';}if(S)return 'series';" +
+        // an episode chosen in Free TV: pick the series/season, then the episode (by number or title), then Play as usual
+        "if(E&&!window.__ftvEpDone){var ew=window.__ftvEpW=(window.__ftvEpW||0)+1;var all=[].slice.call(document.querySelectorAll('a,button,[role=tab],[role=button],[role=option],li,h3,h4,span,div')).filter(vis);" +
+        "var sre=new RegExp('^(series|season|s)\\\\s*0*'+E.s+'$','i');var sb=all.filter(function(b){var l=(b.innerText||b.textContent||'').trim();return l.length<20&&sre.test(l);})[0];" +
+        "if(sb&&!window.__ftvSeason){window.__ftvSeason=1;(sb.closest('a,button,[role=tab],[role=option]')||sb).click();return 'season';}" +
+        "var sel=[].slice.call(document.querySelectorAll('select')).filter(function(x){return [].some.call(x.options,function(o){return sre.test(o.text.trim());});})[0];" +
+        "if(sel&&!window.__ftvSeason){window.__ftvSeason=1;[].forEach.call(sel.options,function(o){if(sre.test(o.text.trim()))sel.value=o.value;});sel.dispatchEvent(new Event('change',{bubbles:true}));return 'season';}" +
+        "var et=n(E.t),ere=new RegExp('(^|[^0-9a-z])(episode|ep\\\\.?|e)\\\\s*0*'+E.e+'([^0-9]|$)','i'),ese=new RegExp('s\\\\s*0*'+E.s+'\\\\s*[:.]?\\\\s*e\\\\s*0*'+E.e+'([^0-9]|$)','i');" +
+        "var cands=all.filter(function(b){var l=(b.getAttribute('aria-label')||'')+' '+(b.innerText||b.textContent||'');return l.length<400&&(ese.test(l)||(et.length>3&&n(l).indexOf(et)>=0)||ere.test(l));});" +
+        "cands.sort(function(a,b){return (a.innerText||'').length-(b.innerText||'').length;});var hit=cands[0];" +
+        "if(hit){window.__ftvEpDone=1;var c=hit.closest('a')||hit.querySelector('a,button')||hit.closest('button,[role=button]')||hit;" +
+        "var pl=(c.parentElement||c).querySelector('[aria-label*=Play i],[data-automation-id*=play i],button');if(pl&&pl!==c&&/play/i.test(lab(pl)))pl.click();else c.click();return 'episode';}" +
+        "if(ew>12)return 'noep';return 'looking';}" +
         "var btns=[].slice.call(document.querySelectorAll('button,a,[role=button]')).filter(vis).filter(function(b){var l=lab(b);return l.length<40&&!bad.test(l)&&/^(play|watch|resume|continue|start|watch now|play now|watch from (the )?start|play (movie|episode|film|s\\d)|watch (movie|episode|film|s\\d))/i.test(l);});" +
         "var pb=btns.filter(function(b){return /play/i.test(lab(b));})[0]||btns[0]||document.querySelector('[data-automation-id*=play-button],[data-testid*=play],[class*=PlayButton],[class*=play-button]');" +
         "if(pb&&vis(pb)){pb.click();return 'play';}return 'looking';}catch(e){return 'err';}})";
     private int apTries = 0;
+    /** The episode chosen in Free TV ({s, e, t}), or null. */
+    private String episodeJson() {
+        String u = getIntent().getStringExtra("url");
+        int i = u == null ? -1 : u.indexOf("#ftv-ep=");
+        if (i < 0) return "null";
+        try { return new org.json.JSONObject(android.net.Uri.decode(u.substring(i + 8))).toString(); } catch (Exception e) { return "null"; }
+    }
     private boolean series() { String u = getIntent().getStringExtra("url"); return u != null && u.contains("#ftv-series"); }
     private boolean autoMode = true;   // Free TV is doing the clicks behind the loading screen
     private static boolean autoSite(String u) { return u != null && (u.contains("itv.com") || u.contains("primevideo.com") || u.contains("amazon.co.uk/gp/video") || u.contains("disneyplus.com")); }
@@ -149,7 +168,9 @@ public class WebPlayerActivity extends Activity {
         String u = web.getUrl() == null ? "" : web.getUrl();
         if (!autoSite(u)) return;
         String want = getIntent().getStringExtra("title");
-        web.evaluateJavascript(AUTOPLAY + "(" + org.json.JSONObject.quote(want == null ? "" : want) + "," + series() + ")", r -> {
+        web.evaluateJavascript(AUTOPLAY + "(" + org.json.JSONObject.quote(want == null ? "" : want) + "," + series() + "," + episodeJson() + ")", r -> {
+            if (r != null && r.contains("noep")) { autoGiveUp("Couldn't find that episode on the page – pick it with the pointer"); return; }
+            if (r != null && (r.contains("season") || r.contains("episode"))) { if (++apTries < 30) ui.postDelayed(autoplay, 2500); return; }
             if (r != null && r.contains("series")) { if (cover.getVisibility() == View.VISIBLE) autoGiveUp("Pick an episode – it goes full screen when it starts"); if (++apTries < 60) ui.postDelayed(autoplay, 3000); return; }
             boolean clicked = r != null && (r.contains("play") || r.contains("picked"));
             if (r != null && r.contains("playing")) return;

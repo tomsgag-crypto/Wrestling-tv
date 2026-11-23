@@ -814,8 +814,35 @@ var app = (function () {
     }).catch(function () { return ''; });
   }
   /** Open a title in a streaming service: ITVX and Prime on their websites inside Free TV, everything else in its app. */
-  function openService(k, url, what, title, kind) {
-    var tag = kind === 'tv' ? '#ftv-series' : '';   // a series: show its episodes to choose from
+  /** A series on ITVX / Prime / Disney+ on the web: choose the season and episode in Free TV, then the player goes straight to it. */
+  function webSvc(k) { return (k === 'itv' && itvWeb()) || (k === 'prime' && primeWeb()) || (k === 'disney' && disneyWeb()); }
+  function pickEpisode(k, url, what, title, it) {
+    var id = String(it.tmdb || '').split('/')[1];
+    if (!id) { openService(k, url, what, title, 'tv'); return; }
+    toast('Getting the episodes…');
+    tmdb('/tv/' + id, 'language=en-GB').then(function (j) {
+      var seasons = (j.seasons || []).filter(function (x) { return x.season_number > 0 && x.episode_count > 0; });
+      if (!seasons.length) { openService(k, url, what, title, 'tv'); return; }
+      var pickSeason = function (sn) {
+        tmdb('/tv/' + id + '/season/' + sn, 'language=en-GB').then(function (sj) {
+          var eps = (sj.episodes || []).filter(function (e) { return !e.air_date || e.air_date <= new Date().toISOString().slice(0, 10); });
+          showPop({ title: title + ' – ' + (sj.name || 'Season ' + sn), opts: eps.map(function (e) {
+            return { label: e.episode_number + '. ' + (e.name || 'Episode ' + e.episode_number) + (e.overview ? '  –  ' + e.overview.slice(0, 90) + (e.overview.length > 90 ? '…' : '') : ''),
+              fn: function () { openService(k, url, what, title, 'tv', { s: sn, e: e.episode_number, t: e.name || '' }); } };
+          }).concat(seasons.length > 1 ? [{ label: '◀ Other seasons', fn: function () { setTimeout(pickSeasonMenu, 0); } }] : [], [{ label: 'Open the series page instead', fn: function () { openService(k, url, what, title, 'tv'); } }]) });
+        }, function () { openService(k, url, what, title, 'tv'); });
+      };
+      var pickSeasonMenu = function () {
+        if (seasons.length === 1) { pickSeason(seasons[0].season_number); return; }
+        showPop({ title: title + ' – choose a season', opts: seasons.map(function (x) {
+          return { label: (x.name || 'Season ' + x.season_number) + '  (' + x.episode_count + ' episodes)', fn: function () { setTimeout(function () { pickSeason(x.season_number); }, 0); } };
+        }) });
+      };
+      pickSeasonMenu();
+    }, function () { openService(k, url, what, title, 'tv'); });
+  }
+  function openService(k, url, what, title, kind, ep) {
+    var tag = ep ? '#ftv-ep=' + encodeURIComponent(JSON.stringify(ep)) : kind === 'tv' ? '#ftv-series' : '';   // an episode to go to, or a series to choose from
     if (k === 'itv' && itvWeb()) {
       toast('Finding ' + what + ' on ITVX…');
       itvPage(title).then(function (u) { Native.openWeb((u || 'https://www.itv.com/watch/search?q=' + encodeURIComponent(title)) + tag, title); });
@@ -840,9 +867,11 @@ var app = (function () {
       ws.forEach(function (w) { w.exact = links[w.k] || ''; });
       // a straight link in an app you have: just go
       var direct = ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0];
+      if (direct && it.kind === 'tv' && webSvc(direct.k)) { pickEpisode(direct.k, direct.exact, '"' + it.title + '"', it.title, it); return; }
       if (direct) { openService(direct.k, direct.exact, '"' + it.title + '"', it.title, it.kind); return; }
       // ITVX / Prime on the web don't need the app
       var webOne = ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()) || (w.k === 'disney' && disneyWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
+      if (webOne && it.kind === 'tv') { pickEpisode(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it); return; }
       if (webOne) { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it.kind); return; }
       return ws;
     }).then(function (ws) {
@@ -854,7 +883,7 @@ var app = (function () {
       var gsearch = { label: TOUCH ? 'Search Google for it' : 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } };
       showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [].concat(ws.map(function (w) {
         return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (has(w.k) ? '' : ' (not installed)'),
-          fn: function () { openService(w.k, w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''), '"' + it.title + '"', it.title, it.kind); } };
+          fn: function () { var u = w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''); if (it.kind === 'tv' && webSvc(w.k)) pickEpisode(w.k, u, '"' + it.title + '"', it.title, it); else openService(w.k, u, '"' + it.title + '"', it.title, it.kind); } };
       })).concat(TOUCH ? [gsearch] : [], [{ label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
   }
