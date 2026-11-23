@@ -353,7 +353,8 @@ var app = (function () {
         return !c.isHidden && c.logicalChannelNumber < 850 && !/\+1\b|\+ 1|ja ?vu|uhd|ultra hd|^tnt|radio|highlights/i.test(c.name);
       }).sort(function (a, b) { return a.logicalChannelNumber - b.logicalChannelNumber; }).map(function (c) {
         var x = { id: 'v' + c.id, vid: c.id, vname: c.name, name: c.name.replace(/\s*HD$/, '').replace(/HD$/, ''), num: c.logicalChannelNumber,
-          cat: V_GENRE[(c.genre || [])[0]] || '', events: [] };
+          cat: V_GENRE[(c.genre || [])[0]] || '', events: [],
+          vweb: c.streamedViaExternalApp ? ((c.streamingApplications || []).filter(function (a) { return a.deviceCode === 'web'; })[0] || {}).url || '' : '' };
         virginById[c.id] = x;
         return x;
       });
@@ -451,7 +452,7 @@ var app = (function () {
       var k = dupKey(c.name);
       if (!k || seen[k]) return;
       seen[k] = 1;
-      out.push({ sec: 'Virgin TV Go', id: c.id, vid: c.vid, vname: c.vname, name: c.name, num: c.num, cat: c.cat, svc: '', events: c.events });
+      out.push({ sec: 'Virgin TV Go', id: c.id, vid: c.vid, vname: c.vname, vweb: c.vweb, name: c.name, num: c.num, cat: c.cat, svc: '', events: c.events });
     });
     [['Samsung TV Plus', samsung, 'samsung', 'SAMSUNG TV PLUS'], ['Plex', plex, 'plex', 'PLEX']].forEach(function (g) {
       if (settings.hide[g[0]]) return;
@@ -832,6 +833,7 @@ var app = (function () {
   /** With Virgin TV Go switched on: U channels and pay channels (not Sky Sports) open on the Virgin TV Go website inside Free TV. */
   function viaVirgin(svc, pay, name, ch) {
     if (!settings.virgin || !window.Native || !Native.openWebFind) return false;
+    if (ch && ch.vweb) { Native.openWeb(ch.vweb, name); return true; }   // Sky Sports: Virgin hands these to skysports.com
     if (ch && ch.vid) {
       Native.openWebFind('https://virgintvgo.virginmedia.com/en/watchtv/linearplayer/' + encodeURIComponent(ch.vid) + '/' + encodeURIComponent(ch.vname), name, ch.vname);
       return true;
