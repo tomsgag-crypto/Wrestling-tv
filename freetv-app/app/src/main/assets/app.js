@@ -1682,7 +1682,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
     t.push({ kind: 'set', k: 'itvWeb', name: 'ITVX programmes', desc: itvWeb() ? 'Play in Free TV from the ITVX website, straight to the programme (sign in once). OK to use the ITVX app' : 'Open the ITVX app. OK to play in Free TV instead' });
     t.push({ kind: 'set', k: 'primeWeb', name: 'Prime Video titles', desc: primeWeb() ? 'Play in Free TV from the Prime Video website, straight to the title (sign in once). OK to use the Prime Video app' : 'Open the Prime Video app. OK to play in Free TV instead' });
-    if (window.Native && Native.playerPref) t.push({ kind: 'set', k: 'webNoAds', name: 'Adverts on ITVX and Prime (test)', desc: Native.playerPref('webNoAds', false) ? 'Free TV tries to block them – OK to allow (if a programme won\'t play)' : 'Allowed – OK to try blocking them (some programmes may then not play)' });
+    if (window.Native && Native.playerPref) t.push({ kind: 'set', k: 'webNoAds', name: 'Adverts on ITVX and Prime', desc: Native.playerPref('webNoAds', false) ? 'Skipped – muted and run at 16x speed (and blocked where possible). OK to allow' : 'Allowed – OK to skip them (muted and run at 16x speed)' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
     if (!TOUCH) {
       var hOn = window.Native && Native.helperOn && Native.helperOn();

@@ -42,6 +42,13 @@ public class WebPlayerActivity extends Activity {
     private boolean userPaused = false;
     private final Runnable keepPlaying = new Runnable() { @Override public void run() {
         if (web == null) return;
+        // ITVX / Prime with "Adverts" switched off: adverts are short separate videos – mute them and run them at 16x so they're over in seconds
+        String cu = web.getUrl();
+        if (cu != null && (cu.contains("itv.com") || cu.contains("primevideo.com") || cu.contains("amazon.co.uk")) && prefs().getBoolean("webNoAds", false))
+            web.evaluateJavascript("(function(){var n=0;function all(r,o){o=o||[];[].push.apply(o,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)all(e.shadowRoot,o);});return o;}" +
+                "all(document).forEach(function(v){var d=v.duration;if(isFinite(d)&&d>0&&d<=240&&!v.paused){if(!v.__ftvAd){v.__ftvAd={m:v.muted};}v.muted=true;try{v.playbackRate=16;}catch(e){}n++;}else if(v.__ftvAd&&isFinite(d)&&d>240){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
+                    if (r != null && !r.equals("0") && cover.getVisibility() == View.VISIBLE && autoMode) cover.setText("Skipping adverts – " + getIntent().getStringExtra("title") + " starts in a moment…");
+                });
         if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
             "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(!v)return '';" +
             // watch the picture: restart it the moment the site pauses it, and note buffering, so we can tell which is happening
