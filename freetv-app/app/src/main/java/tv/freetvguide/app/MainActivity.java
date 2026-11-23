@@ -409,6 +409,12 @@ public class MainActivity extends Activity {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class).putExtra("channels", channelsJson).putExtra("index", index);
             ui.post(() -> { stopMini(); startActivityForResult(i, 7); });
         }
+        /** Play a page from a broadcaster's website inside Free TV (used for BBC iPlayer on the TV). */
+        @JavascriptInterface
+        public void openWeb(String url) {
+            Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url);
+            ui.post(() -> { stopMini(); startActivity(i); });
+        }
         /** Where the small window goes (in page pixels); w = 0 hides it. */
         @JavascriptInterface
         public void miniRect(final double x, final double y, final double w, final double h) {

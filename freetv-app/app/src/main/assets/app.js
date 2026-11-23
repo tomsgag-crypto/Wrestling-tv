@@ -63,6 +63,12 @@ var app = (function () {
   function openIn(svc, url, what, channel) {
     var s = SVC[svc];
     if (!window.Native) { if (url) window.open(url); return; }
+    if (svc === 'bbc' && bbcWeb()) {
+      var web = String(url || '').split('\n').filter(function (u) { return /^https:\/\/www\.bbc\.co\.uk\/iplayer/.test(u); })[0] || 'https://www.bbc.co.uk/iplayer';
+      Native.openWeb(web);
+      if (!settings.bbcWebTold) { settings.bbcWebTold = true; saveSettings(); toast('First time: sign in to your BBC account on the page – it stays signed in after that'); }
+      return;
+    }
     var q = channel ? '' : (what || '').replace(/^"|"$/g, '');
     var r = Native.open2 ? Native.open2(s ? s.app : svc, url || '', s ? s.store : '', q) : Native.open(s ? s.app : svc, url || '', s ? s.store : '');
     if (r === 'search') { toast('Searching ' + s.name + ' for "' + q + '"'); return; }
@@ -772,7 +778,9 @@ var app = (function () {
   // ---------------------------------------------------------------- the helper: works iPlayer and U for you
   function helperReady() { return settings.helper && !TOUCH && window.Native && Native.helperOn && Native.helperOn(); }
   /** Before opening BBC iPlayer or U: tell the helper what to find there. */
+  function bbcWeb() { return window.Native && Native.openWeb && (settings.bbcWeb == null ? !TOUCH : settings.bbcWeb); }
   function helperFor(svc, mode, target) {
+    if (svc === 'bbc' && bbcWeb()) return false;
     if (!helperReady() || !/^(bbc|u)$/.test(svc)) return false;
     var t = target;
     if (mode === 'live' && svc === 'u') t = target + '|' + target.replace(/^U&/, '');
@@ -1360,6 +1368,7 @@ var app = (function () {
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
+    t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
     if (!TOUCH) {
       var hOn = window.Native && Native.helperOn && Native.helperOn();
@@ -1412,6 +1421,7 @@ var app = (function () {
         return;
       }
       if (x.k === 'showhide') { showMenu(); return; }
+      if (x.k === 'bbcWeb') { settings.bbcWeb = !bbcWeb(); saveSettings(); }
       if (x.k === 'plutoInApp') { settings.plutoInApp = !settings.plutoInApp; saveSettings(); }
       if (x.k === 'helper') {
         if (!(Native.helperOn && Native.helperOn())) { helperHowTo(); return; }
