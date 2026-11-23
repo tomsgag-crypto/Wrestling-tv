@@ -1670,7 +1670,7 @@ var app = (function () {
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = odSrc; render(); return true; }
-    if (zone === 'main' && view === 'guide' && gZone === 'days') { gZone = 'rows'; render(); return true; }
+    if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = Math.max(0, Math.min(DAYS - 1, Math.floor((gT - day0) / 86400))); render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }
     if (zone === 'main') { zone = 'tabs'; render(); return true; }
     if (view !== 'guide') { setView('guide'); return true; }
