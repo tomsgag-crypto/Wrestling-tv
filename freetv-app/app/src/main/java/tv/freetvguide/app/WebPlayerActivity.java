@@ -32,7 +32,8 @@ public class WebPlayerActivity extends Activity {
     /** The pointer is used whenever the page itself is showing (not the loading screen or full-screen video). */
     private boolean pointerOn() { return cursor != null && !watching() && cover.getVisibility() != View.VISIBLE; }
     private boolean pageFull = false;
-    private volatile boolean skyPage = false;   // Sky's page player stretched to fill the screen (instead of TV full screen)
+    private volatile boolean skyPage = false;
+    private volatile int adHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
     private boolean onSky() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("skysports.com"); }
@@ -56,7 +57,8 @@ public class WebPlayerActivity extends Activity {
             "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
                 if (r == null) return;
                 int bar = r.indexOf('|');
-                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
+                if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);
+                    if (onSky()) st += " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", false) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 long now2 = android.os.SystemClock.uptimeMillis();
                 // Sky: if the picture has stood still for 5 seconds (and you didn't pause it), restart at live – that's what fixes it
@@ -103,17 +105,20 @@ public class WebPlayerActivity extends Activity {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
             int cur = quality();
-            String[] names = new String[QS.length + 2];
+            String[] names = new String[QS.length + 3];
             for (int i = 0; i < QS.length; i++) names[i] = (QS[i] == cur ? "✓ " : "    ") + (QS[i] == 0 ? "Picture: Auto – Sky chooses" : "Picture: " + QS[i] + "p");
             boolean clock = prefs().getBoolean("skyclock", true), page = prefs().getBoolean("skypage", false);
             names[QS.length] = "Page clock: " + (clock ? "8 seconds behind (on) – OK for normal" : "normal – OK for 8 seconds behind");
+            boolean noAds = prefs().getBoolean("skyNoAds", false);
+            names[QS.length + 2] = "Adverts & promos: " + (noAds ? "blocked – OK to allow" : "allowed – OK to block (test)");
             names[QS.length + 1] = "Full screen: " + (page ? "stretch Sky's page player – OK for TV full screen" : "TV full screen – OK to stretch Sky's page player instead");
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Sky Sports player" + (offers.isEmpty() ? "" : "  (Sky offers " + offers + ")"))
                 .setItems(names, (d, which) -> {
                     if (which < QS.length) { if (QS[which] == quality()) return; prefs().edit().putInt("skyq", QS[which]).apply(); }
                     else if (which == QS.length) prefs().edit().putBoolean("skyclock", !clock).apply();
-                    else prefs().edit().putBoolean("skypage", !page).apply();
+                    else if (which == QS.length + 1) prefs().edit().putBoolean("skypage", !page).apply();
+                    else prefs().edit().putBoolean("skyNoAds", !noAds).apply();
                     applyQuality();
                 })
                 .show();
@@ -144,7 +149,7 @@ public class WebPlayerActivity extends Activity {
         cover.setText("Changing picture quality…");
         cover.setVisibility(View.VISIBLE);
         if (custom != null) { root.removeView(custom); custom = null; }
-        pageFull = false; fsTries = 0; tries = 0;
+        pageFull = false; fsTries = 0; tries = 0; adHits = 0;
         web.reload();
         qChecks = 0; ui.removeCallbacks(qualityWatch); ui.postDelayed(qualityWatch, 5000);
     }
@@ -594,6 +599,11 @@ public class WebPlayerActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
                 String h = req.getUrl().getHost();
+                // adverts and promos (switch in the Sky Sports player menu): count them, and block them if asked
+                if (h != null && skyPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
+                    adHits++;
+                    if (prefs().getBoolean("skyNoAds", false)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
+                }
                 if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
                     return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
                 return null;
