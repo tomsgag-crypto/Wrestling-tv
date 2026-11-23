@@ -1376,8 +1376,9 @@ var app = (function () {
     var keys = Object.keys(SVC), rank = function (k) { return (SVC[k].paid ? 2 : 0) + (has(k) ? 0 : 1); };
     keys.sort(function (a, b) { return rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b); });
     var t = keys.map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
+    // first tile, top left: update Free TV
+    if (window.Native && Native.updateSelf) t.unshift({ kind: 'upd', k: 'update', name: '⟳ Update Free TV', desc: 'You have version ' + (Native.version ? Native.version() : '?') + '. OK to get the newest' });
     MINE.forEach(function (m) { if (has(m[1])) t.push({ kind: 'mine', k: m[1], name: m[0], desc: m[2], ok: true }); });
-    if (window.Native && Native.updateSelf) t.push({ kind: 'set', k: 'update', name: 'Update Free TV', desc: 'You have version ' + (Native.version ? Native.version() : '?') + '. OK to download and install the newest – no need for Downloader' });
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
     t.push({ kind: 'set', k: 'plus1', name: '+1 channels', desc: (settings.plus1 ? 'Shown' : 'Hidden') + ' – OK to change' });
     t.push({ kind: 'set', k: 'other', name: 'Channels with no app', desc: (settings.other ? 'Shown' : 'Hidden') + ' – Freeview channels you can only watch with an aerial' });
@@ -1404,7 +1405,7 @@ var app = (function () {
     if (apRow >= t.length) apRow = t.length - 1;
     $('appsGrid').innerHTML = t.map(function (x, i) {
       return '<div class="app' + (x.kind === 'set' ? ' setting' : '') + (i === apRow && zone === 'main' ? ' sel' : '') + '" data-i="' + i + '"><div class="an">' + esc(x.name) + '</div><div class="ad">' + esc(x.desc) + '</div>' +
-        (x.kind === 'set' ? '' : '<div class="st' + (x.ok ? '' : ' no') + '">' + (x.ok ? 'Installed' : 'Not installed – OK to get it') + '</div>') + '</div>';
+        (x.kind === 'set' || x.kind === 'upd' ? '' : '<div class="st' + (x.ok ? '' : ' no') + '">' + (x.ok ? 'Installed' : 'Not installed – OK to get it') + '</div>') + '</div>';
     }).join('');
     var sel = $('appsGrid').querySelector('.app.sel');
     if (sel) scrollInto($('appsScroll'), sel);
@@ -1430,6 +1431,11 @@ var app = (function () {
       var x = t[apRow];
       if (x.k === 'update') {
         var r = Native.updateSelf();
+        if (r === 'overlay') {
+          showPop({ title: 'So Free TV can reopen itself after updating: on the next screen turn on "Allow display over other apps" for Free TV, then press Back and choose Update Free TV again.',
+            opts: [{ label: 'Open that setting', fn: function () { Native.openOverlaySettings(); } }, { label: 'Skip – just update', fn: function () { Native.skipOverlay(); Native.updateSelf(); updateMsg('Downloading the update…'); } }] });
+          return;
+        }
         if (r === 'allow') showPop({ title: 'First allow Free TV to install updates: turn on "Allow from this source" on the next screen, press Back, then choose Update Free TV again.', opts: [{ label: 'OK' }] });
         else updateMsg('Downloading the update…');
         return;

@@ -104,7 +104,9 @@ public class SelfUpdate extends BroadcastReceiver {
         if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
             if (confirm != null) { confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); ctx.startActivity(confirm); }
-        } else if (st != PackageInstaller.STATUS_SUCCESS) {
+        } else if (st == PackageInstaller.STATUS_SUCCESS) {
+            reopen(ctx);   // in case the "app replaced" message doesn't arrive
+        } else {
             ctx.getSharedPreferences("update", Context.MODE_PRIVATE).edit().remove("at").apply();
             if (st != PackageInstaller.STATUS_FAILURE_ABORTED)
                 Toast.makeText(ctx, "Update didn't install: " + i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE), Toast.LENGTH_LONG).show();

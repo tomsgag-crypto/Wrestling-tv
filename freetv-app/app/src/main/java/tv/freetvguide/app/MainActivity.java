@@ -497,8 +497,26 @@ public class MainActivity extends Activity {
                 });
                 return "allow";
             }
+            // Android only lets an app reopen itself after updating if it may "display over other apps": ask once
+            if (Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(MainActivity.this)
+                    && !getSharedPreferences("update", MODE_PRIVATE).getBoolean("skipOverlay", false)) return "overlay";
             pool.execute(() -> SelfUpdate.run(MainActivity.this, msg -> js("window.app && app.updateMsg(" + JSONObject.quote(msg) + ")")));
             return "started";
+        }
+        @JavascriptInterface
+        public void skipOverlay() { getSharedPreferences("update", MODE_PRIVATE).edit().putBoolean("skipOverlay", true).apply(); }
+        @JavascriptInterface
+        public void openOverlaySettings() {
+            ui.post(() -> {
+                try { startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }
+                catch (Exception e) {
+                    try { startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION)); }
+                    catch (Exception e2) {
+                        getSharedPreferences("update", MODE_PRIVATE).edit().putBoolean("skipOverlay", true).apply();
+                        Toast.makeText(MainActivity.this, "This TV doesn't have that setting – Free TV will show a notification to reopen instead", Toast.LENGTH_LONG).show();
+                    }
+                }
+            });
         }
 
         /** The device's own search (Google TV / Google): finds a title across all your apps and can play it. */
