@@ -43,7 +43,7 @@ jobs:
         env:
           KEY: ${{ secrets.APK_KEYSTORE }}
         run: |
-          if [ -n "$KEY" ]; then mkdir -p ~/.android && echo "$KEY" | base64 -d > ~/.android/debug.keystore && echo "fixed key in use"; else echo "no APK_KEYSTORE secret: using a throwaway key"; fi
+          if [ -n "$KEY" ]; then echo "$KEY" | base64 -d > "$RUNNER_TEMP/apps.keystore" && echo "APK_KEYSTORE_FILE=$RUNNER_TEMP/apps.keystore" >> "$GITHUB_ENV" && echo "fixed key in use"; else echo "no APK_KEYSTORE secret: using a throwaway key"; fi
       - name: Build APK
         run: gradle assembleRelease --no-daemon
 
