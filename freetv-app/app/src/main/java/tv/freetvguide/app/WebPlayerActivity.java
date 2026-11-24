@@ -964,8 +964,42 @@ public class WebPlayerActivity extends Activity {
     }
     @SuppressLint("SetJavaScriptEnabled")
     @Override
+    // ---- picture in picture: Back while watching shrinks the channel into a corner window over the guide
+    static WebPlayerActivity pip;
+    private boolean canPip() {
+        return android.os.Build.VERSION.SDK_INT >= 26 && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+            && getSharedPreferences("player", MODE_PRIVATE).getBoolean("pipOn", true);
+    }
+    private boolean enterPip() {
+        if (!canPip()) return false;
+        try {
+            hideZap(); if (stats != null) stats.setVisibility(View.GONE); if (cursor != null) cursor.setVisibility(View.GONE);
+            android.app.PictureInPictureParams pp = new android.app.PictureInPictureParams.Builder().setAspectRatio(new android.util.Rational(16, 9)).build();
+            if (enterPictureInPictureMode(pp)) { pip = this; return true; }
+        } catch (Throwable ignored) { }
+        return false;
+    }
+    @Override public void onPictureInPictureModeChanged(boolean in, android.content.res.Configuration cfg) {
+        super.onPictureInPictureModeChanged(in, cfg);
+        if (in) { pip = this; hideZap(); if (stats != null) stats.setVisibility(View.GONE); if (cursor != null) cursor.setVisibility(View.GONE); }
+        else { if (pip == this) pip = null; showCursor(); }
+    }
+    /** From the guide: put the corner window back full screen (or, if Android won't, open the channel again). */
+    static void pipFull(android.app.Activity from) {
+        WebPlayerActivity p = pip;
+        if (p == null) return;
+        try { ((android.app.ActivityManager) from.getSystemService(ACTIVITY_SERVICE)).moveTaskToFront(p.getTaskId(), 0); } catch (Throwable ignored) { }
+        p.ui.postDelayed(() -> {
+            if (pip != p || !p.isInPictureInPictureMode()) return;
+            android.content.Intent again = new android.content.Intent(p.getIntent()).setClass(from, WebPlayerActivity.class);
+            p.finish();
+            from.startActivity(again);
+        }, 900);
+    }
+
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        if (pip != null && pip != this) { pip.finish(); pip = null; }   // a new channel replaces the corner window
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -1165,7 +1199,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && e.getAction() == KeyEvent.ACTION_UP) {
             if (zapOn) { hideZap(); return true; }
-            if (watching()) { finish(); return true; }
+            if (watching()) { if (!enterPip()) finish(); return true; }
             if (find != null) { web.evaluateJavascript(DUMP, d -> { lastDump = d == null ? "" : d.replace("\\n", "\n").replace("\\\"", "\""); finish(); }); return true; }
             String u = web.getUrl();
             // during sign-in, Back steps back a page; on the player it returns to the guide
@@ -1177,8 +1211,9 @@ public class WebPlayerActivity extends Activity {
         return super.dispatchKeyEvent(e);
     }
 
-    @Override protected void onStop() { super.onStop(); if (zapping) finish(); }
-    @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
+    @Override protected void onStop() { super.onStop(); if (zapping) finish(); else if (pip == this && !isInPictureInPictureMode()) { pip = null; finish(); } }   // corner window closed
+    @Override protected void onPause() { super.onPause(); if (android.os.Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode()) return;   // keep playing in the corner
+        ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); ui.removeCallbacks(hush); ui.post(hush); }
-    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { if (pip == this) pip = null; ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }

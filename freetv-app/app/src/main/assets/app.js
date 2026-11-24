@@ -1615,6 +1615,7 @@ var app = (function () {
     else if (k === 'left') gT = fp && fp.s > now ? Math.max(now, fp.s - 1) : now;
     else if (k === 'ff' || k === 'rw') { gT = Math.max(now, Math.min(guideEnd() - 60, gT + (k === 'ff' ? 86400 : -86400))); ws = 0; }
     else if (k === 'ok' && mini && chans[gRow] && chans[gRow].id === mini.gid && (!fp || fp.s <= now)) { Native.miniFull(); return; }
+    else if (k === 'ok' && window.Native && Native.pipActive && Native.pipActive() && chans[gRow] && chans[gRow].name === Native.pipName() && (!fp || fp.s <= now)) { Native.pipFull(); return; }
     else if (k === 'ok') {
       var c = chans[gRow];
       if (c && (!fp || fp.s <= now)) setZap();
@@ -2301,6 +2302,7 @@ var app = (function () {
       opts.push({ label: 'Channels: jump to a channel  ▸', fn: sub(channelMenu) });
       opts.push({ label: 'Channels from: ' + (settings.guideSec || 'Everything') + '  ▸', fn: sub(sourceMenu) });
     }
+    if (view === 'guide' && window.Native && Native.pipActive && Native.pipActive()) opts.unshift({ label: '■ Stop ' + Native.pipName() + ' (playing in the corner window)', fn: function () { Native.pipStop(); toast('Stopped'); } });
     if (mini && view === 'guide') opts.unshift({ label: '■ Stop ' + mini.name + ' (playing in the corner)', fn: function () { Native.miniStop(); mini = null; toast('Stopped'); render(); } });
     if (isOD()) opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
     opts.push({ label: 'More settings  ▸', fn: sub(function () { moreMenu(c); }) });
@@ -2375,6 +2377,7 @@ var app = (function () {
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = 0; render(); return true; }
+    if (view === 'guide' && window.Native && Native.pipActive && Native.pipActive()) { Native.pipFull(); return true; }   // the Sky / Virgin channel in the corner window goes full screen
     if (mini && view === 'guide') { Native.miniFull(); return true; }   // Back: the channel playing in the corner goes full screen (stop it from ☰ Filter & options)
     if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = 0; render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }

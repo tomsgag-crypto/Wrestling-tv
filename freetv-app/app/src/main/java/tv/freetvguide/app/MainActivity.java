@@ -642,6 +642,14 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void virginSyncQuiet() { ui.post(MainActivity.this::quietVirginSync); }
         @android.webkit.JavascriptInterface
+        public boolean pipActive() { return WebPlayerActivity.pip != null; }
+        @android.webkit.JavascriptInterface
+        public String pipName() { WebPlayerActivity p = WebPlayerActivity.pip; String t = p == null ? null : p.getIntent().getStringExtra("title"); return t == null ? "" : t; }
+        @android.webkit.JavascriptInterface
+        public void pipFull() { ui.post(() -> WebPlayerActivity.pipFull(MainActivity.this)); }
+        @android.webkit.JavascriptInterface
+        public void pipStop() { ui.post(() -> { if (WebPlayerActivity.pip != null) { WebPlayerActivity.pip.finish(); WebPlayerActivity.pip = null; } }); }
+        @android.webkit.JavascriptInterface
         public void primeOpen(String labels, String store, String title, String fallback) { ui.post(() -> primeFind(labels, store, title, fallback)); }
         @JavascriptInterface
         public void virginSync() {
