@@ -33,7 +33,55 @@ public class WebPlayerActivity extends Activity {
     private boolean pointerOn() { return cursor != null && !watching() && cover.getVisibility() != View.VISIBLE; }
     private boolean pageFull = false;
     private volatile boolean skyPage = false, adPage = false;
-    private volatile int adHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
+    private volatile int adHits = 0;
+    volatile int pieces = 0, retries = 0;
+    /** Download one video piece with short time limits, trying again quickly if it stalls. null = let the browser do it. */
+    private android.webkit.WebResourceResponse fetchPiece(android.webkit.WebResourceRequest req) {
+        String url = req.getUrl().toString();
+        for (int attempt = 0; attempt < 4; attempt++) {
+            java.net.HttpURLConnection c = null;
+            try {
+                c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                c.setConnectTimeout(3000);
+                c.setReadTimeout(attempt == 0 ? 4000 : 6000);
+                c.setInstanceFollowRedirects(true);
+                for (java.util.Map.Entry<String, String> e : req.getRequestHeaders().entrySet()) {
+                    String k = e.getKey();
+                    if (k == null || k.equalsIgnoreCase("Accept-Encoding")) continue;
+                    c.setRequestProperty(k, e.getValue());
+                }
+                String ck = CookieManager.getInstance().getCookie(url);
+                if (ck != null && !ck.isEmpty()) c.setRequestProperty("Cookie", ck);
+                int code = c.getResponseCode();
+                if (code >= 500 && attempt < 3) { c.disconnect(); retries++; continue; }
+                if (code >= 400) { c.disconnect(); return null; }   // let the page handle it as usual
+                java.io.InputStream in = c.getInputStream();
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(Math.max(64 * 1024, c.getContentLength()));
+                byte[] buf = new byte[64 * 1024]; int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                in.close();
+                java.util.Map<String, String> hdrs = new java.util.HashMap<>();
+                for (java.util.Map.Entry<String, java.util.List<String>> e : c.getHeaderFields().entrySet()) {
+                    if (e.getKey() == null || e.getValue() == null || e.getValue().isEmpty()) continue;
+                    String k = e.getKey();
+                    if (k.equalsIgnoreCase("Content-Encoding") || k.equalsIgnoreCase("Transfer-Encoding") || k.equalsIgnoreCase("Content-Length")) continue;
+                    hdrs.put(k, e.getValue().get(0));
+                }
+                String origin = req.getRequestHeaders().get("Origin");
+                hdrs.put("Access-Control-Allow-Origin", origin == null ? "*" : origin);
+                if (origin != null) hdrs.put("Access-Control-Allow-Credentials", "true");
+                hdrs.put("Access-Control-Expose-Headers", "*");
+                String type = c.getContentType() == null ? "application/octet-stream" : c.getContentType().split(";")[0];
+                String reason = c.getResponseMessage() == null || c.getResponseMessage().isEmpty() ? "OK" : c.getResponseMessage();
+                pieces++;
+                return new android.webkit.WebResourceResponse(type, null, code, reason, hdrs, new java.io.ByteArrayInputStream(out.toByteArray()));
+            } catch (Exception e) {
+                retries++;
+                if (c != null) try { c.disconnect(); } catch (Exception ignored) { }
+            }
+        }
+        return null;
+    }   // Sky's page player stretched to fill the screen (instead of TV full screen)
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
     private boolean onSky() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("skysports.com"); }
@@ -65,7 +113,7 @@ public class WebPlayerActivity extends Activity {
                 if (r == null) return;
                 int bar = r.indexOf('|');
                 if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);   // (length, position and paused follow)
-                    if (onSky()) st += " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", true) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
+                    if (onSky()) st += " · pieces by Free TV " + pieces + " (retried " + retries + ")" + " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", true) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 long now2 = android.os.SystemClock.uptimeMillis();
                 if (!watching() && !autoFilled) {
@@ -223,11 +271,13 @@ public class WebPlayerActivity extends Activity {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
             int cur = quality();
-            String[] names = new String[QS.length + 3];
+            String[] names = new String[QS.length + 4];
             for (int i = 0; i < QS.length; i++) names[i] = (QS[i] == cur ? "✓ " : "    ") + (QS[i] == 0 ? "Picture: Auto – Sky chooses" : "Picture: " + QS[i] + "p");
             boolean clock = prefs().getBoolean("skyclock", false), page = prefs().getBoolean("skypage", true);
             names[QS.length] = "Page clock: " + (clock ? "8 seconds behind (on) – OK for normal" : "normal – OK for 8 seconds behind");
             boolean noAds = prefs().getBoolean("skyNoAds", true);
+            boolean net = prefs().getBoolean("skyNet", true);
+            names[QS.length + 3] = "Video downloads: " + (net ? "Free TV (retries stalls) – OK for the browser's" : "the browser's – OK to let Free TV do them (retries stalls)");
             names[QS.length + 2] = "Adverts & promos: " + (noAds ? "blocked – OK to allow" : "allowed – OK to block (test)");
             names[QS.length + 1] = "Full screen: " + (page ? "stretch Sky's page player – OK for TV full screen" : "TV full screen – OK to stretch Sky's page player instead");
             new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -236,7 +286,8 @@ public class WebPlayerActivity extends Activity {
                     if (which < QS.length) { if (QS[which] == quality()) return; prefs().edit().putInt("skyq", QS[which]).apply(); }
                     else if (which == QS.length) prefs().edit().putBoolean("skyclock", !clock).apply();
                     else if (which == QS.length + 1) prefs().edit().putBoolean("skypage", !page).apply();
-                    else prefs().edit().putBoolean("skyNoAds", !noAds).apply();
+                    else if (which == QS.length + 2) prefs().edit().putBoolean("skyNoAds", !noAds).apply();
+                    else prefs().edit().putBoolean("skyNet", !net).apply();
                     applyQuality();
                 })
                 .show();
@@ -765,6 +816,14 @@ public class WebPlayerActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
                 String h = req.getUrl().getHost();
+                // Sky: Free TV downloads the video pieces itself and retries any that stall, so Sky's player never waits on a hung download
+                if (skyPage && "GET".equalsIgnoreCase(req.getMethod()) && prefs().getBoolean("skyNet", true)) {
+                    String path = String.valueOf(req.getUrl().getPath()).toLowerCase();
+                    if (path.matches(".*\\.(m4s|m4v|m4a|mp4|cmfv|cmfa|ts|aac)$") || path.matches(".*/(segment|chunk|fragment)[^/]*$") || path.matches(".*/(time|t|number|n)[-_=]?\\d{3,}[^/]*$")) {
+                        android.webkit.WebResourceResponse wr = fetchPiece(req);
+                        if (wr != null) return wr;
+                    }
+                }
                 // adverts and promos (switch in the Sky Sports player menu): count them, and block them if asked
                 if (h != null && adPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
                     adHits++;
