@@ -2289,6 +2289,7 @@ var app = (function () {
       opts.push({ label: 'Channels: jump to a channel  ▸', fn: sub(channelMenu) });
       opts.push({ label: 'Channels from: ' + (settings.guideSec || 'Everything') + '  ▸', fn: sub(sourceMenu) });
     }
+    if (mini && view === 'guide') opts.unshift({ label: '■ Stop ' + mini.name + ' (playing in the corner)', fn: function () { Native.miniStop(); mini = null; toast('Stopped'); render(); } });
     if (isOD()) opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
     opts.push({ label: 'More settings  ▸', fn: sub(function () { moreMenu(c); }) });
     opts.push({ label: 'Cancel' });
@@ -2362,7 +2363,7 @@ var app = (function () {
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = 0; render(); return true; }
-    if (mini && view === 'guide') { Native.miniStop(); mini = null; toast('Stopped'); renderGuide(); return true; }
+    if (mini && view === 'guide') { Native.miniFull(); return true; }   // Back: the channel playing in the corner goes full screen (stop it from ☰ Filter & options)
     if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = 0; render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }
     if (zone === 'main') { zone = 'tabs'; render(); return true; }
