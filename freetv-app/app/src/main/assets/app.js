@@ -825,6 +825,7 @@ var app = (function () {
   function setGenre(i) {
     odGenre = i; odRow = 0;
     streamCats.concat(popCats || [], popAll).forEach(function (c) { c.items = null; c.page = 0; c.done = false; c.loading = false; c.phase = null; });
+    if (famCache) famCache.forEach(function (c) { c.items = null; c.page = 0; c.done = false; c.loading = false; c.phase = null; });
     if (recCache) recCache.forEach(function (c) { if (c.src === 'tmdbrec') { c.items = null; c.loading = false; } });
     ensureODItems(); render();
   }
@@ -842,7 +843,7 @@ var app = (function () {
       (c.prov ? '&with_watch_providers=' + c.prov : '') + (c.kind === 'movie' ? '&with_original_language=en' : '');
     var g = OD_GENRES[odGenre], gids = c.kind === 'movie' ? g[1] : g[2];
     if (odGenre && !gids) { c.items = []; c.done = true; c.loading = false; return Promise.resolve(); }
-    if (gids) q += '&with_genres=' + encodeURIComponent(gids);
+    if (gids || c.genres) q += '&with_genres=' + encodeURIComponent(c.genres ? (gids ? '(' + gids + '),' + c.genres : c.genres) : gids);
     // "newest first": first things out recently (TV with episodes in the last 2 months, films from the last year), then the rest by popularity
     if (c.fresh && !c.phase) { c.phase = 'new'; c.npage = 0; c.seen = {}; }
     var newPhase = c.fresh && c.phase === 'new';
@@ -857,6 +858,8 @@ var app = (function () {
       if (newPhase) { c.npage = j.page; if (j.page >= Math.min(j.total_pages, 3)) c.phase = 'all'; c.done = false; }
       else { c.page = j.page; c.done = j.page >= Math.min(j.total_pages, 25); }
       c.loading = false;
+      c.chain = its.length < 12 && !c.done ? (c.chain || 0) + 1 : 0;
+      if (c.chain && c.chain < 5) return loadStreamPage(c);
     }, function () { c.loading = false; c.items = c.items || []; c.done = true; });
   }
   /** Where a title can be watched (UK): opens the best app for it. */
@@ -1057,7 +1060,9 @@ var app = (function () {
   }
   function sources() {
     if (view === 'popular') return popularSources();
-    var out = [{ id: 'rec', name: 'Recommended', cats: recCats() }, { id: 'tv', name: 'On TV', cats: [filmsOnTV] }];
+    var out = [];
+    if (streamCats.length) out.push({ id: 'family', name: 'Family', cats: familyCats() });
+    out.push({ id: 'rec', name: 'Recommended', cats: recCats() }, { id: 'tv', name: 'On TV', cats: [filmsOnTV] });
     out.push({ id: 'bbc', name: 'BBC iPlayer', cats: bbcCats.length ? bbcCats : [{ src: 'msg', name: 'Loading…', items: [] }] });
     out.push({ id: 'pluto', name: 'Pluto TV', cats: plutoCats.length ? plutoCats : [{ src: 'msg', name: plutoTried ? 'Not available' : 'Loading…', items: [] }] });
     if (streamCats.length) {
@@ -1068,6 +1073,18 @@ var app = (function () {
       order.forEach(function (k) { if (k !== 'bbc' && k !== 'pluto') out.push({ id: k, name: SVC[k].name, cats: bySvc[k] }); });
     } else if (!tmdbKey) out.push({ id: 'free', name: 'Streaming apps', cats: [{ src: 'msg', name: 'Needs a TMDB key (see Apps)', items: [] }] });
     return out;
+  }
+  /** Family films and TV on your apps. */
+  var famCache = null;
+  function familyCats() {
+    if (famCache) return famCache;
+    var ids = myProvIds().join('|');
+    if (!ids) return [{ src: 'msg', name: 'Loading…', items: [] }];
+    var mk = function (name, kind, sort, gen, fresh) { var c = { src: 'tmdb', name: name, kind: kind, sort: sort, fresh: fresh, prov: ids, mon: 'flatrate|free|ads', genres: gen, items: null, page: 0 }; popAll.push(c); return c; };
+    famCache = [mk('Family films', 'movie', 'popularity.desc', '10751'), mk('New family films', 'movie', 'popularity.desc', '10751', true),
+      mk('Animated films', 'movie', 'popularity.desc', '16'), mk('Top rated family films', 'movie', 'vote_average.desc', '10751'),
+      mk('Family TV', 'tv', 'popularity.desc', '10751'), mk('Kids TV', 'tv', 'popularity.desc', '10762')];
+    return famCache;
   }
   function buildOD() { od = sources().filter(function (x) { return !settings.hide[x.id] || x.id === 'tv' || x.id === 'rec'; }); if (odSrc >= od.length) odSrc = 0; }
   /** Recommended: things like what you've watched, what's trending, and what's new on your apps. */
@@ -1095,14 +1112,15 @@ var app = (function () {
   function loadRec(c) {
     if (c.loading || c.items) return Promise.resolve();
     c.loading = true;
-    return tmdb(c.path, 'language=en-GB').then(function (j) {
+    return Promise.all([1, 2, 3].map(function (pg) { return tmdb(c.path, 'language=en-GB&page=' + pg).catch(function () { return { results: [] }; }); })).then(function (js) {
+      var seenR = {}, j = { results: [].concat.apply([], js.map(function (x) { return x.results || []; })).filter(function (x) { if (seenR[x.id]) return false; seenR[x.id] = 1; return true; }) };
       c.items = (j.results || []).filter(function (x) { return x.media_type !== 'person'; }).map(function (x) { return tmdbItem(x, x.media_type || c.kind || (x.title ? 'movie' : 'tv'), null); });
       var g = OD_GENRES[odGenre];
       if (odGenre) c.items = c.items.filter(function (it) { return g[3].test(it.sub + ' ' + it.desc); });
       // only things on your apps
       var mine = {}; myProvIds().forEach(function (id) { mine[id] = 1; });
       if (!Object.keys(mine).length) return;
-      var list = c.items.slice(0, 20);
+      var list = c.items.slice(0, 60);
       return Promise.all(list.map(function (it) {
         return tmdb('/' + it.tmdb + '/watch/providers').then(function (w) {
           var gb = w.results && w.results.GB || {};
@@ -1757,7 +1775,7 @@ var app = (function () {
     if (c && c.src === 'bbcpop' && !c.items) loadBBCPopular().then(function () { if (isOD()) render(); });
     if (c && c.src === 'bbc' && !c.items && !c.loading) loadBBCCat(c).then(function () { if (isOD()) render(); });
     if (c && c.src === 'tmdbrec' && !c.items && !c.loading) loadRec(c).then(function () { if (isOD()) render(); });
-    if (c && c.src === 'tmdb' && !c.loading && (!c.items || (odRow > c.items.length - 16 && !c.done))) loadStreamPage(c).then(function () { if (isOD()) render(); });
+    if (c && c.src === 'tmdb' && !c.loading && (!c.items || (odRow > c.items.length - 40 && !c.done))) loadStreamPage(c).then(function () { if (isOD()) render(); });
   }
   function renderOD() {
     if (!od.length) buildOD();
