@@ -89,14 +89,27 @@ public class WebPlayerActivity extends Activity {
                     if (ct >= 0) lastCt = ct;
                     if (stillSecs >= 5 && now2 - lastLiveReload > 45000) {
                         stillSecs = 0; lastLiveReload = now2;
-                        applyQuality(); cover.setText("Restarting at live…");
+                        applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;
                     }
                 }
                 if (r.contains("buffering")) lastBuffer = now2;
+                // starting a Sky channel: behind the loading screen, wait for it to be at live and moving; if it starts behind, restart it (up to twice)
+                if (onSky() && !skySettled) {
+                    String[] q = r.replace("\"", "").split("\\|");
+                    double ct2 = -1; boolean pz = true;
+                    try { ct2 = Double.parseDouble(q[q.length - 2]); pz = "1".equals(q[q.length - 1].trim()); } catch (Exception ignored) { }
+                    boolean behind = r.contains("behind"), moving = ct2 > 0 && !pz && ct2 - settleCt > 0.5 && !r.contains("buffering");
+                    settleCt = ct2;
+                    if (behind && ct2 > 0) { if (++behindSecs >= 4 && startReloads < 2) { behindSecs = 0; startReloads++; String t = getIntent().getStringExtra("title"); applyQuality(); cover.setText("Loading " + (t == null ? "" : t) + "…"); return; } }
+                    else behindSecs = 0;
+                    settleTicks = moving && !behind ? settleTicks + 1 : 0;
+                    if (settleTicks >= 2) { skySettled = true; reveal.run(); }
+                    return;
+                }
                 // Sky says it's behind live after buffering (and you didn't pause it): restart the channel at live, like a quality change does
                 if (r.contains("behind") && !userPaused && now2 - lastToggle > 300000 && now2 - lastBuffer < 120000) behindSecs++; else if (!r.contains("behind")) behindSecs = 0;
-                if (behindSecs >= 5 && lastLiveReload == 0 && now2 - openedAt < 90000) {
+                if (false && behindSecs >= 5 && lastLiveReload == 0 && now2 - openedAt < 90000) {   // replaced by the start-up wait above
                     behindSecs = 0; lastLiveReload = now2;
                     applyQuality(); cover.setText("Catching up to live…");
                     return;
@@ -111,6 +124,7 @@ public class WebPlayerActivity extends Activity {
     private android.widget.TextView stats;   // playback figures in the corner (to work out the buffering)
     private long lastNote = 0, lastBuffer = 0, lastLiveReload = 0;
     private int behindSecs = 0, stillSecs = 0;
+    private double settleCt = -1;
     private boolean autoFilled = false;
     private double lastCt = -1;
     private final long openedAt = android.os.SystemClock.uptimeMillis();
@@ -255,6 +269,7 @@ public class WebPlayerActivity extends Activity {
         cover.setVisibility(View.VISIBLE);
         if (custom != null) { root.removeView(custom); custom = null; }
         pageFull = false; fsTries = 0; tries = 0; adHits = 0;
+        if (onSky()) skyGate();
         web.reload();
         qChecks = 0; ui.removeCallbacks(qualityWatch); ui.postDelayed(qualityWatch, 5000);
     }
@@ -348,6 +363,7 @@ public class WebPlayerActivity extends Activity {
         else { ni.removeExtra("find"); ni.removeExtra("pin"); }
         setIntent(ni);
         find = ni.getStringExtra("find");
+        skySettled = false; startReloads = 0;
         steps = 0; pinWaits = 0; startWaits = 0; cacheWaits = 0; fromCache = false; userPaused = false; pageFull = false;
         fsTries = 0; tries = 0; autoFilled = false; adHits = 0; stillSecs = 0; lastCt = -1; lastLiveReload = 0; behindSecs = 0; qChecks = 0;
         ui.removeCallbacks(step); ui.removeCallbacks(fill); ui.removeCallbacks(spaFallback);
@@ -404,7 +420,16 @@ public class WebPlayerActivity extends Activity {
             "if(/(auto|scroll)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight){e.scrollBy(0,dy);return;}e=e.parentElement;}window.scrollBy(0,dy);})(" +
             (x / dpr) + "," + (y / dpr) + "," + dy + ")", null);
     }
-    private final Runnable reveal = () -> { if (cover != null) cover.setVisibility(View.GONE); };
+    private final Runnable reveal = () -> {
+        if (cover == null) return;
+        if (onSky() && !skySettled && android.os.SystemClock.uptimeMillis() < skyGateUntil) return;   // Sky: wait until it's live and smooth
+        cover.setVisibility(View.GONE);
+    };
+    private boolean skySettled = false;
+    private long skyGateUntil = 0;
+    private int settleTicks = 0, startReloads = 0;
+    /** Sky: start the "wait for live" check over (a new channel, or a restart). */
+    private void skyGate() { skySettled = false; settleTicks = 0; skyGateUntil = android.os.SystemClock.uptimeMillis() + 40000; ui.postDelayed(reveal, 41000); }
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
     private boolean isPlayer(String u) { return find != null || (u != null && (u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*") || u.matches(".*skysports\\.com/watch/.*"))); }
 
@@ -751,7 +776,7 @@ public class WebPlayerActivity extends Activity {
                 return null;
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
-                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); adPage = url != null && (skyPage || autoSite(url) || url.contains("amazon.co.uk")); pageFull = false;
+                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); if (skyPage && !skySettled) skyGate(); adPage = url != null && (skyPage || autoSite(url) || url.contains("amazon.co.uk")); pageFull = false;
                 if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(desktopJs(), null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
