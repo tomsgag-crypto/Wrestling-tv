@@ -528,11 +528,21 @@ public class WebPlayerActivity extends Activity {
         long nowS = System.currentTimeMillis() / 1000;
         StringBuilder h = new StringBuilder("<small>" + android.text.TextUtils.htmlEncode(c.optString("sec")) + "  ·  ▲▼ channels  ·  ◀▶ programmes  ·  OK " + (zapProg == 0 ? "watch" : "reminder on/off") + "  ·  Back close</small><br><big><b>"
             + android.text.TextUtils.htmlEncode(c.optString("name")) + "</b></big>");
-        for (int i = 0; i < m; i++) {
-            org.json.JSONObject e = ev.optJSONObject(i);
-            String line = (e.optLong("s") <= nowS ? "Now" : e.optString("c")) + "  " + e.optString("t") + (e.optBoolean("r") ? "  🔔" : "");
-            line = android.text.TextUtils.htmlEncode(line);
-            h.append("<br>").append(i == zapProg ? "<font color='#2be0a8'><b>▶ " + line + "</b></font>" : "&nbsp;&nbsp;&nbsp;" + line);
+        // programmes in a row, left to right (◀ ▶ scrolls along); the picked one in full underneath
+        if (m > 0) {
+            int from = Math.max(0, Math.min(zapProg - 1, m - 4)), to = Math.min(m, from + 4);
+            StringBuilder row = new StringBuilder(from > 0 ? "◀  " : "");
+            for (int i = from; i < to; i++) {
+                org.json.JSONObject e = ev.optJSONObject(i);
+                String t = e.optString("t"); if (t.length() > 24) t = t.substring(0, 23) + "…";
+                String cell = android.text.TextUtils.htmlEncode((e.optLong("s") <= nowS ? "Now" : e.optString("c")) + " " + t + (e.optBoolean("r") ? " 🔔" : ""));
+                if (i > from) row.append("&nbsp;&nbsp;│&nbsp;&nbsp;");
+                row.append(i == zapProg ? "<font color='#2be0a8'><b>[ " + cell + " ]</b></font>" : cell);
+            }
+            if (to < m) row.append("  ▶");
+            h.append("<br>").append(row);
+            org.json.JSONObject sel = ev.optJSONObject(zapProg);
+            if (sel != null) h.append("<br><small>").append(android.text.TextUtils.htmlEncode((sel.optLong("s") <= nowS ? "On now: " : sel.optString("c") + ": ") + sel.optString("t"))).append("</small>");
         }
         if (m == 0) h.append("<br>No listings");
         zapBox.setText(android.text.Html.fromHtml(h.toString()));
