@@ -150,10 +150,11 @@ public class WebPlayerActivity extends Activity {
     private final Runnable hush = new Runnable() { @Override public void run() {
         if (web == null) return;
         boolean up = cover != null && cover.getVisibility() == View.VISIBLE;
+        if (!up && !hushOn) { ui.postDelayed(this, 500); return; }
         if (up) web.evaluateJavascript("(function(){" + DEEP_MEDIA + "var m=deep(document,0,[]);for(var i=0;i<m.length;i++){if(!m[i].muted){m[i].muted=true;m[i].__ftvHushed=1;}}})()", null);
         else if (hushOn) web.evaluateJavascript("(function(){" + DEEP_MEDIA + "var m=deep(document,0,[]);for(var i=0;i<m.length;i++){if(m[i].__ftvHushed&&!m[i].__ftvAd){m[i].muted=false;m[i].__ftvHushed=0;}}})()", null);
         hushOn = up;
-        ui.postDelayed(this, 200);
+        ui.postDelayed(this, 500);
     } };
     private final Runnable keepPlaying = new Runnable() { @Override public void run() {
         if (web == null) return;
@@ -487,7 +488,7 @@ public class WebPlayerActivity extends Activity {
         String kind = c.optString("kind"), url = c.optString("url"), name = c.optString("name");
         String cur = web.getUrl() == null ? "" : web.getUrl();
         boolean onVirgin = cur.contains("virgintvgo.virginmedia.com"), onSkyNow = cur.contains("skysports.com");
-        if (url.isEmpty() || !(("sky".equals(kind) && (onSkyNow || onVirgin)) || ("virgin".equals(kind) && (onVirgin || onSkyNow)))) return false;
+        if (url.isEmpty() || !("virgin".equals(kind) && onVirgin)) return false;   // Sky channels: a fresh player each time (switching inside one kept the old channel)
         android.content.Intent ni = new android.content.Intent(getIntent()).putExtra("title", name).putExtra("url", url);
         if ("virgin".equals(kind)) { ni.putExtra("find", c.optString("find", name)); ni.putExtra("pin", c.optBoolean("pin")); }
         else { ni.removeExtra("find"); ni.removeExtra("pin"); }
@@ -915,6 +916,13 @@ public class WebPlayerActivity extends Activity {
                 if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
                     return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
                 return null;
+            }
+            @Override public boolean onRenderProcessGone(WebView v, android.webkit.RenderProcessGoneDetail detail) {
+                // the page crashed or Android reclaimed its memory: close just this player (back to the guide) rather than the whole app
+                try { root.removeView(v); } catch (Throwable ignored) { }
+                android.widget.Toast.makeText(WebPlayerActivity.this, "The player stopped – open the channel again", android.widget.Toast.LENGTH_LONG).show();
+                finish();
+                return true;
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
                 fsTries = 0; skyPage = url != null && url.contains("skysports.com"); if (skyPage && !skySettled) skyGate(); adPage = url != null && (skyPage || autoSite(url) || url.contains("amazon.co.uk")); pageFull = false;
