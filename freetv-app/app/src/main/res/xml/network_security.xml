@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The phone ⇄ TV link talks over the home Wi-Fi with plain http (nothing leaves the house); everything on the internet stays https -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

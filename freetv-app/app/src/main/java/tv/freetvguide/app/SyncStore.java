@@ -125,7 +125,46 @@ class SyncStore {
             Thread.sleep(waitMs);
             nsd.stopServiceDiscovery(dl);
         } catch (Exception ignored) { }
-        synchronized (lock) { return out; }
+        synchronized (lock) { if (out.length() > 0) return out; }
+        return scan(c);
+    }
+
+    /** This device's address on the home Wi-Fi, e.g. 192.168.0.23 (or ""). */
+    static String myAddress() {
+        try {
+            for (java.net.NetworkInterface ni : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                for (java.net.InetAddress a : java.util.Collections.list(ni.getInetAddresses())) {
+                    if (a instanceof java.net.Inet4Address && a.isSiteLocalAddress()) return a.getHostAddress();
+                }
+            }
+        } catch (Exception ignored) { }
+        return "";
+    }
+
+    /** If the router hides devices from each other's announcements: try every address on this network for Free TV (a few seconds). */
+    static JSONArray scan(Context c) {
+        final JSONArray out = new JSONArray();
+        String me = myAddress();
+        if (me.isEmpty()) return out;
+        final String base = me.substring(0, me.lastIndexOf('.') + 1);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(48);
+        for (int i = 1; i < 255; i++) {
+            final String host = base + i;
+            if (host.equals(me)) continue;
+            pool.execute(() -> {
+                try {
+                    java.net.Socket so = new java.net.Socket();
+                    so.connect(new java.net.InetSocketAddress(host, PORT), 400);
+                    so.close();
+                    JSONObject h = new JSONObject(http("http://" + host + ":" + PORT + "/hello", null));
+                    if ("freetv".equals(h.optString("app"))) synchronized (out) { out.put(new JSONObject().put("name", "Free TV on " + h.optString("name", host)).put("host", host).put("port", PORT)); }
+                } catch (Exception ignored) { }
+            });
+        }
+        pool.shutdown();
+        try { pool.awaitTermination(8, java.util.concurrent.TimeUnit.SECONDS); } catch (Exception ignored) { }
+        return out;
     }
 
     static boolean paired(Context c) { return !prefs(c).getString("token", "").isEmpty(); }

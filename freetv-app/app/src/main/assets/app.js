@@ -1195,8 +1195,7 @@ var app = (function () {
     toast('Looking for your TV on the Wi-Fi…');
     setTimeout(function () {
       var tvs = []; try { tvs = JSON.parse(Native.syncFind()); } catch (e) { }
-      if (!tvs.length) { toast('No TV found – open Free TV on the TV (version 2.22 or later) and make sure the phone is on the same Wi-Fi'); return; }
-      var go = function (tv) {
+      var go = linkTo = function (tv) {
         var r = Native.syncPairStart(tv.host, tv.port);
         if (r !== 'ok') { toast(r); return; }
         showPop({ title: 'Type the 4-digit code now showing on the TV', input: true, inputFocus: true,
@@ -1209,10 +1208,25 @@ var app = (function () {
         $('popIn').value = ''; $('popIn').setAttribute('inputmode', 'numeric'); $('popIn').style.display = 'block';
         setTimeout(function () { $('popIn').focus(); }, 30);
       };
+      if (!tvs.length) { typeTvAddress(); return; }
       if (tvs.length === 1) go(tvs[0]);
       else showPop({ title: 'Which TV?', opts: tvs.map(function (tv) { return { label: tv.name, fn: function () { setTimeout(function () { go(tv); }, 0); } }; }) });
     }, 60);
   }
+  /** Not found by itself: type the address the TV shows in its Apps tab. */
+  function typeTvAddress() {
+    showPop({ title: 'Couldn\'t find the TV by itself. On the TV open Free TV → Apps → 📱 Phone link, and type the address it shows (e.g. 192.168.0.23)', input: true, inputFocus: true,
+      opts: [{ label: 'Connect', fn: function () {
+        var host = ($('popIn').value || '').trim();
+        var r = Native.syncCheck(host);
+        if (!r) { toast('No Free TV at ' + host + ' – check the address, and that Free TV has been opened on the TV'); return; }
+        var tv = JSON.parse(r);
+        setTimeout(function () { linkTo(tv); }, 0);
+      } }, { label: 'Cancel', fn: function () {} }] });
+    $('popIn').value = ''; $('popIn').setAttribute('inputmode', 'decimal'); $('popIn').style.display = 'block';
+    setTimeout(function () { $('popIn').focus(); }, 30);
+  }
+  var linkTo = function () {};
   /** TV: show the code the phone asked for. */
   function showPairCode(code) {
     showPop({ title: 'Phone link code:  ' + code.split('').join(' ') + '   –  type this on your phone', opts: [{ label: 'OK' }] });
@@ -1821,7 +1835,7 @@ var app = (function () {
     // first tile, top left: update Free TV
     if (window.Native && Native.syncStatus) {
       var ss = {}; try { ss = JSON.parse(Native.syncStatus()); } catch (e) { }
-      if (ss.tv) t.push({ kind: 'set', k: 'link', name: '📱 Phone link', desc: ss.phones ? ss.phones + ' phone' + (ss.phones > 1 ? 's' : '') + ' linked – favourites, reminders and lists come across by themselves' : 'Not linked yet. On your phone: Free TV → Apps → Link to my TV' });
+      if (ss.tv) t.push({ kind: 'set', k: 'link', name: '📱 Phone link', desc: (ss.phones ? ss.phones + ' phone' + (ss.phones > 1 ? 's' : '') + ' linked – favourites, reminders and lists come across by themselves.' : 'Not linked yet. On your phone: Free TV → Apps → Link to my TV.') + (ss.address ? ' This TV\'s address: ' + ss.address : '') });
       else t.unshift({ kind: 'set', k: 'link', name: '📺 ' + (ss.linked ? 'Linked to your TV' : 'Link to my TV'), desc: ss.linked ? (ss.tvName || 'Your TV') + (ss.lastSync ? ' · last swapped ' + new Date(ss.lastSync).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '') + '. OK for options' : 'Send your favourites, reminders and lists to Free TV on the TV (same Wi-Fi)' });
     }
     if (window.Native && Native.googleMoviesRoutes) t.unshift({ kind: 'set', k: 'gmovies', name: '🎬 My Google Movies', desc: settings.gmRoute ? 'Your film library – YouTube and Google Play purchases. Hold OK to choose a different way in' : 'Your film library – YouTube and Google Play purchases. First time: pick the way in that shows your films' });

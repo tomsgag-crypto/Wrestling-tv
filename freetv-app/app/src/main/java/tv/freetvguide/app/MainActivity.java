@@ -551,7 +551,7 @@ public class MainActivity extends Activity {
         public String syncStatus() {
             try {
                 android.content.SharedPreferences p = SyncStore.prefs(MainActivity.this);
-                return new JSONObject().put("tv", SyncService.isTv(MainActivity.this)).put("linked", SyncStore.paired(MainActivity.this))
+                return new JSONObject().put("tv", SyncService.isTv(MainActivity.this)).put("linked", SyncStore.paired(MainActivity.this)).put("address", SyncStore.myAddress())
                     .put("tvName", p.getString("tvName", "")).put("lastSync", p.getLong("lastSync", 0))
                     .put("phones", p.getString("tokens", "").split(",").length - (p.getString("tokens", "").isEmpty() ? 1 : 0)).toString();
             } catch (Exception e) { return "{}"; }
@@ -559,6 +559,14 @@ public class MainActivity extends Activity {
         /** Look for TVs running Free TV (takes a few seconds). */
         @JavascriptInterface
         public String syncFind() { return SyncStore.find(MainActivity.this, 4500).toString(); }
+        /** A TV address typed in by hand: check Free TV is there. */
+        @JavascriptInterface
+        public String syncCheck(String host) {
+            try {
+                JSONObject h = new JSONObject(SyncStore.http("http://" + host.trim() + ":" + SyncStore.PORT + "/hello", null));
+                return new JSONObject().put("name", "Free TV on " + h.optString("name", host)).put("host", host.trim()).put("port", SyncStore.PORT).toString();
+            } catch (Exception e) { return ""; }
+        }
         @JavascriptInterface
         public String syncPairStart(String host, int port) {
             try { SyncStore.http("http://" + host + ":" + port + "/pairstart", "{}"); return "ok"; } catch (Exception e) { return "Couldn't reach the TV"; }
