@@ -137,6 +137,12 @@ var app = (function () {
   var history = load('history') || [];          // [{at, item}] most recent first
   var lastOpen = null;
   var lists = load('lists') || [{ name: 'Watch later', items: [] }];
+  // two lists with the same name (from a double "Save" press) become one
+  (function () { var by = {}, out = []; lists.forEach(function (l) { var k = String(l.name).trim().toLowerCase(), m = by[k];
+    if (!m) { by[k] = l; out.push(l); return; }
+    var have = {}; m.items.forEach(function (x) { have[x.k || x.tmdb || x.title] = 1; });
+    l.items.forEach(function (x) { var kk = x.k || x.tmdb || x.title; if (!have[kk]) { have[kk] = 1; m.items.push(x); } }); });
+    if (out.length !== lists.length) { lists = out; save('lists', lists); } })();
   var device = load('device') || { id: 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) { var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }) };
   save('device', device);
   function saveLists() { save('lists', lists); }
@@ -1871,6 +1877,7 @@ var app = (function () {
     if (lsSide === 'left') {
       if (k === 'up') { if (lsCat === 0) { zone = 'tabs'; render(); return; } lsCat--; lsRow = 0; }
       else if (k === 'down') { lsCat = Math.min(all.length - 1, lsCat + 1); lsRow = 0; }
+      else if (k === 'ok' && L.kind === 'list') { listMenu(L.i); return; }   // OK on a list: open, rename or delete it
       else if (k === 'ok' || k === 'right') {
         if (L.kind === 'new') { if (k === 'ok') newList(null); return; }
         if (L.items.length) lsSide = 'right';
@@ -2226,8 +2233,12 @@ var app = (function () {
       opts: [{ label: 'Save list', fn: function () { finish(); } }, { label: 'Cancel', fn: function () {} }] });
     $('popIn').value = ''; $('popIn').style.display = 'block';
     setTimeout(function () { $('popIn').focus(); }, 30);
+    var done = false;
     function finish() {
+      if (done) return; done = true;   // Enter and the Save button both arrive: make the list once
       name = $('popIn').value.trim() || 'My list ' + (lists.length + 1);
+      var same = lists.map(function (l) { return l.name.toLowerCase(); }).indexOf(name.toLowerCase());
+      if (same >= 0) { if (it) toggleIn(same, it); saveLists(); toast('"' + lists[same].name + '" already exists' + (it ? ' – added to it' : '')); return; }
       lists.push({ name: name, items: [] });
       mark('list:' + name, false, null);
       if (it) toggleIn(lists.length - 1, it);
@@ -2241,7 +2252,7 @@ var app = (function () {
   }
   function listMenu(i) {
     var l = lists[i];
-    showPop({ title: l.name, opts: [
+    showPop({ title: l.name, opts: [].concat(l.items.length ? [{ label: '▶ Open the list (' + l.items.length + ')', fn: function () { lsSide = 'right'; lsRow = 0; } }] : [], [
       { label: 'Rename list', fn: function () {
         showPop({ title: 'New name for "' + l.name + '"', input: true, inputFocus: true, opts: [{ label: 'Save', fn: function () { l.name = $('popIn').value.trim() || l.name; saveLists(); } }, { label: 'Cancel' }] });
         $('popIn').value = l.name; setTimeout(function () { $('popIn').focus(); }, 30);
@@ -2256,7 +2267,7 @@ var app = (function () {
         showPop({ title: 'Delete "' + l.name + '" and everything in it?', opts: [{ label: 'Yes, delete it', fn: function () { mark('list:' + l.name, true); l.items.forEach(function (x) { mark('li:' + l.name + SEP + x.k, true); }); lists.splice(i, 1); if (!lists.length) lists.push({ name: 'Watch later', items: [] }); lsCat = 0; saveLists(); } }, { label: 'No, keep it' }] });
       } },
       { label: 'Cancel' }
-    ] });
+    ]) });
   }
   function itemMenu(li, it) {
     var l = lists[li];
