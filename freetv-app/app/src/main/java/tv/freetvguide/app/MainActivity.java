@@ -83,7 +83,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         web.setWebViewClient(new WebViewClient());
         web.setWebChromeClient(new WebChromeClient());
-        web.addJavascriptInterface(new Bridge(), "Native");
+        web.addJavascriptInterface(bridge = new Bridge(), "Native");
         web.loadUrl("file:///android_asset/index.html");
         web.requestFocus();
         SyncService.start(this);
@@ -212,6 +212,56 @@ public class MainActivity extends Activity {
         ui.removeCallbacks(quietPoll);
         root.removeView(quiet); quiet.destroy(); quiet = null;
     }
+    // Prime Video: find the title's Prime ID on the Prime Video website (hidden, in the background), then open the Prime Video app straight on it
+    private WebView primeQ;
+    private int primeTries = 0;
+    private String[] primeJob;   // labels, store, title, fallback url
+    private static final String PRIME_FIND = "(function(T){function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}var want=n(T);" +
+        "var g=(document.documentElement.innerHTML.match(/amzn1\\.dv\\.gti\\.[0-9a-f-]{36}/i)||[])[0];" +
+        "if(/\\/detail\\//.test(location.pathname))return g?'gti:'+g:'page:'+location.pathname;" +
+        "var L=[].slice.call(document.querySelectorAll('a[href*=\\'/detail/\\']'));function tt(a){return n(a.getAttribute('aria-label')||(a.querySelector('img')?a.querySelector('img').alt:'')||a.innerText);}" +
+        "var hit=L.filter(function(a){return tt(a)===want;})[0]||L.filter(function(a){return tt(a).indexOf(want)===0;})[0]||L.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];" +
+        "if(hit){var h=hit.getAttribute('href');return 'go:'+(h.indexOf('http')===0?h:location.origin+h);}return '';})";
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private void primeFind(String labels, String store, String title, String fallback) {
+        stopPrime();
+        primeJob = new String[]{labels, store, title, fallback};
+        primeQ = new WebView(this);
+        primeQ.setAlpha(0f);
+        android.webkit.WebSettings qs = primeQ.getSettings();
+        qs.setJavaScriptEnabled(true); qs.setDomStorageEnabled(true);
+        qs.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(primeQ, true);
+        root.addView(primeQ, 0, new android.widget.FrameLayout.LayoutParams(1280, 720));
+        primeTries = 0;
+        primeQ.loadUrl("https://www.primevideo.com/search/ref=atv_nb_sr?phrase=" + Uri.encode(title));
+        ui.postDelayed(primePoll, 3000);
+    }
+    private final Runnable primePoll = new Runnable() { @Override public void run() {
+        if (primeQ == null || primeJob == null) return;
+        primeQ.evaluateJavascript(PRIME_FIND + "(" + JSONObject.quote(primeJob[2]) + ")", r -> {
+            String v = r == null ? "" : r.replace("\"", "");
+            if (v.startsWith("go:")) { primeQ.loadUrl(v.substring(3)); }
+            else if (v.startsWith("gti:")) { primeOpen(v.substring(4), null); return; }
+            else if (v.startsWith("page:") && primeTries > 6) {   // a title page without the ID in it: use its page address
+                java.util.regex.Matcher m = Pattern.compile("/detail/([A-Za-z0-9]+)").matcher(v); primeOpen(null, m.find() ? m.group(1) : null); return; }
+            if (++primeTries < 12) ui.postDelayed(primePoll, 1500); else primeOpen(null, null);
+        });
+    } };
+    private void primeOpen(String gti, String id) {
+        String[] j = primeJob; stopPrime();
+        if (j == null) return;
+        String links = "";
+        if (gti != null) links = "https://app.primevideo.com/detail?gti=" + gti + "\nhttps://watch.amazon.co.uk/detail?gti=" + gti + "\nhttps://watch.amazon.com/detail?gti=" + gti + "\nhttps://www.primevideo.com/detail?gti=" + gti + "\n";
+        if (id != null) links += "https://app.primevideo.com/detail?asin=" + id + "\nhttps://www.primevideo.com/detail/" + id + "\n";
+        links += j[3] == null ? "" : j[3];
+        String r = bridge.open2(j[0], links, j[1], j[2]);
+        js("window.app && app.primeOpened && app.primeOpened(" + JSONObject.quote(r) + "," + JSONObject.quote(j[2]) + "," + (gti != null || id != null) + ")");
+    }
+    private void stopPrime() {
+        ui.removeCallbacks(primePoll);
+        if (primeQ != null) { root.removeView(primeQ); primeQ.destroy(); primeQ = null; }
+    }
     private void js(String code) { ui.post(() -> web.evaluateJavascript(code, null)); }
     private void syncInBackground() {
         new Thread(() -> {
@@ -307,6 +357,7 @@ public class MainActivity extends Activity {
     }
 
     /** Methods callable from the page as Native.xxx(). */
+    private Bridge bridge;
     private class Bridge {
         @JavascriptInterface
         public void fetch(final String url, final String cbId) {
@@ -590,6 +641,8 @@ public class MainActivity extends Activity {
         public void setZap(String json, int index) { zapList = json; zapIndex = index; }
         @JavascriptInterface
         public void virginSyncQuiet() { ui.post(MainActivity.this::quietVirginSync); }
+        @android.webkit.JavascriptInterface
+        public void primeOpen(String labels, String store, String title, String fallback) { ui.post(() -> primeFind(labels, store, title, fallback)); }
         @JavascriptInterface
         public void virginSync() {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", "https://virgintvgo.virginmedia.com/en/watchtv").putExtra("title", "Checking which channels you have").putExtra("sync", true);

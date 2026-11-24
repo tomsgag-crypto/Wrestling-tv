@@ -924,7 +924,19 @@ var app = (function () {
       Native.openWeb((direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title)) + tag, title);
       return;
     }
+    // Prime Video app: look the title up on Prime first, so the app opens straight on it (not its search)
+    if (k === 'prime' && window.Native && Native.primeOpen && !TOUCH) {
+      toast('Finding ' + (title || what) + ' on Prime Video…');
+      Native.primeOpen(SVC.prime.app, SVC.prime.store, String(title || what || '').replace(/^"|"$/g, ''), String(url || '').split('\n').filter(function (u) { return u && !/\/search/.test(u); }).join('\n'));
+      return;
+    }
     openIn(k, url, what);
+  }
+  function primeOpened(r, title, found) {
+    if (r === 'link') toast(found ? 'Opened ' + title + ' in Prime Video' : 'Opened Prime Video');
+    else if (r === 'search') toast('Searching Prime Video for "' + title + '"');
+    else if (r === 'store') toast('Prime Video isn\'t installed – opening the Play Store');
+    else if (r === 'app') toast('Opened Prime Video – find ' + title + ' there');
   }
   function openTMDB(it) {
     toast('Finding "' + it.title + '"…');
@@ -2518,5 +2530,5 @@ var app = (function () {
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
-  return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, zapRemind: zapRemind, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
+  return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, zapRemind: zapRemind, primeOpened: primeOpened, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();
