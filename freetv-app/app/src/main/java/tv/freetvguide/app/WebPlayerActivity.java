@@ -905,18 +905,8 @@ public class WebPlayerActivity extends Activity {
                 // adverts and promos (switch in the Sky Sports player menu): count them, and block them if asked
                 if (h != null && adPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
                     adHits++;
-                    if (skyPage ? prefs().getBoolean("skyNoAds", true) : prefs().getBoolean("webNoAds", false)) {
-                        java.util.Map<String, String> hd = new java.util.HashMap<>();
-                        String og = req.getRequestHeaders().get("Origin");
-                        hd.put("Access-Control-Allow-Origin", og == null || og.isEmpty() || "null".equals(og) ? "*" : og);
-                        if (og != null && !og.isEmpty() && !"null".equals(og)) hd.put("Access-Control-Allow-Credentials", "true");
-                        hd.put("Cache-Control", "no-store");
-                        String u = req.getUrl().toString().toLowerCase();
-                        if (skyPage && u.matches(".*(vast|vmap|fwmrm|freewheel|pubads|yospace|/ads?[/?]).*"))   // an empty advert list: "no adverts this time", so the player carries straight on
-                            return new android.webkit.WebResourceResponse("application/xml", "utf-8", 200, "OK", hd, new java.io.ByteArrayInputStream("<?xml version=\"1.0\"?><VAST version=\"3.0\"></VAST>".getBytes()));
-                        if (skyPage) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 204, "No Content", hd, new java.io.ByteArrayInputStream(new byte[0]));
-                        return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
-                    }
+                    // a plain refusal (as in 2.23.3): answering "no adverts" made Sky's player start the wrong stream
+                    if (skyPage ? prefs().getBoolean("skyNoAds", true) : prefs().getBoolean("webNoAds", false)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
                 }
                 if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
                     return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
