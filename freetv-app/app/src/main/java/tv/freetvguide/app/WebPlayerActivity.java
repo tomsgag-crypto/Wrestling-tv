@@ -422,7 +422,7 @@ public class WebPlayerActivity extends Activity {
     }
     private final Runnable reveal = () -> {
         if (cover == null) return;
-        if (onSky() && !skySettled && android.os.SystemClock.uptimeMillis() < skyGateUntil) return;   // Sky: wait until it's live and smooth
+        if (onSky() && !this.skySettled && android.os.SystemClock.uptimeMillis() < this.skyGateUntil) return;   // Sky: wait until it's live and smooth
         cover.setVisibility(View.GONE);
     };
     private boolean skySettled = false;
