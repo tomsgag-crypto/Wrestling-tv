@@ -2265,8 +2265,8 @@ var app = (function () {
     if (pop) { popKey(k); return true; }
     if (zone === 'tabs') {
       var i = VIEWS.indexOf(view);
-      if (k === 'left') setView(VIEWS[(i + VIEWS.length - 1) % VIEWS.length]);
-      else if (k === 'right') setView(VIEWS[(i + 1) % VIEWS.length]);
+      if (k === 'left') { if (i > 0) setView(VIEWS[i - 1]); }            // stops at TV Guide
+      else if (k === 'right') { if (i < VIEWS.length - 1) setView(VIEWS[i + 1]); }   // stops at Apps
       else if (k === 'down' || k === 'ok') { zone = 'main'; if (view === 'search') { sZone = 'input'; setTimeout(function () { $('q').focus(); }, 30); } render(); }
       else if (k === 'menu') optionsMenu();
       return true;
