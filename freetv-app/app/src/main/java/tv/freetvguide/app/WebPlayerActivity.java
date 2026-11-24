@@ -210,6 +210,17 @@ public class WebPlayerActivity extends Activity {
                     }
                 }
                 if (r.contains("buffering")) lastBuffer = now2;
+                // Sky: buffered twice within 2 minutes (not paused by you) → restart the channel at live, like changing a setting does
+                boolean bufNow = r.contains("buffering");
+                if (onSky() && skySettled && watching() && bufNow && !wasBuffering && !userPaused) {
+                    if (now2 - firstBufAt > 120000) firstBufAt = now2;
+                    else if (prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 60000) {
+                        firstBufAt = 0; lastLiveReload = now2; wasBuffering = false;
+                        applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Buffering – restarting " + (tt == null ? "" : tt) + "…");
+                        return;
+                    }
+                }
+                wasBuffering = bufNow;
                 // starting a Sky channel: behind the loading screen, wait for it to be at live and moving; if it starts behind, restart it (up to twice)
                 if (onSky() && !skySettled && android.os.SystemClock.uptimeMillis() - switchedAt < 5000) { settleTicks = 0; settleCt = -1; return; }
                 if (onSky() && !skySettled) {
@@ -348,7 +359,9 @@ public class WebPlayerActivity extends Activity {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
             int cur = quality();
-            String[] names = new String[QS.length + 5];
+            String[] names = new String[QS.length + 6];
+            boolean autoR = prefs().getBoolean("skyAutoRestart", true);
+            names[QS.length + 5] = "Auto restart: " + (autoR ? "on – restarts if it buffers twice in 2 minutes – OK to turn off" : "off – OK to restart when it buffers twice in 2 minutes");
             boolean freshOn = prefs().getBoolean("skyFresh", true);
             names[QS.length + 4] = "Fresh start: " + (freshOn ? "on – restarts each channel once as it opens – OK to turn off" : "off – OK to restart each channel once as it opens");
             for (int i = 0; i < QS.length; i++) names[i] = (QS[i] == cur ? "✓ " : "    ") + (QS[i] == 0 ? "Picture: Auto – Sky chooses" : "Picture: " + QS[i] + "p");
@@ -367,7 +380,8 @@ public class WebPlayerActivity extends Activity {
                     else if (which == QS.length + 1) prefs().edit().putBoolean("skypage", !page).apply();
                     else if (which == QS.length + 2) prefs().edit().putBoolean("skyNoAds", !noAds).apply();
                     else if (which == QS.length + 3) prefs().edit().putBoolean("skyNet", !net).apply();
-                    else prefs().edit().putBoolean("skyFresh", !freshOn).apply();
+                    else if (which == QS.length + 4) prefs().edit().putBoolean("skyFresh", !freshOn).apply();
+                    else prefs().edit().putBoolean("skyAutoRestart", !autoR).apply();
                     applyQuality();
                 })
                 .show();
@@ -560,7 +574,8 @@ public class WebPlayerActivity extends Activity {
     private boolean skySettled = false;
     private long skyGateUntil = 0;
     private int settleTicks = 0, startReloads = 0;
-    private long switchedAt = 0;
+    private long switchedAt = 0, firstBufAt = 0;
+    private boolean wasBuffering = false;
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
     private void skyGate() { skySettled = false; settleTicks = 0; settleCt = -1; skyGateUntil = android.os.SystemClock.uptimeMillis() + 20000; ui.postDelayed(reveal, 20500); }
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
