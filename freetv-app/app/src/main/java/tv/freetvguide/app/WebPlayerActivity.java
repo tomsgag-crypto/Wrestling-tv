@@ -143,13 +143,25 @@ public class WebPlayerActivity extends Activity {
     private boolean pageMode() { return onSky() && prefs().getBoolean("skypage", true); }
     private void showCursor() { if (cursor != null) { cursor.setVisibility(pointerOn() ? View.VISIBLE : View.GONE); cursor.bringToFront(); cursor.invalidate(); } }
     private boolean userPaused = false;
+    // No sound until the picture shows: while the loading screen is up, every video/audio on the page is muted; when it goes, only the ones Free TV muted are turned back on
+    private boolean hushOn = false;
+    private static final String DEEP_MEDIA = "function deep(r,d,o){if(!r||d>8)return o;var a=r.querySelectorAll?r.querySelectorAll('video,audio'):[];for(var i=0;i<a.length;i++)o.push(a[i]);" +
+        "var all=r.querySelectorAll?r.querySelectorAll('*'):[];for(var j=0;j<all.length;j++)if(all[j].shadowRoot)deep(all[j].shadowRoot,d+1,o);return o;}";
+    private final Runnable hush = new Runnable() { @Override public void run() {
+        if (web == null) return;
+        boolean up = cover != null && cover.getVisibility() == View.VISIBLE;
+        if (up) web.evaluateJavascript("(function(){" + DEEP_MEDIA + "var m=deep(document,0,[]);for(var i=0;i<m.length;i++){if(!m[i].muted){m[i].muted=true;m[i].__ftvHushed=1;}}})()", null);
+        else if (hushOn) web.evaluateJavascript("(function(){" + DEEP_MEDIA + "var m=deep(document,0,[]);for(var i=0;i<m.length;i++){if(m[i].__ftvHushed&&!m[i].__ftvAd){m[i].muted=false;m[i].__ftvHushed=0;}}})()", null);
+        hushOn = up;
+        ui.postDelayed(this, 200);
+    } };
     private final Runnable keepPlaying = new Runnable() { @Override public void run() {
         if (web == null) return;
         // ITVX / Prime with "Adverts" switched off: adverts are short separate videos – mute them and run them at 16x so they're over in seconds
         String cu = web.getUrl();
         if ((autoSite(cu) || (cu != null && cu.contains("amazon.co.uk"))) && prefs().getBoolean("webNoAds", false))
             web.evaluateJavascript("(function(){var n=0;function all(r,o){o=o||[];[].push.apply(o,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)all(e.shadowRoot,o);});return o;}" +
-                "all(document).forEach(function(v){var d=v.duration;if(isFinite(d)&&d>0&&d<=240&&!v.paused){if(!v.__ftvAd){v.__ftvAd={m:v.muted};}v.muted=true;try{v.playbackRate=16;}catch(e){}n++;}else if(v.__ftvAd&&isFinite(d)&&d>240){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
+                "all(document).forEach(function(v){var d=v.duration;if(isFinite(d)&&d>0&&d<=240&&!v.paused){if(!v.__ftvAd){v.__ftvAd={m:v.__ftvHushed?false:v.muted};}v.muted=true;try{v.playbackRate=16;}catch(e){}n++;}else if(v.__ftvAd&&isFinite(d)&&d>240){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
                     if (r != null && !r.equals("0") && cover.getVisibility() == View.VISIBLE && autoMode) cover.setText("Skipping adverts – " + getIntent().getStringExtra("title") + " starts in a moment…");
                 });
         if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
@@ -893,7 +905,18 @@ public class WebPlayerActivity extends Activity {
                 // adverts and promos (switch in the Sky Sports player menu): count them, and block them if asked
                 if (h != null && adPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
                     adHits++;
-                    if (skyPage ? prefs().getBoolean("skyNoAds", true) : prefs().getBoolean("webNoAds", false)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
+                    if (skyPage ? prefs().getBoolean("skyNoAds", true) : prefs().getBoolean("webNoAds", false)) {
+                        java.util.Map<String, String> hd = new java.util.HashMap<>();
+                        String og = req.getRequestHeaders().get("Origin");
+                        hd.put("Access-Control-Allow-Origin", og == null || og.isEmpty() || "null".equals(og) ? "*" : og);
+                        if (og != null && !og.isEmpty() && !"null".equals(og)) hd.put("Access-Control-Allow-Credentials", "true");
+                        hd.put("Cache-Control", "no-store");
+                        String u = req.getUrl().toString().toLowerCase();
+                        if (skyPage && u.matches(".*(vast|vmap|fwmrm|freewheel|pubads|yospace|/ads?[/?]).*"))   // an empty advert list: "no adverts this time", so the player carries straight on
+                            return new android.webkit.WebResourceResponse("application/xml", "utf-8", 200, "OK", hd, new java.io.ByteArrayInputStream("<?xml version=\"1.0\"?><VAST version=\"3.0\"></VAST>".getBytes()));
+                        if (skyPage) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 204, "No Content", hd, new java.io.ByteArrayInputStream(new byte[0]));
+                        return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
+                    }
                 }
                 if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
                     return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
@@ -1030,7 +1053,7 @@ public class WebPlayerActivity extends Activity {
     }
 
     @Override protected void onStop() { super.onStop(); if (zapping) finish(); }
-    @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
-    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); }
-    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
+    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); ui.removeCallbacks(hush); ui.post(hush); }
+    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }
