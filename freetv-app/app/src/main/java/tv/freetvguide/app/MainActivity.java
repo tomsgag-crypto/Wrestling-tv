@@ -186,7 +186,7 @@ public class MainActivity extends Activity {
         quiet.setAlpha(0f);
         android.webkit.WebSettings qs = quiet.getSettings();
         qs.setJavaScriptEnabled(true); qs.setDomStorageEnabled(true);
-        qs.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+        qs.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36");
         android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(quiet, true);
         root.addView(quiet, 0, new android.widget.FrameLayout.LayoutParams(960, 540));
         quietTries = 0;
@@ -255,7 +255,7 @@ public class MainActivity extends Activity {
         primeQ.setAlpha(0f);
         android.webkit.WebSettings qs = primeQ.getSettings();
         qs.setJavaScriptEnabled(true); qs.setDomStorageEnabled(true);
-        qs.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+        qs.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36");
         android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(primeQ, true);
         root.addView(primeQ, 0, new android.widget.FrameLayout.LayoutParams(1280, 720));
         primeTries = 0;
