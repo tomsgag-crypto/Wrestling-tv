@@ -10,8 +10,8 @@ android {
         applicationId "tv.freetvguide.app"
         minSdk 21
         targetSdk 34
-        versionCode 90
-        versionName "2.22.4"
+        versionCode 91
+        versionName "2.22.5"
     }
 
     // One fixed key for every build, so new versions install as updates (the key is a GitHub secret, never in the code)

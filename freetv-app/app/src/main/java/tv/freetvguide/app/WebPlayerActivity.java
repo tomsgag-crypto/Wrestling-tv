@@ -99,11 +99,10 @@ public class WebPlayerActivity extends Activity {
                     String[] q = r.replace("\"", "").split("\\|");
                     double ct2 = -1; boolean pz = true;
                     try { ct2 = Double.parseDouble(q[q.length - 2]); pz = "1".equals(q[q.length - 1].trim()); } catch (Exception ignored) { }
-                    boolean behind = r.contains("behind"), moving = ct2 > 0 && !pz && ct2 - settleCt > 0.5 && !r.contains("buffering");
+                    // Sky's own "behind live" marker can't be trusted (it says so even at live), so go by the picture actually moving
+                    boolean moving = ct2 > 0 && !pz && ct2 - settleCt > 0.5;
                     settleCt = ct2;
-                    if (behind && ct2 > 0) { if (++behindSecs >= 4 && startReloads < 2) { behindSecs = 0; startReloads++; String t = getIntent().getStringExtra("title"); applyQuality(); cover.setText("Loading " + (t == null ? "" : t) + "…"); return; } }
-                    else behindSecs = 0;
-                    settleTicks = moving && !behind ? settleTicks + 1 : 0;
+                    settleTicks = moving ? settleTicks + 1 : 0;
                     if (settleTicks >= 2) { skySettled = true; reveal.run(); }
                     return;
                 }
@@ -429,7 +428,7 @@ public class WebPlayerActivity extends Activity {
     private long skyGateUntil = 0;
     private int settleTicks = 0, startReloads = 0;
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
-    private void skyGate() { skySettled = false; settleTicks = 0; skyGateUntil = android.os.SystemClock.uptimeMillis() + 40000; ui.postDelayed(reveal, 41000); }
+    private void skyGate() { skySettled = false; settleTicks = 0; settleCt = -1; skyGateUntil = android.os.SystemClock.uptimeMillis() + 20000; ui.postDelayed(reveal, 20500); }
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
     private boolean isPlayer(String u) { return find != null || (u != null && (u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*") || u.matches(".*skysports\\.com/watch/.*"))); }
 
