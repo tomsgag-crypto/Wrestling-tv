@@ -571,6 +571,31 @@ var app = (function () {
   var SKY_SLUGS = [[/main ?event/i, 'sky-sports-main-event'], [/\bpl\b|premier/i, 'sky-sports-premier-league'], [/football/i, 'sky-sports-football'], [/cricket/i, 'sky-sports-cricket'],
     [/golf/i, 'sky-sports-golf'], [/f1/i, 'sky-sports-f1'], [/tennis/i, 'sky-sports-tennis'], [/nfl/i, 'sky-sports-nfl'], [/racing/i, 'sky-sports-racing'], [/news/i, 'sky-sports-news'], [/mix/i, 'sky-sports-mix'], [/\+|plus/i, 'sky-sports-plus']];
   function skySlug(n) { for (var i = 0; i < SKY_SLUGS.length; i++) if (SKY_SLUGS[i][0].test(n)) return SKY_SLUGS[i][1]; return ''; }
+  var usSports = load('usSports') || {};
+  function loadUSSports() {
+    var d0 = new Date(Date.now() - 86400000), d1 = new Date(Date.now() + 6 * 86400000);
+    var ymd = function (d) { return d.toISOString().slice(0, 10).replace(/-/g, ''); }, range = ymd(d0) + '-' + ymd(d1);
+    var LEAGUES = [['football/nfl', 210], ['football/college-football', 210], ['basketball/nba', 165], ['basketball/mens-college-basketball', 150], ['hockey/nhl', 165],
+      ['baseball/mlb', 190], ['soccer/eng.1', 120], ['soccer/uefa.champions', 120], ['soccer/uefa.europa', 120], ['soccer/usa.1', 120], ['soccer/esp.1', 120], ['soccer/ita.1', 120], ['racing/f1', 150]];
+    var NET = function (n) { n = String(n || '').toUpperCase().replace(/[^A-Z0-9+]/g, '');
+      return n === 'ESPN' ? 'espn' : n === 'ESPN2' ? 'espn2' : n === 'FS1' ? 'fs1' : /^NFLNET/.test(n) ? 'nfln' : /^USA(NET|NETWORK)?$/.test(n) ? 'usa' : n === 'CBS' ? 'cbs' : /GOLAZO/.test(n) ? 'golazo' : /^PARAMOUNT/.test(n) ? 'pplus' : ''; };
+    var out = {};
+    return Promise.all(LEAGUES.map(function (L) {
+      return get('https://site.api.espn.com/apis/site/v2/sports/' + L[0] + '/scoreboard?limit=300&dates=' + range).then(function (t) {
+        var j = typeof t === 'string' ? JSON.parse(t) : t;
+        (j.events || []).forEach(function (ev) {
+          var c = ev.competitions && ev.competitions[0] || {}, nets = {};
+          (c.broadcasts || []).forEach(function (b) { (b.names || []).forEach(function (n) { nets[NET(n)] = 1; }); });
+          (c.geoBroadcasts || []).forEach(function (g) { nets[NET(g.media && g.media.shortName)] = 1; });
+          var st = Date.parse(ev.date) / 1000; if (!st) return;
+          Object.keys(nets).forEach(function (k) { if (!k) return; (out[k] = out[k] || []).push({ s: st, e: st + L[1] * 60, t: ev.name || ev.shortName, sub: (j.leagues && j.leagues[0] && j.leagues[0].name || '') + ' · live', desc: 'Turn on your US VPN, then press OK.', img: '' }); });
+        });
+      }).catch(function () {});
+    })).then(function () {
+      Object.keys(out).forEach(function (k) { out[k].sort(function (a, b) { return a.s - b.s; }); for (var i = 0; i < out[k].length - 1; i++) if (out[k][i].e > out[k][i + 1].s) out[k][i].e = out[k][i + 1].s; });
+      if (Object.keys(out).length) { usSports = out; save('usSports', out); }
+    });
+  }
   function buildSportsChans() {
     var seen = {};
     chans = virgin.filter(function (c) { return /^sky ?sports?/i.test(c.vname) && !/duplicate|uhd|ultra|box office/i.test(c.vname); }).map(function (c) {
@@ -582,12 +607,13 @@ var app = (function () {
     }).filter(Boolean);
     // US sports on Paramount+ and Sling (they play only with your US VPN on)
     var nowS = nowSec(), live = function (what) { return [{ s: nowS - 3600, e: nowS + 7 * 86400, t: 'Live channel – US VPN on', sub: what, desc: 'Turn on your US VPN, then press OK.', img: '' }]; };
-    var PP = 'https://www.paramountplus.com/live-tv/', SL = 'https://watch.sling.com/dashboard/grid';
+    var PP = 'https://www.paramountplus.com/live-tv/', SL = 'https://watch.sling.com/';
+    var us = function (k, what) { var ev = (usSports[k] || []).filter(function (e) { return e.e > nowS - 86400; }); return ev.length ? ev : live(what); };
     [['Paramount+ Champions League', PP, allUCL.length ? allUCL : live('Every UEFA Champions League match is on Paramount+')],
-     ['CBS Sports Golazo Network', PP, live('24-hour football channel on Paramount+')], ['CBS Sports HQ', PP, live('Sports news on Paramount+')], ['CBS (US)', PP, live('CBS live on Paramount+ – NFL, college sports, some Champions League')],
-     ['ESPN (Sling)', SL + '#ftv-sling=ESPN', live('ESPN on Sling TV')], ['ESPN2 (Sling)', SL + '#ftv-sling=ESPN2', live('ESPN2 on Sling TV')],
-     ['FS1 (Sling)', SL + '#ftv-sling=FS1', live('FS1 on Sling TV')], ['NFL Network (Sling)', SL + '#ftv-sling=NFL%20Network', live('NFL Network on Sling TV')],
-     ['USA Network (Sling)', SL + '#ftv-sling=USA', live('USA Network on Sling TV – Premier League, WWE and more')]].forEach(function (r, i) {
+     ['CBS Sports Golazo Network', PP, us('golazo', '24-hour football channel on Paramount+')], ['CBS Sports HQ', PP, live('Sports news on Paramount+')], ['CBS (US)', PP, us('cbs', 'CBS live on Paramount+ – NFL, college sports, some Champions League')],
+     ['ESPN (Sling)', SL + '#ftv-sling=ESPN', us('espn', 'ESPN on Sling TV')], ['ESPN2 (Sling)', SL + '#ftv-sling=ESPN2', us('espn2', 'ESPN2 on Sling TV')],
+     ['FS1 (Sling)', SL + '#ftv-sling=FS1', us('fs1', 'FS1 on Sling TV')], ['NFL Network (Sling)', SL + '#ftv-sling=NFL%20Network', us('nfln', 'NFL Network on Sling TV')],
+     ['USA Network (Sling)', SL + '#ftv-sling=USA', us('usa', 'USA Network on Sling TV – Premier League, WWE and more')]].forEach(function (r, i) {
       chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], appK: r[1] === PP ? 'paramount' : '', cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
     });
     if (gRow >= chans.length) gRow = 0;
@@ -667,7 +693,7 @@ var app = (function () {
   }
   function isUS() { return country === 'US'; }
   var US_WEB = [
-    { k: 'sling', sec: 'Sling TV (US)', rows: [['Sling TV – live guide', 'https://watch.sling.com/dashboard/grid'], ['Sling TV – home', 'https://watch.sling.com/']] },
+    { k: 'sling', sec: 'Sling TV (US)', rows: [['Sling TV – live guide', 'https://watch.sling.com/'], ['Sling TV – home', 'https://watch.sling.com/']] },
     { k: 'pplus', sec: 'Paramount+ (US)', rows: [['Paramount+ – live TV (CBS and more)', 'https://www.paramountplus.com/live-tv/'], ['Paramount+ – home', 'https://www.paramountplus.com/home/']] }
   ];
   /** US channels sit under "US TV", everything else under "UK TV". */
@@ -685,7 +711,7 @@ var app = (function () {
     if (SPORTS) {
       status('guide', true);
       settings.virgin = true;
-      return Promise.all([loadVirgin(), loadPrimeUCL()]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
+      return Promise.all([loadVirgin(), loadPrimeUCL(), loadUSSports()]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
     }
     setTimeout(autoVirginSync, 8000);
     status('guide', true);
