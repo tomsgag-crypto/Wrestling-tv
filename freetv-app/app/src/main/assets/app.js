@@ -1123,6 +1123,9 @@ var app = (function () {
     });
     return out;
   }
+  var SORTS = [['', 'Each list\'s own order'], ['pop', 'Most popular'], ['trend', 'Trending (popular lately)'], ['new', 'Newest first'], ['top', 'Top rated'], ['az', 'A–Z']];
+  function sortName() { return (SORTS.filter(function (x) { return x[0] === (settings.odSort || ''); })[0] || SORTS[0])[1]; }
+  function sortMenu() { showPop({ title: 'Sort films & TV by…', opts: SORTS.map(function (x) { return { label: x[1], tick: x[0] === (settings.odSort || ''), fn: function () { settings.odSort = x[0]; saveSettings(); setGenre(odGenre); } }; }) }); }
   function buildOD() { od = sources().filter(function (x) { return !settings.hide[x.id] || x.id === 'tv' || x.id === 'rec'; }); if (odSrc >= od.length) odSrc = 0; }
   /** Recommended: things like what you've watched, what's trending, and what's new on your apps. */
   var recCache = null;
@@ -1819,8 +1822,8 @@ var app = (function () {
     if (odCat >= curSrc().cats.length) odCat = 0;
     if (odChip > 2) odChip = 0;
     var act = zone === 'main';
-    var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o'][n] + '">' + esc(txt) + '</div>'; };
-    $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(2, '☰ Filter & options');
+    var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z'][n] + '">' + esc(txt) + '</div>'; };
+    $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (settings.odSort ? sortName() : 'Normal')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
     $('odCats').innerHTML = cats.map(function (c, i) {
@@ -1847,8 +1850,11 @@ var app = (function () {
     var items = odItems(), cats = curSrc().cats;
     if (odZone === 'src') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
-      if (k === 'left') odChip = Math.max(0, odChip - 1);
-      else if (k === 'right') odChip = Math.min(2, odChip + 1);
+      // buttons left to right: app (0), genre (1), sort (3), filter & options (2)
+      var ORDER = [0, 1, 3, 2], oi = ORDER.indexOf(odChip);
+      if (k === 'left') odChip = ORDER[Math.max(0, oi - 1)];
+      else if (k === 'right') odChip = ORDER[Math.min(ORDER.length - 1, oi + 1)];
+      else if (k === 'ok' && odChip === 3) { sortMenu(); return; }
       else if (k === 'ok' && odChip === 0) { appMenu(); return; }
       else if (k === 'ok' && odChip === 1) { genreMenu(); return; }
       else if (k === 'ok' && odChip === 2) { optionsMenu(); return; }
@@ -2424,9 +2430,7 @@ var app = (function () {
     }
     if (view === 'guide' && window.Native && Native.pipActive && Native.pipActive()) opts.unshift({ label: '■ Stop ' + Native.pipName() + ' (playing in the corner window)', fn: function () { Native.pipStop(); toast('Stopped'); } });
     if (mini && view === 'guide') opts.unshift({ label: '■ Stop ' + mini.name + ' (playing in the corner)', fn: function () { Native.miniStop(); mini = null; toast('Stopped'); render(); } });
-    if (isOD()) { var SORTS = [['', 'Each list\'s own order'], ['pop', 'Most popular'], ['trend', 'Trending (popular lately)'], ['new', 'Newest first'], ['top', 'Top rated'], ['az', 'A–Z']];
-      var cur = SORTS.filter(function (x) { return x[0] === (settings.odSort || ''); })[0];
-      opts.unshift({ label: '⇅ Sort by: ' + cur[1] + '  ▸', fn: sub(function () { showPop({ title: 'Sort films & TV by…', opts: SORTS.map(function (x) { return { label: x[1], tick: x[0] === (settings.odSort || ''), fn: function () { settings.odSort = x[0]; saveSettings(); setGenre(odGenre); } }; }) }); }) }); }
+    if (isOD()) opts.unshift({ label: '⇅ Sort by: ' + sortName() + '  ▸', fn: sub(sortMenu) });
     if (isOD()) opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
     opts.push({ label: 'More settings  ▸', fn: sub(function () { moreMenu(c); }) });
     opts.push({ label: 'Cancel' });
@@ -2593,7 +2597,7 @@ var app = (function () {
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; }
       if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
-    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'a') { appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
+    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { sortMenu(); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'a') { appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
     var t = e.target.closest('.tab, .blk, .gch, .cat, .card, .app, .opt');
     if (!t) return;
