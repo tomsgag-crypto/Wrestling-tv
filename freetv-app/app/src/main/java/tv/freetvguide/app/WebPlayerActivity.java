@@ -968,7 +968,39 @@ public class WebPlayerActivity extends Activity {
         return android.os.Build.VERSION.SDK_INT >= 26 && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
             && getSharedPreferences("player", MODE_PRIVATE).getBoolean("pipOn", true);
     }
+    // Free TV's own corner window: the player shrinks to the top-right corner and stops taking the remote, so the guide behind it can be used
+    boolean cornered = false;
+    private boolean enterCorner() {
+        if (android.os.Build.VERSION.SDK_INT < 30 || !getSharedPreferences("player", MODE_PRIVATE).getBoolean("pipOn", true)) return false;
+        try {
+            if (!setTranslucent(true)) return false;
+            hideZap(); if (stats != null) stats.setVisibility(View.GONE); if (cursor != null) cursor.setVisibility(View.GONE);
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.width = (int) (dm.widthPixels * 0.30); lp.height = lp.width * 9 / 16;
+            lp.gravity = android.view.Gravity.TOP | android.view.Gravity.END; lp.x = (int) (dm.widthPixels * 0.02); lp.y = (int) (dm.heightPixels * 0.03);
+            getWindow().setAttributes(lp);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            cornered = true; pip = this;
+            tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 400);   // fit the picture to the small window
+            if (MainActivity.current != null) MainActivity.current.jsFromAnywhere("window.app && app.key('resume')");
+            return true;
+        } catch (Throwable t) { return false; }
+    }
+    void exitCorner() {
+        if (!cornered) return;
+        cornered = false; if (pip == this) pip = null;
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.width = WindowManager.LayoutParams.MATCH_PARENT; lp.height = WindowManager.LayoutParams.MATCH_PARENT; lp.x = 0; lp.y = 0;
+        getWindow().setAttributes(lp);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+        try { setTranslucent(false); } catch (Throwable ignored) { }
+        tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 400);
+        showCursor();
+    }
     private boolean enterPip() {
+        if (enterCorner()) return true;
         if (!canPip()) return false;
         try {
             hideZap(); if (stats != null) stats.setVisibility(View.GONE); if (cursor != null) cursor.setVisibility(View.GONE);
@@ -986,6 +1018,7 @@ public class WebPlayerActivity extends Activity {
     static void pipFull(android.app.Activity from) {
         WebPlayerActivity p = pip;
         if (p == null) return;
+        if (p.cornered) { p.exitCorner(); return; }
         try { ((android.app.ActivityManager) from.getSystemService(ACTIVITY_SERVICE)).moveTaskToFront(p.getTaskId(), 0); } catch (Throwable ignored) { }
         p.ui.postDelayed(() -> {
             if (pip != p || !p.isInPictureInPictureMode()) return;
@@ -1000,6 +1033,7 @@ public class WebPlayerActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         if (pip != null && pip != this) { pip.finish(); pip = null; }   // a new channel replaces the corner window
+        if (android.os.Build.VERSION.SDK_INT >= 30) { try { setTranslucent(false); } catch (Throwable ignored) { } }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -1211,8 +1245,8 @@ public class WebPlayerActivity extends Activity {
         return super.dispatchKeyEvent(e);
     }
 
-    @Override protected void onStop() { super.onStop(); if (zapping) finish(); else if (pip == this && !isInPictureInPictureMode()) { pip = null; finish(); } }   // corner window closed
-    @Override protected void onPause() { super.onPause(); if (android.os.Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode()) return;   // keep playing in the corner
+    @Override protected void onStop() { super.onStop(); if (zapping) finish(); else if (pip == this && !cornered && !isInPictureInPictureMode()) { pip = null; finish(); } }   // corner window closed
+    @Override protected void onPause() { super.onPause(); if (cornered || (android.os.Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode())) return;   // keep playing in the corner
         ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); ui.removeCallbacks(hush); ui.post(hush); }
     @Override protected void onDestroy() { if (pip == this) pip = null; ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
