@@ -50,6 +50,9 @@ var app = (function () {
   ];
   var installed = [];
   function refreshInstalled() { try { installed = JSON.parse(window.Native ? Native.apps() : '[]'); } catch (e) { installed = []; } }
+  /** Services you can watch: apps on this TV, plus the ones Free TV plays from their websites. */
+  function mineSvc(k) { return has(k) || (k === 'bbc' && bbcWeb()) || (k === 'itv' && itvWeb()) || (k === 'prime' && primeWeb()) || (k === 'disney' && disneyWeb()); }
+  function myProvIds() { var ids = {}; streamCats.forEach(function (c) { if (c.prov && c.svcKey && mineSvc(c.svcKey)) ids[c.prov] = 1; }); return Object.keys(ids); }
   function has(svc) {
     var re = new RegExp(SVC[svc] ? SVC[svc].app : svc, 'i');
     return installed.some(function (a) { return re.test(a.label) || re.test(a.pkg); });
@@ -784,9 +787,10 @@ var app = (function () {
             prov: id, mon: svc.paid ? 'flatrate' : 'flatrate|free|ads', items: null, page: 0, mine: has(pv[0]) });
         });
       });
-      // the apps you have come first
-      var free = cats.slice(0, 2), rest = cats.slice(2);
-      rest.sort(function (a, b) { return (b.mine ? 1 : 0) - (a.mine ? 1 : 0); });
+      // only the apps you have (and the free lists limited to them)
+      var rest = cats.slice(3).filter(function (c) { return !c.svcKey || mineSvc(c.svcKey); });
+      var mineIds = {}; rest.forEach(function (c) { if (c.prov) mineIds[c.prov] = 1; });
+      var free = cats.slice(0, 3); if (Object.keys(mineIds).length) free.forEach(function (c) { c.prov = Object.keys(mineIds).join('|'); });
       streamCats = free.concat(rest);
       tmdbProviders = byName;
     }).catch(function () { streamCats = []; });
@@ -1017,13 +1021,11 @@ var app = (function () {
     var out = [];
     if (streamCats.length) {
       if (!popCats) {
-        var ids = {};
-        streamCats.forEach(function (c) { if (c.prov) ids[c.prov] = 1; });
-        popCats = popCatsFor(Object.keys(ids).join('|'), 'flatrate|free|ads');
+        popCats = popCatsFor(myProvIds().join('|'), 'flatrate|free|ads');
       }
       out.push({ id: 'all', name: 'All apps', cats: popCats });
       var seen = {}, apps = [];
-      streamCats.forEach(function (c) { if (c.svcKey && c.prov && !seen[c.svcKey]) { seen[c.svcKey] = 1; apps.push(c); } });
+      streamCats.forEach(function (c) { if (c.svcKey && c.prov && !seen[c.svcKey] && mineSvc(c.svcKey)) { seen[c.svcKey] = 1; apps.push(c); } });
       apps.sort(function (a, b) { return (has(b.svcKey) ? 1 : 0) - (has(a.svcKey) ? 1 : 0); });
       apps.forEach(function (c) {
         var k = c.svcKey;
@@ -1097,6 +1099,16 @@ var app = (function () {
       c.items = (j.results || []).filter(function (x) { return x.media_type !== 'person'; }).map(function (x) { return tmdbItem(x, x.media_type || c.kind || (x.title ? 'movie' : 'tv'), null); });
       var g = OD_GENRES[odGenre];
       if (odGenre) c.items = c.items.filter(function (it) { return g[3].test(it.sub + ' ' + it.desc); });
+      // only things on your apps
+      var mine = {}; myProvIds().forEach(function (id) { mine[id] = 1; });
+      if (!Object.keys(mine).length) return;
+      var list = c.items.slice(0, 20);
+      return Promise.all(list.map(function (it) {
+        return tmdb('/' + it.tmdb + '/watch/providers').then(function (w) {
+          var gb = w.results && w.results.GB || {};
+          return [].concat(gb.flatrate || [], gb.free || [], gb.ads || []).some(function (p) { return mine[p.provider_id]; }) ? it : null;
+        }, function () { return null; });
+      })).then(function (r) { c.items = r.filter(Boolean); });
     }, function () { c.items = []; }).then(function () { c.loading = false; });
   }
   var plutoTried = false;
