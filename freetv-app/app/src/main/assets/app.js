@@ -1470,7 +1470,7 @@ var app = (function () {
       });
       var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.vid || c.svc === 'u') ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
       h += '<div class="grow' + (ci === gRow && rowSel ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
-        '<div class="sv' + (c.svc || c.play ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline"><div class="gin">' + blocks +
+        '</div><div class="gline"><div class="gin">' + blocks +
         (now >= lo && now < hi ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div></div>';
     }
     box.innerHTML = h;
