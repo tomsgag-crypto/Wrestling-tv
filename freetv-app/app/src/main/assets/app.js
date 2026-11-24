@@ -808,7 +808,8 @@ var app = (function () {
       if (v('nf')) L.netflix = (movie ? 'https://www.netflix.com/watch/' + v('nf') + '\n' : '') + 'https://www.netflix.com/title/' + v('nf');
       var pv = v('pv') || v('pg');
       if (pv) L.prime = (v('pg') && /^amzn1/.test(v('pg')) ? 'https://app.primevideo.com/detail?gti=' + v('pg') + '\n' : '') + 'https://www.primevideo.com/detail/' + pv;
-      else if (v('pa')) L.prime = 'https://www.amazon.co.uk/gp/video/detail/' + v('pa');
+      // (Wikidata's other Amazon number is often for amazon.com, which amazon.co.uk doesn't know – so those titles are found by searching Prime Video)
+      else if (v('pa')) L.prime = 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(it.title || '');
       if (v('db')) L.disney = 'https://www.disneyplus.com/browse/' + v('db');
       else if (v('dm')) L.disney = 'https://www.disneyplus.com/movies/wd/' + v('dm');
       else if (v('ds')) L.disney = 'https://www.disneyplus.com/series/wp/' + v('ds');

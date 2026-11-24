@@ -598,6 +598,7 @@ public class WebPlayerActivity extends Activity {
     private long skyGateUntil = 0;
     private int settleTicks = 0, startReloads = 0;
     private long switchedAt = 0, firstBufAt = 0;
+    private boolean notFoundTried = false;
     private boolean wasBuffering = false;
     private final java.util.ArrayDeque<Long> bufStarts = new java.util.ArrayDeque<>();
     private double stallCt = -1; private int stallRun = 0; private long stallFr = -2;
@@ -978,6 +979,16 @@ public class WebPlayerActivity extends Activity {
             @Override public void onPageFinished(WebView v, String url) {
                 if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false) && !(autoSite(url) && autoMode && !(series() && !url.contains("search")))) cover.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
+                // Prime: a link Amazon no longer recognises ("Looking for something?") → search for the title instead
+                if (url != null && (url.contains("amazon.co.uk") || url.contains("primevideo.com")) && !url.contains("/search") && !notFoundTried) {
+                    v.evaluateJavascript("(function(){var t=(document.body&&document.body.innerText||'').slice(0,3000);return /not a functioning page|Looking for something\\?|page (you requested|was) not found|we couldn.t find that page/i.test(t)?'404':'';})()", res -> {
+                        if (res == null || !res.contains("404") || notFoundTried) return;
+                        notFoundTried = true;
+                        String t = getIntent().getStringExtra("title"), orig = getIntent().getStringExtra("url"), frag = "";
+                        if (orig != null && orig.contains("#")) frag = orig.substring(orig.indexOf('#'));
+                        try { web.loadUrl("https://www.primevideo.com/search/ref=atv_nb_sr?phrase=" + java.net.URLEncoder.encode(t == null ? "" : t.replaceAll("\\s*[–(].*$", ""), "UTF-8") + frag); } catch (Exception ignored) { }
+                    });
+                }
                 if (autoSite(url) && autoMode) { apTries = 0; ui.removeCallbacks(autoplay); ui.postDelayed(autoplay, 2000); }
                 if (url != null && url.contains("virgintvgo.virginmedia.com")) { ownedTries = 0; ui.removeCallbacks(ownedSync); ui.postDelayed(ownedSync, 3000); }
                 if (find != null) { ui.removeCallbacks(step); ui.postDelayed(step, 2000); return; }
