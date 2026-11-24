@@ -2466,8 +2466,10 @@ var app = (function () {
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = 0; render(); return true; }
-    if (view === 'guide' && window.Native && Native.pipActive && Native.pipActive()) { Native.pipFull(); return true; }   // the Sky / Virgin channel in the corner window goes full screen
-    if (mini && view === 'guide') { Native.miniFull(); return true; }   // Back: the channel playing in the corner goes full screen (stop it from ☰ Filter & options)
+    // a channel playing in the guide's box: Back on its row puts it full screen; on any other row Back works as normal (up to the top menu)
+    var onPlaying = zone === 'main' && view === 'guide' && gZone === 'rows' && chans[gRow];
+    if (onPlaying && window.Native && Native.pipActive && Native.pipActive() && chans[gRow].name === Native.pipName()) { Native.pipFull(); return true; }
+    if (onPlaying && mini && chans[gRow].id === mini.gid) { Native.miniFull(); return true; }   // Back: the channel playing in the corner goes full screen (stop it from ☰ Filter & options)
     if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = 0; render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }
     if (zone === 'main') { zone = 'tabs'; render(); return true; }

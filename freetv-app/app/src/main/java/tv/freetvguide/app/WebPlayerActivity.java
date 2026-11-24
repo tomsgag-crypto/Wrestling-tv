@@ -998,8 +998,10 @@ public class WebPlayerActivity extends Activity {
         getWindow().setAttributes(lp);
         tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 300);
     }
+    private long backFullAt = 0;
     void exitCorner() {
         if (!cornered) return;
+        backFullAt = android.os.SystemClock.uptimeMillis();
         cornered = false; if (pip == this) pip = null;
         WindowManager.LayoutParams lp = getWindow().getAttributes();
         lp.width = WindowManager.LayoutParams.MATCH_PARENT; lp.height = WindowManager.LayoutParams.MATCH_PARENT; lp.x = 0; lp.y = 0; lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
@@ -1188,6 +1190,8 @@ public class WebPlayerActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (cornered && MainActivity.current != null) return MainActivity.current.dispatchKeyEvent(e);   // the guide behind has the remote
+        // the Back press that brought it back full screen: its "up" mustn't shrink it again
+        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && android.os.SystemClock.uptimeMillis() - backFullAt < 1500) { if (e.getAction() == KeyEvent.ACTION_UP) backFullAt = 0; return true; }
         int k = e.getKeyCode();
         if (watching() && zapOn && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) zapOk();
