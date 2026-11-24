@@ -843,7 +843,8 @@ var app = (function () {
     c.loading = true;
     var today = new Date().toISOString().slice(0, 10), mv = c.kind === 'movie';
     // your chosen order (Sort by… in the menu) replaces each list's own
-    var mode = settings.odSort || '', srt = c.sort || 'popularity.desc', fresh = c.fresh;
+    var mode = catSort(c), srt = c.sort || 'popularity.desc', fresh = c.fresh;
+    if (mode === 'mine') mode = '';   // "My lists first" keeps the list's own order and moves your things up
     if (mode) { fresh = false; srt = mode === 'az' ? (mv ? 'title.asc' : 'name.asc') : mode === 'new' ? (mv ? 'primary_release_date.desc' : 'first_air_date.desc') : mode === 'top' ? 'vote_average.desc' : 'popularity.desc'; }
     var q = 'watch_region=GB&sort_by=' + srt + '&include_adult=false&page=' + (c.page + 1) + '&with_watch_monetization_types=' + encodeURIComponent(c.mon) +
       (srt === 'vote_average.desc' ? '&vote_count.gte=' + (c.kind === 'movie' ? 400 : 150) : '') +
@@ -1123,7 +1124,21 @@ var app = (function () {
     });
     return out;
   }
-  var SORTS = [['', 'Each list\'s own order'], ['pop', 'Most popular'], ['trend', 'Trending (popular lately)'], ['new', 'Newest first'], ['top', 'Top rated'], ['az', 'A–Z']];
+  var SORTS = [['', 'Each list\'s own order'], ['mine', '⭐ My lists first'], ['pop', 'Most popular'], ['trend', 'Trending (popular lately)'], ['new', 'Newest first'], ['top', 'Top rated'], ['az', 'A–Z']];
+  /** Each list on the side remembers its own order. */
+  function catKey(c) { return (c.svcKey || '') + '|' + c.name; }
+  function catSort(c) { var m = settings.catSort || {}; return c && m[catKey(c)] != null ? m[catKey(c)] : (settings.odSort || ''); }
+  function inMyLists(it) { return lists.some(function (l) { return l.items.some(function (x) { return (x.tmdb && x.tmdb === it.tmdb) || (x.title === it.title && x.src === it.src); }); }); }
+  /** OK on a list at the side: show it, or choose how this list is sorted. */
+  function catMenu(c) {
+    var cur = catSort(c);
+    showPop({ title: c.name, opts: [{ label: '▶ Show ' + c.name, fn: function () { if (odItems().length) odZone = 'grid'; } }].concat(c.src === 'tmdb' || true ? SORTS.map(function (x) {
+      return { label: 'Sort: ' + x[1], tick: x[0] === cur, fn: function () {
+        settings.catSort = settings.catSort || {}; settings.catSort[catKey(c)] = x[0]; saveSettings();
+        if (c.src === 'tmdb') { c.items = null; c.page = 0; c.done = false; c.loading = false; c.phase = null; ensureODItems(); }
+        odRow = 0; odZone = 'grid'; } };
+    }) : []) });
+  }
   function sortName() { return (SORTS.filter(function (x) { return x[0] === (settings.odSort || ''); })[0] || SORTS[0])[1]; }
   function sortMenu() { showPop({ title: 'Sort films & TV by…', opts: SORTS.map(function (x) { return { label: x[1], tick: x[0] === (settings.odSort || ''), fn: function () { settings.odSort = x[0]; saveSettings(); setGenre(odGenre); } }; }) }); }
   function buildOD() { od = sources().filter(function (x) { return !settings.hide[x.id] || x.id === 'tv' || x.id === 'rec'; }); if (odSrc >= od.length) odSrc = 0; }
@@ -1808,6 +1823,9 @@ var app = (function () {
     var c = curCat(), items = c && c.items || [];
     if (c && c.src !== 'tmdb' && odGenre) { var re = OD_GENRES[odGenre][3]; items = items.filter(function (it) { return re.test((it.sub || '') + ' ' + (it.title || '') + ' ' + (it.desc || '')); }); }
     if (settings.hideWatched) items = items.filter(function (it) { return !isWatched(it); });
+    var m = c ? catSort(c) : '';
+    if (m === 'mine') { var a1 = [], b1 = []; items.forEach(function (it) { (inMyLists(it) ? a1 : b1).push(it); }); items = a1.concat(b1); }
+    else if (m === 'az' && c && c.src !== 'tmdb') items = items.slice().sort(function (a, b) { return String(a.title).localeCompare(String(b.title)); });
     return items;
   }
   function ensureODItems() {
@@ -1820,10 +1838,10 @@ var app = (function () {
   function renderOD() {
     if (!od.length) buildOD();
     if (odCat >= curSrc().cats.length) odCat = 0;
-    if (odChip > 2) odChip = 0;
+    if (odChip > 3) odChip = 0;
     var act = zone === 'main';
     var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z'][n] + '">' + esc(txt) + '</div>'; };
-    $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (settings.odSort ? sortName() : 'Normal')) + chip(2, '☰ Filter & options');
+    $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
     $('odCats').innerHTML = cats.map(function (c, i) {
@@ -1854,7 +1872,7 @@ var app = (function () {
       var ORDER = [0, 1, 3, 2], oi = ORDER.indexOf(odChip);
       if (k === 'left') odChip = ORDER[Math.max(0, oi - 1)];
       else if (k === 'right') odChip = ORDER[Math.min(ORDER.length - 1, oi + 1)];
-      else if (k === 'ok' && odChip === 3) { sortMenu(); return; }
+      else if (k === 'ok' && odChip === 3) { if (curCat()) catMenu(curCat()); return; }
       else if (k === 'ok' && odChip === 0) { appMenu(); return; }
       else if (k === 'ok' && odChip === 1) { genreMenu(); return; }
       else if (k === 'ok' && odChip === 2) { optionsMenu(); return; }
@@ -1865,7 +1883,8 @@ var app = (function () {
       else if (k === 'down') { if (odCat < cats.length - 1) { odCat++; odRow = 0; ensureODItems(); } }
       else if (k === 'pagedown') { odCat = Math.min(cats.length - 1, odCat + 6); odRow = 0; ensureODItems(); }
       else if (k === 'pageup') { odCat = Math.max(0, odCat - 6); odRow = 0; ensureODItems(); }
-      else if (k === 'right' || k === 'ok') { if (items.length) odZone = 'grid'; }
+      else if (k === 'ok') { var cc = curCat(); if (cc) { catMenu(cc); return; } }
+      else if (k === 'right') { if (items.length) odZone = 'grid'; }
       else if (k === 'menu') { optionsMenu(); return; }
     } else {
       if (k === 'ok') { if (items[odRow]) openItem(items[odRow]); render(); return; }
@@ -2597,7 +2616,7 @@ var app = (function () {
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; }
       if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
-    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { sortMenu(); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'a') { appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
+    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { if (curCat()) catMenu(curCat()); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'a') { appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
     var t = e.target.closest('.tab, .blk, .gch, .cat, .card, .app, .opt');
     if (!t) return;
