@@ -309,6 +309,25 @@ var app = (function () {
       }).sort(function (a, b) { return a.num - b.num; });
     }).catch(function () { samsung = samsung || []; });
   }
+  /** Samsung's list only reaches a day or so ahead and is updated through the day: fetch it again (adding the new programmes) when the guide scrolls past the end. */
+  var samsungAt = Date.now();
+  function samsungMore(b) {
+    if (!samsung.length || Date.now() - samsungAt < 20 * 60000) return;
+    var last = 0; samsung.forEach(function (c) { var e = c.events[c.events.length - 1]; if (e && e.s > last) last = e.s; });
+    if (b < last) return;
+    samsungAt = Date.now();
+    getJSON('https://i.mjh.nz/SamsungTVPlus/.channels.json.gz').then(function (j) {
+      var gb = j.regions && j.regions[isUS() ? 'us' : 'gb'] && j.regions[isUS() ? 'us' : 'gb'].channels || {};
+      samsung.forEach(function (c) {
+        var src = gb[c.id.slice(1)]; if (!src || !src.programs) return;
+        var p = src.programs, seen = {}; c.events.forEach(function (e) { seen[e.s] = 1; });
+        p.forEach(function (x, i) { if (!seen[x[0]]) c.events.push({ s: x[0], e: p[i + 1] ? p[i + 1][0] : x[0] + 3600, t: x[1], sub: '', img: '' }); });
+        c.events.sort(function (a, b) { return a.s - b.s; });
+        for (var k = 0; k < c.events.length - 1; k++) if (c.events[k].e > c.events[k + 1].s || c.events[k].e === c.events[k].s + 3600) c.events[k].e = c.events[k + 1].s;   // each programme runs until the next one
+      });
+      if (view === 'guide') render();
+    }).catch(function () {});
+  }
   var PLEX_H = '#h=' + encodeURIComponent('X-Plex-Product:Plex Mediaverse') + '#h=' + encodeURIComponent('X-Plex-Version:1.0.0');
   function loadPlex() {
     if (settings.hide['Plex']) return Promise.resolve();
@@ -1513,6 +1532,7 @@ var app = (function () {
     plexOnScreen();
     if (settings.virgin) virginListings(ws, ws + SPAN);
     plutoMore(ws, ws + SPAN);
+    samsungMore(ws + SPAN);
     if (fp) {
       $('gTitle').textContent = fp.t;
       var live = fp.s <= now && fp.e > now, past = fp.e <= now, rem = reminders.some(function (r) { return r.item.ch === ch.id && r.item.s === fp.s; });
