@@ -210,6 +210,7 @@ public class WebPlayerActivity extends Activity {
                 }
                 if (r.contains("buffering")) lastBuffer = now2;
                 // starting a Sky channel: behind the loading screen, wait for it to be at live and moving; if it starts behind, restart it (up to twice)
+                if (onSky() && !skySettled && android.os.SystemClock.uptimeMillis() - switchedAt < 5000) { settleTicks = 0; settleCt = -1; return; }
                 if (onSky() && !skySettled) {
                     String[] q = r.replace("\"", "").split("\\|");
                     double ct2 = -1; boolean pz = true;
@@ -398,7 +399,8 @@ public class WebPlayerActivity extends Activity {
         if (custom != null) { root.removeView(custom); custom = null; }
         pageFull = false; fsTries = 0; tries = 0; adHits = 0;
         if (onSky()) skyGate();
-        web.reload();
+        String want = getIntent().getStringExtra("url");
+        if (onSky() && want != null && want.contains("skysports.com")) web.loadUrl(want); else web.reload();
         qChecks = 0; ui.removeCallbacks(qualityWatch); ui.postDelayed(qualityWatch, 5000);
     }
     // Which Virgin channels are in your package: read from Virgin's own lists on the signed-in page, kept on this TV
@@ -491,7 +493,8 @@ public class WebPlayerActivity extends Activity {
         else { ni.removeExtra("find"); ni.removeExtra("pin"); }
         setIntent(ni);
         find = ni.getStringExtra("find");
-        skySettled = false; startReloads = 0;
+        skySettled = false; startReloads = 0; settleTicks = 0; settleCt = -1; switchedAt = android.os.SystemClock.uptimeMillis();
+        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "var m=deep(document,0,[]);for(var i=0;i<m.length;i++){try{m[i].pause();m[i].muted=true;}catch(e){}}})()", null);   // stop the old channel straight away
         steps = 0; pinWaits = 0; startWaits = 0; cacheWaits = 0; fromCache = false; userPaused = false; pageFull = false;
         fsTries = 0; tries = 0; autoFilled = false; adHits = 0; stillSecs = 0; lastCt = -1; lastLiveReload = 0; behindSecs = 0; qChecks = 0;
         ui.removeCallbacks(step); ui.removeCallbacks(fill); ui.removeCallbacks(spaFallback);
@@ -556,6 +559,7 @@ public class WebPlayerActivity extends Activity {
     private boolean skySettled = false;
     private long skyGateUntil = 0;
     private int settleTicks = 0, startReloads = 0;
+    private long switchedAt = 0;
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
     private void skyGate() { skySettled = false; settleTicks = 0; settleCt = -1; skyGateUntil = android.os.SystemClock.uptimeMillis() + 20000; ui.postDelayed(reveal, 20500); }
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
