@@ -160,11 +160,16 @@ public class WebPlayerActivity extends Activity {
     } };
     private final Runnable keepPlaying = new Runnable() { @Override public void run() {
         if (web == null) return;
-        // ITVX / Prime with "Adverts" switched off: adverts are short separate videos – mute them and run them at 16x so they're over in seconds
+        // ITVX / Prime / Disney+ with "Adverts" switched off: mute adverts and run them at 16x so they're over in seconds
         String cu = web.getUrl();
-        if ((autoSite(cu) || (cu != null && cu.contains("amazon.co.uk"))) && prefs().getBoolean("webNoAds", false))
-            web.evaluateJavascript("(function(){var n=0;function all(r,o){o=o||[];[].push.apply(o,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)all(e.shadowRoot,o);});return o;}" +
-                "all(document).forEach(function(v){var d=v.duration;if(isFinite(d)&&d>0&&d<=240&&!v.paused){if(!v.__ftvAd){v.__ftvAd={m:v.__ftvHushed?false:v.muted};}v.muted=true;try{v.playbackRate=16;}catch(e){}n++;}else if(v.__ftvAd&&isFinite(d)&&d>240){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
+        if ((autoSite(cu) || (cu != null && (cu.contains("amazon.co.uk") || cu.contains("disneyplus.com")))) && prefs().getBoolean("webNoAds", false))
+            web.evaluateJavascript("(function(){var n=0;function all(r,o,sel){o=o||[];[].push.apply(o,[].slice.call(r.querySelectorAll(sel)));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)all(e.shadowRoot,o,sel);});return o;}" +
+                // ITVX: adverts are short separate videos. Prime / Disney+: adverts are inside the programme, so go by their on-screen "Ad 0:15" / "Ad 1 of 3" label instead
+                "var itv=/itv\\.com/.test(location.host),lab=false;if(!itv){var ls=all(document,[],'span,div,p,label');for(var i=0;i<ls.length&&i<6000;i++){var x=ls[i];if(x.childElementCount>0)continue;var tx=(x.textContent||'').trim();if(tx.length>40)continue;" +
+                "if(/^(Ad|Ads|Advert|Advertisement)(\\s*[·•:|-]?\\s*(\\d+\\s*of\\s*\\d+|\\d{1,2}:\\d\\d))*\\s*$/i.test(tx)){var bx=x.getBoundingClientRect();if(bx.width>0&&bx.height>0&&getComputedStyle(x).visibility!=='hidden'){lab=true;break;}}}}" +
+                "all(document,[],'video').forEach(function(v){var d=v.duration,ad=itv?(isFinite(d)&&d>0&&d<=240&&!v.paused):(lab&&!v.paused);" +
+                "if(ad){if(!v.__ftvAd){v.__ftvAd={m:v.__ftvHushed?false:v.muted};}v.muted=true;try{v.playbackRate=16;}catch(e){}n++;}" +
+                "else if(v.__ftvAd&&(itv?(isFinite(d)&&d>240):!lab)){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
                     if (r != null && !r.equals("0") && cover.getVisibility() == View.VISIBLE && autoMode) cover.setText("Skipping adverts – " + getIntent().getStringExtra("title") + " starts in a moment…");
                 });
         if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
@@ -194,6 +199,7 @@ public class WebPlayerActivity extends Activity {
                     if (onSky()) st += " · pieces by Free TV " + pieces + " (ready early " + aheadHits + ", second copies " + retries + ")" + " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", true) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 long now2 = android.os.SystemClock.uptimeMillis();
+                if (!watching() && autoFilled && autoSite(web.getUrl()) && now2 - autoFilledAt > 4000) { pageFull = true; showCursor(); }   // remote keys (OK pause, ◀ ▶ skip) work and the pointer goes, even if the site wouldn't go full screen
                 if (!watching() && !autoFilled) {
                     String u0 = web.getUrl();
                     if (autoSite(u0)) {
@@ -203,7 +209,7 @@ public class WebPlayerActivity extends Activity {
                             cover.setText("Adverts playing – " + getIntent().getStringExtra("title") + " starts after them…"); } catch (Exception ignored) { }
                         // a programme (over 4 minutes long, playing) – not a trailer or preview on the page
                         try { if (pp.length >= 3 && Double.parseDouble(pp[pp.length - 3]) > 240 && Double.parseDouble(pp[pp.length - 2]) > 1.5 && "0".equals(pp[pp.length - 1].trim())) {
-                            autoFilled = true; fsTries = 0; tries = 0; web.evaluateJavascript("window.__ftvFillOK=1", null); ui.postDelayed(fill, 200); } } catch (Exception ignored) { }
+                            autoFilled = true; autoFilledAt = android.os.SystemClock.uptimeMillis(); fsTries = 0; tries = 0; web.evaluateJavascript("window.__ftvFillOK=1", null); ui.postDelayed(fill, 200); } } catch (Exception ignored) { }
                     }
                 }
                 // Sky: if the picture has stood still for 5 seconds (and you didn't pause it), restart at live – that's what fixes it
@@ -599,6 +605,8 @@ public class WebPlayerActivity extends Activity {
     private int settleTicks = 0, startReloads = 0;
     private long switchedAt = 0, firstBufAt = 0;
     private boolean notFoundTried = false;
+    private long autoFilledAt = 0;
+    private volatile boolean itvPage = false;   // only ITVX's advert requests are refused; Prime / Disney+ wait on theirs, so those are sped through instead
     private boolean wasBuffering = false;
     private final java.util.ArrayDeque<Long> bufStarts = new java.util.ArrayDeque<>();
     private double stallCt = -1; private int stallRun = 0; private long stallFr = -2;
@@ -952,7 +960,7 @@ public class WebPlayerActivity extends Activity {
                 if (h != null && adPage && h.matches(".*(fwmrm|freewheel|imasdk|dai\\.google|pubads|g\\.doubleclick|innovid|spotxchange|springserve|yospace|mediatailor|adsrvr|adform|tremorhub|smartclip|serving-sys|adsafeprotected|moatads|doubleverify|ias\\.|integralads|sky\\.com/ads|adsmart|vod-ads|ads\\.).*")) {
                     adHits++;
                     // a plain refusal (as in 2.23.3): answering "no adverts" made Sky's player start the wrong stream
-                    if (skyPage ? prefs().getBoolean("skyNoAds", true) : prefs().getBoolean("webNoAds", false)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
+                    if (skyPage ? prefs().getBoolean("skyNoAds", true) : (prefs().getBoolean("webNoAds", false) && itvPage)) return new android.webkit.WebResourceResponse("text/plain", "utf-8", 404, "Not Found", null, new java.io.ByteArrayInputStream(new byte[0]));
                 }
                 if (h != null && skyPage && h.matches(".*(google-analytics|googletagmanager|doubleclick|googlesyndication|chartbeat|qualtrics|optimizely|demdex|omtrdc|adobedtm|scorecardresearch|hotjar|facebook|tiktok|bing|clarity|permutive|amazon-adsystem|criteo|taboola|outbrain|krxd|bluekai|onetrust-analytics|ipredictive|adnxs|rubiconproject|pubmatic|casalemedia|smartadserver|id5-sync|tapad|everesttech|go-mpulse|akstat)\\..*"))
                     return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
@@ -966,7 +974,7 @@ public class WebPlayerActivity extends Activity {
                 return true;
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
-                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); if (skyPage && !skySettled) skyGate(); adPage = url != null && (skyPage || autoSite(url) || url.contains("amazon.co.uk")); pageFull = false;
+                fsTries = 0; skyPage = url != null && url.contains("skysports.com"); if (skyPage && !skySettled) skyGate(); adPage = url != null && (skyPage || autoSite(url) || url.contains("amazon.co.uk")); itvPage = url != null && url.contains("itv.com"); pageFull = false;
                 if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(desktopJs(), null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
