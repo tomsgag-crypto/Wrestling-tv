@@ -677,6 +677,7 @@ var app = (function () {
     // Prime Video's Champions League match nights (just the games on Prime)
     if (!SPORTS && !isUS() && primeUCL.length) out.push({ sec: 'Prime Video', id: 'primeucl', name: 'Prime Video Champions League', cat: 'Sports', svc: 'prime', primeLive: true, events: primeUCL });
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
+    if (!settings.hide['Sling TV']) slingRows().forEach(function (r) { out.push(r); });
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
       w.rows.forEach(function (r, i) { out.push({ sec: w.sec, id: 'w' + w.k + i, name: r[0], web: r[1], appK: w.k === 'pplus' ? 'paramount' : '', cat: r[2] || '', events: [] }); });
@@ -703,9 +704,21 @@ var app = (function () {
   }
   function isUS() { return country === 'US'; }
   var US_WEB = [
-    { k: 'sling', sec: 'Sling TV (US)', rows: [['Sling TV – live guide', 'https://watch.sling.com/'], ['Sling TV – home', 'https://watch.sling.com/']] },
     { k: 'pplus', sec: 'Paramount+ (US)', rows: [['Paramount+ – live TV (CBS and more)', 'https://www.paramountplus.com/live-tv/'], ['Paramount+ – home', 'https://www.paramountplus.com/home/']] }
   ];
+  /** Sling Blue: always in the guide (under US TV), listings from the US listings file, opened in the Sling app (US VPN on). */
+  var SLING_BLUE = [['usa', 'USA Network'], ['fs1', 'FS1'], ['nfln', 'NFL Network'], ['tnt', 'TNT'], ['tbs', 'TBS'], ['trutv', 'truTV'], ['fx', 'FX'], ['syfy', 'SYFY'], ['amc', 'AMC'],
+    ['ae', 'A&E'], ['history', 'HISTORY'], ['natgeo', 'National Geographic'], ['discovery', 'Discovery'], ['bravo', 'Bravo'], ['e', 'E!'], ['lifetime', 'Lifetime'], ['bet', 'BET'],
+    ['comedy', 'Comedy Central'], ['ifc', 'IFC'], ['bbca', 'BBC America'], ['freeform', 'Freeform'], ['cartoon', 'Cartoon Network'], ['nickjr', 'Nick Jr.'], ['hgtv', 'HGTV'],
+    ['food', 'Food Network'], ['tlc', 'TLC'], ['travel', 'Travel Channel'], ['cnn', 'CNN'], ['foxnews', 'Fox News'], ['bloomberg', 'Bloomberg TV'], ['vice', 'VICE'],
+    ['axs', 'AXS TV'], ['fuse', 'Fuse'], ['comet', 'COMET'], ['mgmdi', 'MGM+ Drive-In'], ['qvc', 'QVC']];
+  function slingRows() {
+    var nowS = nowSec();
+    return SLING_BLUE.map(function (r) {
+      var ev = (usEpg[r[0]] || []).filter(function (e) { return e.e > nowS - 86400; });
+      return { sec: 'Sling TV (US)', id: 'sl_' + r[0], name: r[1], web: 'https://watch.sling.com/#ftv-sling=' + encodeURIComponent(r[1]), appK: 'sling', cat: '', events: ev };
+    });
+  }
   /** US channels sit under "US TV", everything else under "UK TV". */
   function secGroup(sec) { return /\(US\)/.test(sec) ? 'US TV' : 'UK TV'; }
   /** Read the Virgin package by itself when it's never been read or is over 2 days old (at most once every 6 hours). */
@@ -725,7 +738,7 @@ var app = (function () {
     }
     setTimeout(autoVirginSync, 8000);
     status('guide', true);
-    return Promise.all([loadFreely().catch(function () {}), detectCountry().then(loadPluto)]).then(function () {
+    return Promise.all([loadFreely().catch(function () {}), detectCountry().then(loadPluto), loadUSEpg()]).then(function () {
       guideAt = Date.now();
       buildChans();
       buildFilmsOnTV();
