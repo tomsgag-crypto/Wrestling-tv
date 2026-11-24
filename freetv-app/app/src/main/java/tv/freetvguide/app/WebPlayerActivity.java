@@ -962,8 +962,6 @@ public class WebPlayerActivity extends Activity {
                 startScript = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, desktopJs(), java.util.Collections.singleton("*"));
         } catch (Throwable ignored) { }
     }
-    @SuppressLint("SetJavaScriptEnabled")
-    @Override
     // ---- picture in picture: Back while watching shrinks the channel into a corner window over the guide
     static WebPlayerActivity pip;
     private boolean canPip() {
@@ -997,6 +995,8 @@ public class WebPlayerActivity extends Activity {
         }, 900);
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
+    @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         if (pip != null && pip != this) { pip.finish(); pip = null; }   // a new channel replaces the corner window
