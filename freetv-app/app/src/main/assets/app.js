@@ -2380,7 +2380,7 @@ var app = (function () {
     var t = e.target.closest('.tab, .blk, .gch, .cat, .card, .app, .opt');
     if (!t) return;
     if (t.classList.contains('tab')) { zone = 'main'; setView(t.getAttribute('data-v')); return; }
-    if (t.classList.contains('opt')) { pop.row = +t.getAttribute('data-i'); popKey('ok'); return; }
+    if (t.classList.contains('opt')) { pop.inputFocus = false; pop.row = +t.getAttribute('data-i'); popKey('ok'); return; }
     zone = 'main';
     if (t.classList.contains('blk')) {
       var r = +t.getAttribute('data-r'), tt = +t.getAttribute('data-t'), before = gRow === r ? focused() : null;
@@ -2417,6 +2417,10 @@ var app = (function () {
     else if (view === 'lists') { var cats = [].slice.call(t.parentNode.querySelectorAll('.cat:not(.hdr)')); lsCat = Math.max(0, cats.indexOf(t)); lsSide = 'left'; zone = 'main'; lsKey('menu'); }
   });
 
+  // typing box: Enter (✓ on a phone keyboard) presses the first button
+  $('popIn').addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.keyCode === 13) && pop && pop.input) { e.preventDefault(); pop.inputFocus = false; pop.row = 0; popKey('ok'); }
+  });
   // ---------------------------------------------------------------- start
   document.body.classList.add(TOUCH ? 'touch' : 'tv');
   if (SPORTS) {
