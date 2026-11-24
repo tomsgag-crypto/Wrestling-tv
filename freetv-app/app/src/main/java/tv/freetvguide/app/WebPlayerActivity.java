@@ -779,9 +779,9 @@ public class WebPlayerActivity extends Activity {
                 long next = 800;
                 String why = o.optString("why", act);
                 if (!act.equals("login") && cover.getVisibility() != View.VISIBLE && loginShown) { cover.setVisibility(View.VISIBLE); loginShown = false; }
-                cover.setText("Loading " + getIntent().getStringExtra("title") + "…\n\n(" + why + ")");
+                cover.setText("Loading " + getIntent().getStringExtra("title") + "…");   // just "Loading" – no step-by-step notes
                 if (act.equals("login")) { reveal.run(); loginShown = true; steps = 0; }   // let you sign in
-                else if (act.equals("playing")) { if (fsTries == 0) { cover.setText("Starting " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); goFull(); } return; }
+                else if (act.equals("playing")) { if (fsTries == 0) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); goFull(); } return; }
                 else if (act.equals("enable")) {
                     long t = android.os.SystemClock.uptimeMillis();
                     web.requestFocus();
