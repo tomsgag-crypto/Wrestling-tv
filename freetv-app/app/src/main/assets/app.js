@@ -572,12 +572,13 @@ var app = (function () {
   var SKY_SLUGS = [[/main ?event/i, 'sky-sports-main-event'], [/\bpl\b|premier/i, 'sky-sports-premier-league'], [/football/i, 'sky-sports-football'], [/cricket/i, 'sky-sports-cricket'],
     [/golf/i, 'sky-sports-golf'], [/f1/i, 'sky-sports-f1'], [/tennis/i, 'sky-sports-tennis'], [/nfl/i, 'sky-sports-nfl'], [/racing/i, 'sky-sports-racing'], [/news/i, 'sky-sports-news'], [/mix/i, 'sky-sports-mix'], [/\+|plus/i, 'sky-sports-plus']];
   function skySlug(n) { for (var i = 0; i < SKY_SLUGS.length; i++) if (SKY_SLUGS[i][0].test(n)) return SKY_SLUGS[i][1]; return ''; }
-  var usEpg = load('usEpg') || {};
+  var usEpg = load('usEpg') || {}, usPluto = [];
   function loadUSEpg() {
     return get('https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/us-epg/us-epg.json').then(function (t) {
       var j = typeof t === 'string' ? JSON.parse(t) : t, out = {};
       Object.keys(j.ch || {}).forEach(function (k) { out[k] = j.ch[k].map(function (x) { return { s: x[0], e: x[1], t: x[2], sub: x[3], desc: x[4], img: '' }; }); });
       if (Object.keys(out).length) { usEpg = out; save('usEpg', out); }
+      if (j.pluto && j.pluto.length) usPluto = j.pluto;
     }).catch(function () {});
   }
   var usSports = load('usSports') || {};
@@ -678,12 +679,13 @@ var app = (function () {
     if (!SPORTS && !isUS() && primeUCL.length) out.push({ sec: 'Prime Video', id: 'primeucl', name: 'Prime Video Champions League', cat: 'Sports', svc: 'prime', primeLive: true, events: primeUCL });
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (!settings.hide['Sling TV']) slingRows().forEach(function (r) { out.push(r); });
+    if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
       w.rows.forEach(function (r, i) { out.push({ sec: w.sec, id: 'w' + w.k + i, name: r[0], web: r[1], appK: w.k === 'pplus' ? 'paramount' : '', cat: r[2] || '', events: [] }); });
     });
     out = out.filter(function (c) { return !settings.hide[c.sec.replace(' (US)', '')]; });
-    if (isUS()) out = out.filter(function (c) { return secGroup(c.sec) === 'US TV'; }).concat(out.filter(function (c) { return secGroup(c.sec) !== 'US TV'; }));
+    var usFirst = isUS(); out = out.filter(function (c) { return (secGroup(c.sec) === 'US TV') === usFirst; }).concat(out.filter(function (c) { return (secGroup(c.sec) === 'US TV') !== usFirst; }));
     out.forEach(function (c) { c.type = chanType(c); });
     if (settings.guideType) out = out.filter(function (c) { return c.type === settings.guideType; });
     if (/^(UK|US) TV$/.test(settings.guideSec || '')) { var gs = out.filter(function (c) { return secGroup(c.sec) === settings.guideSec; }); if (gs.length) out = gs; }
@@ -712,6 +714,12 @@ var app = (function () {
     ['comedy', 'Comedy Central'], ['ifc', 'IFC'], ['bbca', 'BBC America'], ['freeform', 'Freeform'], ['cartoon', 'Cartoon Network'], ['nickjr', 'Nick Jr.'], ['hgtv', 'HGTV'],
     ['food', 'Food Network'], ['tlc', 'TLC'], ['travel', 'Travel Channel'], ['cnn', 'CNN'], ['foxnews', 'Fox News'], ['bloomberg', 'Bloomberg TV'], ['vice', 'VICE'],
     ['axs', 'AXS TV'], ['fuse', 'Fuse'], ['comet', 'COMET'], ['mgmdi', 'MGM+ Drive-In'], ['qvc', 'QVC']];
+  function plutoUSRows() {
+    return usPluto.map(function (c) {
+      return { sec: 'Pluto TV (US)', id: 'pu_' + c.id, name: c.n, num: c.num, web: 'https://pluto.tv/us/live-tv/' + (c.slug || ''), appK: 'pluto', cat: c.cat || '',
+        events: (c.ev || []).map(function (x) { return { s: x[0], e: x[1], t: x[2], sub: '', desc: x[3] || '', img: '' }; }) };
+    });
+  }
   function slingRows() {
     var nowS = nowSec();
     return SLING_BLUE.map(function (r) {
@@ -1682,6 +1690,10 @@ var app = (function () {
     var nHide = Object.keys(settings.hide).length + (settings.favOnly ? 1 : 0);
     dh += '<div class="day opts' + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">☰ Filter & options' + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
     dh += '<div class="day sec on' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 ? ' sel' : '') + '" data-day="src">▾ Channels: ' + esc(settings.guideSec || 'All') + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + '</div>';
+    // country buttons: everything, UK TV only, US TV only
+    if (!SPORTS) [['', 'UK + US'], ['UK TV', 'UK TV'], ['US TV', 'US TV']].forEach(function (x, i) {
+      dh += '<div class="day' + ((settings.guideSec || '') === x[0] ? ' on' : '') + (gZone === 'days' && zone === 'main' && gDay === DAYS + 2 + i ? ' sel' : '') + '" data-day="c' + i + '">' + x[1] + '</div>';
+    });
     $('gDays').innerHTML = dh;
     var dsel = $('gDays').querySelector('.day.sel');
     if (dsel) { var gb = $('gDays'); if (dsel.offsetLeft + dsel.offsetWidth > gb.scrollLeft + gb.clientWidth) gb.scrollLeft = dsel.offsetLeft + dsel.offsetWidth - gb.clientWidth + 20; if (dsel.offsetLeft < gb.scrollLeft) gb.scrollLeft = Math.max(0, dsel.offsetLeft - 20); }
@@ -1784,8 +1796,10 @@ var app = (function () {
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       // the chips: day drop-down (0), Filter & options (DAYS), Channels (DAYS + 1)
-      if (k === 'left') gDay = gDay > DAYS ? DAYS : 0;
-      else if (k === 'right') gDay = gDay < DAYS ? DAYS : DAYS + 1;
+      var CH = SPORTS ? [0, DAYS, DAYS + 1] : [0, DAYS, DAYS + 1, DAYS + 2, DAYS + 3, DAYS + 4], ci = Math.max(0, CH.indexOf(gDay));
+      if (k === 'left') gDay = CH[Math.max(0, ci - 1)];
+      else if (k === 'right') gDay = CH[Math.min(CH.length - 1, ci + 1)];
+      else if (k === 'ok' && gDay >= DAYS + 2) { setSource(['', 'UK TV', 'US TV'][gDay - DAYS - 2], ''); return; }
       else if (k === 'ok' && gDay === DAYS) { optionsMenu(); return; }
       else if (k === 'ok' && gDay > DAYS) { sourceMenu(); return; }
       else if (k === 'ok') { dayMenu(); return; }
@@ -2681,7 +2695,7 @@ var app = (function () {
     if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var dy = e.target.closest('[data-day]');
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; }
-      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
+      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } var cy = /^c(\d)$/.exec(dy.getAttribute('data-day') || ''); if (cy) { setSource(['', 'UK TV', 'US TV'][+cy[1]], ''); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
     if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { if (curCat()) catMenu(curCat()); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'a') { appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
