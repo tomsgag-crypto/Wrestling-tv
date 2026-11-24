@@ -979,11 +979,14 @@ var app = (function () {
       // a straight link in an app you have: just go
       var direct = ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0];
       if (direct && it.kind === 'tv' && webSvc(direct.k)) { pickEpisode(direct.k, direct.exact, '"' + it.title + '"', it.title, it); return; }
-      if (direct) { openService(direct.k, direct.exact, '"' + it.title + '"', it.title, it.kind); return; }
+      // straight to one app (Netflix, Disney+ …): a short menu first, so the title can also go on a list
+      if (direct) { showPop({ title: it.title, opts: [{ label: '▶ Open in ' + SVC[direct.k].name, fn: function () { openService(direct.k, direct.exact, '"' + it.title + '"', it.title, it.kind); } },
+        { label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }, { label: 'Cancel' }] }); return; }
       // ITVX / Prime on the web don't need the app
       var webOne = ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()) || (w.k === 'disney' && disneyWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
       if (webOne && it.kind === 'tv') { pickEpisode(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it); return; }
-      if (webOne) { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it.kind); return; }
+      if (webOne) { showPop({ title: it.title, opts: [{ label: '▶ Open in ' + SVC[webOne.k].name, fn: function () { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it.kind); } },
+        { label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }, { label: 'Cancel' }] }); return; }
       return ws;
     }).then(function (ws) {
       if (!ws) return;
