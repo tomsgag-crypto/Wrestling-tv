@@ -910,7 +910,7 @@ var app = (function () {
   /** A series on ITVX / Prime / Disney+ on the web: choose the season and episode in Free TV, then the player goes straight to it. */
   function appFindOK() { return window.Native && Native.appFind && !TOUCH; }
   // services where Free TV lists the episodes itself: the web players, and the Prime Video / Disney+ apps (found in the background, opened on the episode)
-  function webSvc(k) { return (k === 'itv' && itvWeb()) || (k === 'prime' && (primeWeb() || appFindOK())) || (k === 'disney' && (disneyWeb() || appFindOK())); }
+  function webSvc(k) { return (k === 'itv' && itvWeb()) || (k === 'prime' && (primeWeb() || appFindOK())) || (k === 'disney' && disneyWeb()); }
   function pickEpisode(k, url, what, title, it) {
     var id = String(it.tmdb || '').split('/')[1];
     if (!id) { openService(k, url, what, title, 'tv'); return; }
@@ -954,7 +954,7 @@ var app = (function () {
       return;
     }
     // Prime Video / Disney+ apps: look the title (and episode) up on their website first, so the app opens straight on it
-    if ((k === 'prime' || k === 'disney') && appFindOK()) {
+    if (k === 'prime' && appFindOK()) {
       var nm = String(title || what || '').replace(/^"|"$/g, '');
       var links = String(url || '').split('\n').filter(function (u) { return u && !/\/search/.test(u); });
       var start = k === 'disney' ? links.filter(function (u) { return /disneyplus\.com\/(browse|series|movies)/.test(u); })[0] || '' : '';
