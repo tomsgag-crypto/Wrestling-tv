@@ -35,53 +35,104 @@ public class WebPlayerActivity extends Activity {
     private volatile boolean skyPage = false, adPage = false;
     private volatile int adHits = 0;
     volatile int pieces = 0, retries = 0;
-    /** Download one video piece with short time limits, trying again quickly if it stalls. null = let the browser do it. */
-    private android.webkit.WebResourceResponse fetchPiece(android.webkit.WebResourceRequest req) {
-        String url = req.getUrl().toString();
-        for (int attempt = 0; attempt < 4; attempt++) {
-            java.net.HttpURLConnection c = null;
-            try {
-                c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                c.setConnectTimeout(3000);
-                c.setReadTimeout(attempt == 0 ? 4000 : 6000);
-                c.setInstanceFollowRedirects(true);
-                for (java.util.Map.Entry<String, String> e : req.getRequestHeaders().entrySet()) {
-                    String k = e.getKey();
-                    if (k == null || k.equalsIgnoreCase("Accept-Encoding")) continue;
-                    c.setRequestProperty(k, e.getValue());
-                }
-                String ck = CookieManager.getInstance().getCookie(url);
-                if (ck != null && !ck.isEmpty()) c.setRequestProperty("Cookie", ck);
-                int code = c.getResponseCode();
-                if (code >= 500 && attempt < 3) { c.disconnect(); retries++; continue; }
-                if (code >= 400) { c.disconnect(); return null; }   // let the page handle it as usual
-                java.io.InputStream in = c.getInputStream();
-                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(Math.max(64 * 1024, c.getContentLength()));
-                byte[] buf = new byte[64 * 1024]; int n;
-                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-                in.close();
-                java.util.Map<String, String> hdrs = new java.util.HashMap<>();
-                for (java.util.Map.Entry<String, java.util.List<String>> e : c.getHeaderFields().entrySet()) {
-                    if (e.getKey() == null || e.getValue() == null || e.getValue().isEmpty()) continue;
-                    String k = e.getKey();
-                    if (k.equalsIgnoreCase("Content-Encoding") || k.equalsIgnoreCase("Transfer-Encoding") || k.equalsIgnoreCase("Content-Length")) continue;
-                    hdrs.put(k, e.getValue().get(0));
-                }
-                String origin = req.getRequestHeaders().get("Origin");
-                hdrs.put("Access-Control-Allow-Origin", origin == null ? "*" : origin);
-                if (origin != null) hdrs.put("Access-Control-Allow-Credentials", "true");
-                hdrs.put("Access-Control-Expose-Headers", "*");
-                String type = c.getContentType() == null ? "application/octet-stream" : c.getContentType().split(";")[0];
-                String reason = c.getResponseMessage() == null || c.getResponseMessage().isEmpty() ? "OK" : c.getResponseMessage();
-                pieces++;
-                return new android.webkit.WebResourceResponse(type, null, code, reason, hdrs, new java.io.ByteArrayInputStream(out.toByteArray()));
-            } catch (Exception e) {
-                retries++;
-                if (c != null) try { c.disconnect(); } catch (Exception ignored) { }
+    // ---- Sky video pieces: Free TV fetches them itself – a second copy if one is slow, and the next two ahead of time
+    private static final class Piece { int code; String type, reason; java.util.Map<String, String> hdrs; byte[] body; }
+    private final java.util.concurrent.ExecutorService netPool = java.util.concurrent.Executors.newCachedThreadPool();   // grows as needed, so waiting downloads never block each other
+    private final java.util.Map<String, java.util.concurrent.Future<Piece>> ahead = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, java.util.concurrent.Future<Piece>>() {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, java.util.concurrent.Future<Piece>> e) { return size() > 16; }
+    });
+    private final java.util.Map<String, Long> lastNum = new java.util.concurrent.ConcurrentHashMap<>(), step = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.regex.Pattern NUM = java.util.regex.Pattern.compile("^(.*[/\\-_=])(\\d{3,})([^/]*)$");
+
+    private Piece download(String url, java.util.Map<String, String> reqHdrs, int readMs) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        try {
+            c.setConnectTimeout(3000); c.setReadTimeout(readMs); c.setInstanceFollowRedirects(true);
+            for (java.util.Map.Entry<String, String> e : reqHdrs.entrySet()) {
+                if (e.getKey() == null || e.getKey().equalsIgnoreCase("Accept-Encoding") || e.getKey().equalsIgnoreCase("Range")) continue;
+                c.setRequestProperty(e.getKey(), e.getValue());
             }
+            String ck = CookieManager.getInstance().getCookie(url);
+            if (ck != null && !ck.isEmpty()) c.setRequestProperty("Cookie", ck);
+            Piece p = new Piece();
+            p.code = c.getResponseCode();
+            if (p.code >= 500) throw new java.io.IOException("server " + p.code);
+            java.io.InputStream in = p.code >= 400 ? c.getErrorStream() : c.getInputStream();
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(Math.max(64 * 1024, c.getContentLength()));
+            byte[] buf = new byte[64 * 1024]; int n;
+            while (in != null && (n = in.read(buf)) > 0) out.write(buf, 0, n);
+            if (in != null) in.close();
+            p.body = out.toByteArray();
+            p.hdrs = new java.util.HashMap<>();
+            for (java.util.Map.Entry<String, java.util.List<String>> e : c.getHeaderFields().entrySet()) {
+                if (e.getKey() == null || e.getValue() == null || e.getValue().isEmpty()) continue;
+                String k = e.getKey();
+                if (k.equalsIgnoreCase("Content-Encoding") || k.equalsIgnoreCase("Transfer-Encoding") || k.equalsIgnoreCase("Content-Length")) continue;
+                p.hdrs.put(k, e.getValue().get(0));
+            }
+            p.type = c.getContentType() == null ? "application/octet-stream" : c.getContentType().split(";")[0];
+            p.reason = c.getResponseMessage() == null || c.getResponseMessage().isEmpty() ? "OK" : c.getResponseMessage();
+            return p;
+        } finally { c.disconnect(); }
+    }
+
+    /** One piece, as quickly as possible: a second download starts if the first is slow (2.5 s); up to 3 rounds. */
+    private Piece fast(String url, java.util.Map<String, String> reqHdrs) {
+        for (int round = 0; round < 3; round++) {
+            java.util.concurrent.ExecutorCompletionService<Piece> cs = new java.util.concurrent.ExecutorCompletionService<>(netPool);
+            int running = 1;
+            cs.submit(() -> download(url, reqHdrs, 6000));
+            long until = android.os.SystemClock.uptimeMillis() + 9000;
+            try {
+                java.util.concurrent.Future<Piece> f = cs.poll(2500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                if (f == null) { cs.submit(() -> download(url, reqHdrs, 6000)); running++; retries++; }
+                while (running > 0) {
+                    if (f == null) f = cs.poll(Math.max(1, until - android.os.SystemClock.uptimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS);
+                    if (f == null) break;
+                    running--;
+                    try { Piece p = f.get(); if (p != null) return p; } catch (Exception ignored) { }
+                    f = null;
+                }
+            } catch (InterruptedException e) { return null; }
+            retries++;
         }
         return null;
-    }   // Sky's page player stretched to fill the screen (instead of TV full screen)
+    }
+
+    private android.webkit.WebResourceResponse fetchPiece(android.webkit.WebResourceRequest req) {
+        final String url = req.getUrl().toString();
+        final java.util.Map<String, String> hdrs = new java.util.HashMap<>(req.getRequestHeaders());
+        Piece p = null;
+        java.util.concurrent.Future<Piece> pre = ahead.remove(url);
+        if (pre != null) { try { p = pre.get(9, java.util.concurrent.TimeUnit.SECONDS); if (p != null) aheadHits++; } catch (Exception ignored) { } }
+        if (p == null) p = fast(url, hdrs);
+        if (p == null || p.code >= 400) return null;   // let the page deal with it as usual
+        pieces++;
+        // fetch the next two pieces of this stream ahead of time (piece names count up by a steady amount)
+        try {
+            String path = req.getUrl().getPath(), q = req.getUrl().getEncodedQuery();
+            java.util.regex.Matcher m = NUM.matcher(path == null ? "" : path);
+            if (m.matches()) {
+                String key = m.group(1) + "#" + m.group(3);
+                long num = Long.parseLong(m.group(2));
+                Long prev = lastNum.put(key, num);
+                if (prev != null && num > prev && num - prev < 1_000_000_000L) step.put(key, num - prev);
+                Long st = step.get(key);
+                if (st != null) for (int k = 1; k <= 2; k++) {
+                    String nextPath = m.group(1) + (num + k * st) + m.group(3);
+                    String nextUrl = req.getUrl().getScheme() + "://" + req.getUrl().getEncodedAuthority() + nextPath + (q == null ? "" : "?" + q);
+                    if (!ahead.containsKey(nextUrl)) ahead.put(nextUrl, netPool.submit(() -> { try { return fast(nextUrl, hdrs); } catch (Exception e) { return null; } }));
+                }
+            }
+        } catch (Exception ignored) { }
+        java.util.Map<String, String> out = new java.util.HashMap<>(p.hdrs);
+        String origin = req.getRequestHeaders().get("Origin");
+        out.put("Access-Control-Allow-Origin", origin == null ? "*" : origin);
+        if (origin != null) out.put("Access-Control-Allow-Credentials", "true");
+        out.put("Access-Control-Expose-Headers", "*");
+        return new android.webkit.WebResourceResponse(p.type, null, p.code, p.reason, out, new java.io.ByteArrayInputStream(p.body));
+    }
+    volatile int aheadHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
     private boolean onSky() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("skysports.com"); }
@@ -113,7 +164,7 @@ public class WebPlayerActivity extends Activity {
                 if (r == null) return;
                 int bar = r.indexOf('|');
                 if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);   // (length, position and paused follow)
-                    if (onSky()) st += " · pieces by Free TV " + pieces + " (retried " + retries + ")" + " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", true) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
+                    if (onSky()) st += " · pieces by Free TV " + pieces + " (ready early " + aheadHits + ", second copies " + retries + ")" + " · advert requests " + adHits + (prefs().getBoolean("skyNoAds", true) ? " (blocked)" : ""); stats.setText(st); stats.setVisibility(watching() && showStats ? View.VISIBLE : View.GONE); if (watching()) stats.bringToFront(); }
                 if (r.contains("capped")) { android.widget.Toast.makeText(WebPlayerActivity.this, "Smoother picture on (top quality skipped)", android.widget.Toast.LENGTH_SHORT).show(); }
                 long now2 = android.os.SystemClock.uptimeMillis();
                 if (!watching() && !autoFilled) {
@@ -966,5 +1017,5 @@ public class WebPlayerActivity extends Activity {
     @Override protected void onStop() { super.onStop(); if (zapping) finish(); }
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(keepPlaying); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); }
-    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }
