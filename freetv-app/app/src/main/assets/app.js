@@ -587,7 +587,7 @@ var app = (function () {
      ['CBS Sports Golazo Network', PP, live('24-hour football channel on Paramount+')], ['CBS Sports HQ', PP, live('Sports news on Paramount+')], ['CBS (US)', PP, live('CBS live on Paramount+ – NFL, college sports, some Champions League')],
      ['ESPN (Sling)', SL + '#ftv-sling=ESPN', live('ESPN on Sling TV')], ['ESPN2 (Sling)', SL + '#ftv-sling=ESPN2', live('ESPN2 on Sling TV')],
      ['FS1 (Sling)', SL + '#ftv-sling=FS1', live('FS1 on Sling TV')], ['NFL Network (Sling)', SL + '#ftv-sling=NFL%20Network', live('NFL Network on Sling TV')]].forEach(function (r, i) {
-      chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
+      chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], appK: r[1] === PP ? 'paramount' : '', cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
     });
     if (gRow >= chans.length) gRow = 0;
   }
@@ -642,7 +642,7 @@ var app = (function () {
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
-      w.rows.forEach(function (r, i) { out.push({ sec: w.sec, id: 'w' + w.k + i, name: r[0], web: r[1], cat: r[2] || '', events: [] }); });
+      w.rows.forEach(function (r, i) { out.push({ sec: w.sec, id: 'w' + w.k + i, name: r[0], web: r[1], appK: w.k === 'pplus' ? 'paramount' : '', cat: r[2] || '', events: [] }); });
     });
     out = out.filter(function (c) { return !settings.hide[c.sec.replace(' (US)', '')]; });
     if (isUS()) out = out.filter(function (c) { return secGroup(c.sec) === 'US TV'; }).concat(out.filter(function (c) { return secGroup(c.sec) !== 'US TV'; }));
@@ -1755,7 +1755,9 @@ var app = (function () {
     else if (k === 'ok') {
       var c = chans[gRow];
       if (c && (!fp || fp.s <= now)) setZap();
-      if (c && c.primeLive) { if (fp && fp.s > now) { addMenu(progItem(c, fp)); return; } var m = fp || c.events[0]; openService('prime', '', m ? m.t : 'Champions League', m ? m.t : 'Champions League', 'movie'); return; }
+      if (c && c.primeLive) { if (fp && fp.s > now) { addMenu(progItem(c, fp)); return; } var m = fp || c.events[0]; toast('Opening Prime Video – ' + (m ? m.t : 'Champions League')); openIn('prime', '', '"' + (m ? m.t : 'Champions League') + '"'); return; }
+      // Paramount+ rows: the Paramount+ app (its live TV page when the app accepts the link)
+      if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name + '"'); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
       if (fp && c && (c.svc || c.play || fp.e <= now || ((c.pay || c.vid) && settings.virgin))) openItem(progItem(c, fp));
