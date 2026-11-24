@@ -174,6 +174,9 @@ public class WebPlayerActivity extends Activity {
                 });
         if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
             "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(!v)return '';" +
+            // pages with several videos (Prime: previews, adverts): watch the one that's playing and longest
+            "if(!/skysports|virginmedia/.test(location.host)){var vs=[];(function c(r,d){if(!r||d>8)return;[].push.apply(vs,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)c(e.shadowRoot,d+1);});})(document,0);" +
+            "vs.sort(function(a,b){var sa=(a.paused?0:2)+(isFinite(a.duration)&&a.duration>240?1:0),sb2=(b.paused?0:2)+(isFinite(b.duration)&&b.duration>240?1:0);return sb2-sa||((isFinite(b.duration)?b.duration:0)-(isFinite(a.duration)?a.duration:0));});if(vs[0])v=vs[0];}" +
             // watch the picture: restart it the moment the site pauses it, and note buffering, so we can tell which is happening
             "if(!v.__ftvW){v.__ftvW=1;window.__ftvLog=window.__ftvLog||[];v.addEventListener('pause',function(){if(window.__ftvUserPaused||v.ended||!/bbc\\.co\\.uk/.test(location.host))return;window.__ftvLog.push('paused');setTimeout(function(){if(v.paused&&!window.__ftvUserPaused)v.play();},150);});" +
             "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');if(!v.__ftvWait)v.__ftvWait=Date.now();});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});v.addEventListener('playing',function(){v.__ftvWait=0;});}" +
@@ -316,11 +319,14 @@ public class WebPlayerActivity extends Activity {
         "var sre=new RegExp('^(series|season|s)\\\\s*0*'+E.s+'$','i');var sb=all.filter(function(b){var l=(b.innerText||b.textContent||'').trim();return l.length<20&&sre.test(l);})[0];" +
         "var sbo=all.filter(function(b){var l=(b.innerText||b.textContent||'').trim();return l.length<20&&sre.test(l)&&b.closest('[role=option],[role=menuitem],[role=listbox],[role=menu],ul,li');})[0];if(sbo)sb=sbo;" +
         "if(sb&&(window.__ftvSeason||0)<2&&!window.__ftvSeasonOk){window.__ftvSeason=(window.__ftvSeason||0)+1;if(sbo)window.__ftvSeasonOk=1;(sb.closest('a,button,[role=tab],[role=option],[role=menuitem]')||sb).click();return 'season';}" +
+        "if(!sb&&(window.__ftvSeasonOpen||0)<2&&!window.__ftvSeasonOk){var other=all.filter(function(b){var l=(b.innerText||b.textContent||'').trim();return l.length<20&&/^(series|season)\\s*\\d+$/i.test(l);})[0];if(other){window.__ftvSeasonOpen=(window.__ftvSeasonOpen||0)+1;(other.closest('a,button,[role=button],[role=combobox],[aria-haspopup]')||other).click();return 'season';}}" +
         "var sel=[].slice.call(document.querySelectorAll('select')).filter(function(x){return [].some.call(x.options,function(o){return sre.test(o.text.trim());});})[0];" +
         "if(sel&&!window.__ftvSeasonOk){window.__ftvSeasonOk=1;[].forEach.call(sel.options,function(o){if(sre.test(o.text.trim()))sel.value=o.value;});sel.dispatchEvent(new Event('change',{bubbles:true}));return 'season';}" +
         "var et=n(E.t),ere=new RegExp('(^|[^0-9a-z])(episode|ep\\\\.?|e)\\\\s*0*'+E.e+'([^0-9]|$)','i'),ese=new RegExp('s\\\\s*0*'+E.s+'\\\\s*[:.]?\\\\s*e\\\\s*0*'+E.e+'([^0-9]|$)','i');" +
         "var cands=all.filter(function(b){var l=(b.getAttribute('aria-label')||'')+' '+(b.innerText||b.textContent||'');return l.length<400&&(ese.test(l)||(et.length>3&&n(l).indexOf(et)>=0)||ere.test(l));});" +
-        "cands.sort(function(a,b){return (a.innerText||'').length-(b.innerText||'').length;});var hit=cands[0];" +
+        "var osn=/(?:season|series|^s|[^a-z]s)\\s*0*(\\d+)/i;cands=cands.filter(function(b){var l=(b.getAttribute('aria-label')||'')+' '+(b.innerText||b.textContent||'');var m=l.match(osn);return !m||+m[1]===+E.s;});" +
+        "function sc(b){var l=(b.getAttribute('aria-label')||'')+' '+(b.innerText||b.textContent||'');return (ese.test(l)?4:0)+(et.length>3&&n(l).indexOf(et)>=0?2:0)+(ere.test(l)?1:0);}" +
+        "cands.sort(function(a,b){return sc(b)-sc(a)||(a.innerText||'').length-(b.innerText||'').length;});var hit=cands[0];" +
         "if(hit){window.__ftvEpDone=1;var c=hit.closest('a')||hit.querySelector('a,button')||hit.closest('button,[role=button]')||hit;" +
         "var pl=(c.parentElement||c).querySelector('[aria-label*=Play i],[data-automation-id*=play i],button');if(pl&&pl!==c&&/play/i.test(lab(pl)))pl.click();else c.click();return 'episode';}" +
         "if(!window.__ftvEpTab){var et2=all.filter(function(b){return /^episodes$/i.test((b.innerText||b.textContent||'').trim());})[0];if(et2){window.__ftvEpTab=1;(et2.closest('a,button,[role=tab]')||et2).click();return 'season';}}" +
@@ -981,6 +987,7 @@ public class WebPlayerActivity extends Activity {
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
                 ui.removeCallbacks(reveal);
                 if (find != null) { /* the step loop decides */ }
+                else if (autoSite(url) && autoMode && !url.contains("itv.com")) cover.setVisibility(View.GONE);   // Prime / Disney+: show the page while it finds and starts the programme
                 else if (autoSite(url) && autoMode && getIntent().getStringExtra("title") != null && !(series() && !url.contains("search"))) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 180000); }
                 else if (getIntent().getBooleanExtra("sync", false)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
                 else if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); if (find == null) { tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 2500); } } else cover.setVisibility(View.GONE);
