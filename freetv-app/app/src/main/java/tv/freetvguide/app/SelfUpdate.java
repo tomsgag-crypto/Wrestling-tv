@@ -19,7 +19,7 @@ import java.net.URL;
  * which is what blocks the helper from being switched on.
  */
 public class SelfUpdate extends BroadcastReceiver {
-    static final String URL_APK = "https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/free-tv/FreeTV.apk";
+    static final String URL_APK = BuildConfig.UPDATE_URL;
 
     interface Progress { void say(String s); }
 
@@ -92,7 +92,7 @@ public class SelfUpdate extends BroadcastReceiver {
             ReminderReceiver.ensureChannel(ctx);
             int fl = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
             android.app.Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new android.app.Notification.Builder(ctx, "reminders") : new android.app.Notification.Builder(ctx);
-            b.setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle("Free TV has updated").setContentText("Select to open it again")
+            b.setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle(ctx.getString(R.string.app_name) + " has updated").setContentText("Select to open it again")
              .setAutoCancel(true).setContentIntent(PendingIntent.getActivity(ctx, 9, open, fl)).setTimeoutAfter(5 * 60000);
             ((android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE)).notify(9, b.build());
         } catch (Exception ignored) { }

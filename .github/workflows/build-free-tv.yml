@@ -38,11 +38,13 @@ jobs:
           KEY: ${{ secrets.APK_KEYSTORE }}
         run: |
           if [ -n "$KEY" ]; then echo "$KEY" | base64 -d > "$RUNNER_TEMP/apps.keystore" && echo "APK_KEYSTORE_FILE=$RUNNER_TEMP/apps.keystore" >> "$GITHUB_ENV" && echo "fixed key in use"; else echo "no APK_KEYSTORE secret: using a throwaway key"; fi
-      - name: Build APK
-        run: gradle assembleRelease --no-daemon
+      - name: Build APKs (Free TV and Sky Sports TV)
+        run: gradle assembleFullRelease assembleSportsRelease --no-daemon
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk ../FreeTV.apk
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/full/release/app-full-release.apk ../FreeTV.apk
+          cp app/build/outputs/apk/sports/release/app-sports-release.apk ../SkySportsTV.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -51,4 +53,13 @@ jobs:
           name: Free TV (latest build)
           body: Built from commit ${{ github.sha }}
           files: FreeTV.apk
+          make_latest: false
+
+      - name: Publish Sky Sports TV
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sky-sports-tv
+          name: Sky Sports TV (latest build)
+          body: Built from commit ${{ github.sha }}
+          files: SkySportsTV.apk
           make_latest: false

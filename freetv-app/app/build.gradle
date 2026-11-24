@@ -10,8 +10,8 @@ android {
         applicationId "tv.freetvguide.app"
         minSdk 21
         targetSdk 34
-        versionCode 84
-        versionName "2.20"
+        versionCode 85
+        versionName "2.21"
     }
 
     // One fixed key for every build, so new versions install as updates (the key is a GitHub secret, never in the code)
@@ -24,6 +24,23 @@ android {
                 keyAlias 'androiddebugkey'
                 keyPassword 'android'
             }
+        }
+    }
+
+    // Two apps from the same code: Free TV, and a Sky Sports-only guide
+    buildFeatures { buildConfig true }
+    flavorDimensions "app"
+    productFlavors {
+        full {
+            dimension "app"
+            resValue "string", "app_name", "Free TV"
+            buildConfigField "String", "UPDATE_URL", '"https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/free-tv/FreeTV.apk"'
+        }
+        sports {
+            dimension "app"
+            applicationId "tv.freetvguide.sports"
+            resValue "string", "app_name", "Sky Sports TV"
+            buildConfigField "String", "UPDATE_URL", '"https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/sky-sports-tv/SkySportsTV.apk"'
         }
     }
 

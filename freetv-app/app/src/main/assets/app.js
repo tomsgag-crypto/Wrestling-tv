@@ -400,7 +400,7 @@ var app = (function () {
     } catch (e) { }
     return ownedCache;
   }
-  function onlyMine() { return settings.payMine !== false && settings.virgin && owned(); }
+  function onlyMine() { if (SPORTS) return null; return settings.payMine !== false && settings.virgin && owned(); }
   function dupKey(n) {
     return String(n).toLowerCase().replace(/\(.*?\)/g, '').replace(/powered by.*$/, '').replace(/ by [a-z0-9&+.' ]+$/, '')
       .replace(/\b(pluto ?tv|samsung|tv|channel|uk|hd|the|plus)\b/g, '').replace(/[^a-z0-9]/g, '');
@@ -483,7 +483,23 @@ var app = (function () {
   function setSource(sc, t) { settings.guideSec = sc; settings.guideType = t; saveSettings(); buildChans(); gRow = 0; rTop = 0; gZone = 'rows'; render(); }
   function setType(t) { settings.guideType = t; saveSettings(); buildChans(); gRow = 0; rTop = 0; gZone = 'rows'; render(); }
 
+  var SPORTS = window.FTV_FLAVOR === 'sports';   // the Sky Sports TV app: only Sky Sports channels
+  var SKY_SLUGS = [[/main ?event/i, 'sky-sports-main-event'], [/\bpl\b|premier/i, 'sky-sports-premier-league'], [/football/i, 'sky-sports-football'], [/cricket/i, 'sky-sports-cricket'],
+    [/golf/i, 'sky-sports-golf'], [/f1/i, 'sky-sports-f1'], [/tennis/i, 'sky-sports-tennis'], [/nfl/i, 'sky-sports-nfl'], [/racing/i, 'sky-sports-racing'], [/news/i, 'sky-sports-news'], [/mix/i, 'sky-sports-mix'], [/\+|plus/i, 'sky-sports-plus']];
+  function skySlug(n) { for (var i = 0; i < SKY_SLUGS.length; i++) if (SKY_SLUGS[i][0].test(n)) return SKY_SLUGS[i][1]; return ''; }
+  function buildSportsChans() {
+    var seen = {};
+    chans = virgin.filter(function (c) { return /^sky ?sports?/i.test(c.vname) && !/duplicate|uhd|ultra|box office/i.test(c.vname); }).map(function (c) {
+      var slug = skySlug(c.vname.replace(/^sky ?sports? ?/i, ''));
+      if (!slug || seen[slug]) return null;
+      seen[slug] = 1;
+      var nice = slug.replace(/-/g, ' ').replace(/\b\w/g, function (x) { return x.toUpperCase(); }).replace('F1', 'F1').replace(/\bNfl\b/, 'NFL').replace(/\bF1\b/i, 'F1').replace('Plus', '+');
+      return { sec: 'Sky Sports', id: c.id, vid: c.vid, vname: c.vname, vweb: 'https://www.skysports.com/watch/' + slug, name: nice, num: c.num, cat: 'Sports', type: 'Sport', svc: '', events: c.events };
+    }).filter(Boolean);
+    if (gRow >= chans.length) gRow = 0;
+  }
   function buildChans() {
+    if (SPORTS) { buildSportsChans(); return; }
     var out = [];
     var region = settings.bbc1, two = /Wales/.test(region) ? 'BBC Two Wales' : /NI$/.test(region) ? 'BBC Two NI' : 'BBC Two';
     (freely.order || []).forEach(function (id) {
@@ -570,6 +586,11 @@ var app = (function () {
     Native.virginSyncQuiet();
   }
   function loadGuide() {
+    if (SPORTS) {
+      status('guide', true);
+      settings.virgin = true;
+      return loadVirgin().then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
+    }
     setTimeout(autoVirginSync, 8000);
     status('guide', true);
     return Promise.all([loadFreely().catch(function () {}), detectCountry().then(loadPluto)]).then(function () {
@@ -1703,6 +1724,7 @@ var app = (function () {
   var REGIONS = ['BBC One London', 'BBC One NE&C', 'BBC One NW', 'BBC One Yorks', 'BBC One Yk&Li', 'BBC One E Mids', 'BBC One W Mids', 'BBC One East',
     'BBC One SE', 'BBC One South', 'BBC One SW', 'BBC One West', 'BBC One CI', 'BBC One Scotland', 'BBC One Wales', 'BBC One NI'];
   function tiles() {
+    if (SPORTS) { var st = []; if (window.Native && Native.updateSelf) st.push({ kind: 'upd', k: 'update', name: '⟳ Update Sky Sports TV', desc: 'Get the newest version' + (Native.version ? ' (you have ' + Native.version() + ')' : '') }); return st; }
     // free services first, then subscriptions (installed ones first within each)
     var NOT_ON_APPS = ['s4c', 'stv', 'rakuten', 'plex', 'skysports', 'discovery', 'britbox', 'mubi', 'spotify'];   // Tom doesn't want these on the Apps tab
     var keys = Object.keys(SVC).filter(function (k) { return NOT_ON_APPS.indexOf(k) < 0; }), rank = function (k) { return (SVC[k].paid ? 2 : 0) + (has(k) ? 0 : 1); };
@@ -2253,12 +2275,19 @@ var app = (function () {
 
   // ---------------------------------------------------------------- start
   document.body.classList.add(TOUCH ? 'touch' : 'tv');
+  if (SPORTS) {
+    document.title = 'Sky Sports TV';
+    document.body.classList.add('sports');
+    [].forEach.call(document.querySelectorAll('.tab'), function (t) { if (!/^(guide|apps)$/.test(t.getAttribute('data-v'))) t.style.display = 'none'; });
+    if (!/^(guide|apps)$/.test(view)) view = 'guide';
+    var lb = document.querySelector('#logo b'); if (lb) lb.textContent = 'SKY SPORTS TV';
+  }
   refreshInstalled();
   tidyReminders();
   buildOD();
   render();
   loadGuide();
-  loadOD();
+  if (!SPORTS) loadOD();
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
