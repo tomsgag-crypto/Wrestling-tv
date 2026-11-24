@@ -843,7 +843,7 @@ var app = (function () {
       (c.prov ? '&with_watch_providers=' + c.prov : '') + (c.kind === 'movie' ? '&with_original_language=en' : '');
     var g = OD_GENRES[odGenre], gids = c.kind === 'movie' ? g[1] : g[2];
     if (odGenre && !gids) { c.items = []; c.done = true; c.loading = false; return Promise.resolve(); }
-    if (gids || c.genres) q += '&with_genres=' + encodeURIComponent(c.genres ? (gids ? '(' + gids + '),' + c.genres : c.genres) : gids);
+    if (gids || c.genres) q += '&with_genres=' + encodeURIComponent(c.genres ? (gids ? gids.split('|')[0] + ',' + c.genres : c.genres) : gids);   // TMDB: comma = both
     // "newest first": first things out recently (TV with episodes in the last 2 months, films from the last year), then the rest by popularity
     if (c.fresh && !c.phase) { c.phase = 'new'; c.npage = 0; c.seen = {}; }
     var newPhase = c.fresh && c.phase === 'new';
