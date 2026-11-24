@@ -184,7 +184,10 @@ public class WebPlayerActivity extends Activity {
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
             "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
-            "var L=(window.__ftvLog||[]).concat(['F'+tfr]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+(isFinite(v.duration)?Math.round(v.duration):0)+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
+            "var sb=false;if(/skysports/.test(location.host)){try{var roots=[],rn=v.getRootNode?v.getRootNode():document,hops=0;while(rn&&hops++<4){roots.push(rn);if(rn===document||!rn.host)break;rn=rn.host.getRootNode?rn.host.getRootNode():document;}" +
+            // Sky's own "Buffering…" message on the player: if it's showing, it's buffering, whatever the clock says
+            "roots.forEach(function(R){if(sb)return;var es=R.querySelectorAll?R.querySelectorAll('*'):[];for(var e=0;e<es.length&&e<4000;e++){var x=es[e];if(x.childElementCount===0&&/^\\s*Buffering/i.test(x.textContent||'')){var bx=x.getBoundingClientRect();if(bx.width>0&&bx.height>0){var cs=getComputedStyle(x);if(cs.visibility!=='hidden'&&cs.display!=='none'&&cs.opacity!=='0'){sb=true;break;}}}}});}catch(e){}}" +
+            "var L=(window.__ftvLog||[]).concat(['F'+tfr]).concat(sb?['skybuf']:[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+(isFinite(v.duration)?Math.round(v.duration):0)+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
                 if (r == null) return;
                 int bar = r.indexOf('|');
                 if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);   // (length, position and paused follow)
@@ -224,7 +227,7 @@ public class WebPlayerActivity extends Activity {
                 long fr = -1;
                 try { java.util.regex.Matcher fm = java.util.regex.Pattern.compile("(?:^|,)F(\\d+)").matcher(r); if (fm.find()) fr = Long.parseLong(fm.group(1)); } catch (Exception ignored) { }
                 // stopped = the clock isn't moving, or the picture isn't (Sky can keep the clock and sound going on a frozen picture)
-                boolean bufNow = sct > 0 && !spz && !userPaused && ((stallCt >= 0 && Math.abs(sct - stallCt) < 0.3) || (fr >= 0 && fr == stallFr));
+                boolean bufNow = !userPaused && (r.contains("skybuf") || (sct > 0 && !spz && ((stallCt >= 0 && Math.abs(sct - stallCt) < 0.3) || (fr >= 0 && fr == stallFr))));
                 if (sct >= 0) stallCt = sct;
                 stallFr = fr;
                 // the start-up wait is over (shown or not): from now on watch for buffering, even if it never settled
