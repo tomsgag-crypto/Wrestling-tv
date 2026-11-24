@@ -1182,7 +1182,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (find != null) { cover.setVisibility(View.VISIBLE); ui.postDelayed(step, 1500); }
         if (start != null && start.contains("#ftv-sling=")) {
-            slingCh = Uri.decode(start.substring(start.indexOf("#ftv-sling=") + 11));
+            slingCh = android.net.Uri.decode(start.substring(start.indexOf("#ftv-sling=") + 11));
             String known = getSharedPreferences("sling", MODE_PRIVATE).getString(slingCh, null);
             if (known != null) start = known; else { slingTries = 0; ui.postDelayed(slingFind, 4000); }
         }
