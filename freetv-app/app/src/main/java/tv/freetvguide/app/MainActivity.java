@@ -212,20 +212,42 @@ public class MainActivity extends Activity {
         ui.removeCallbacks(quietPoll);
         root.removeView(quiet); quiet.destroy(); quiet = null;
     }
-    // Prime Video: find the title's Prime ID on the Prime Video website (hidden, in the background), then open the Prime Video app straight on it
+    // Prime Video / Disney+: find the title (and the chosen episode) on their website, hidden in the background, then open their app straight on it
     private WebView primeQ;
     private int primeTries = 0;
-    private String[] primeJob;   // labels, store, title, fallback url
-    private static final String PRIME_FIND = "(function(T){function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}var want=n(T);" +
-        "var g=(document.documentElement.innerHTML.match(/amzn1\\.dv\\.gti\\.[0-9a-f-]{36}/i)||[])[0];" +
-        "if(/\\/detail\\//.test(location.pathname))return g?'gti:'+g:'page:'+location.pathname;" +
-        "var L=[].slice.call(document.querySelectorAll('a[href*=\\'/detail/\\']'));function tt(a){return n(a.getAttribute('aria-label')||(a.querySelector('img')?a.querySelector('img').alt:'')||a.innerText);}" +
-        "var hit=L.filter(function(a){return tt(a)===want;})[0]||L.filter(function(a){return tt(a).indexOf(want)===0;})[0]||L.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];" +
-        "if(hit){var h=hit.getAttribute('href');return 'go:'+(h.indexOf('http')===0?h:location.origin+h);}return '';})";
+    private String[] primeJob;   // svc, labels, store, title, fallback url, episode json
+    private static final String APP_FIND = "(function(T,E,SVC){try{function n(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');}var want=n(T);" +
+        "function vis(e){var r=e.getBoundingClientRect();return r.width>4&&r.height>4;}function txt(b){return ((b.getAttribute&&b.getAttribute('aria-label')||'')+' '+(b.innerText||b.textContent||'')).trim();}" +
+        "function idIn(el){for(var k=0;k<4&&el;k++,el=el.parentElement){var h=el.outerHTML||'';var g=(h.match(/amzn1\\.dv\\.gti\\.[0-9a-f-]{36}/i)||[])[0];if(g)return 'gti:'+g;" +
+        "var a=el.matches&&el.matches('a[href]')?el:el.querySelector&&el.querySelector('a[href*=\"/play/\"],a[href*=\"/video/\"],a[href*=\"/detail/\"]');if(a){var u=a.href;if(/\\/(play|video)\\//.test(u)||(SVC==='prime'&&/\\/detail\\//.test(u)))return 'url:'+u;}}return '';}" +
+        "var W=window,st=W.__af=W.__af||{n:0};st.n++;" +
+        // Prime search results: open the matching title
+        "if(/\\/search/.test(location.pathname)){var L=[].slice.call(document.querySelectorAll('a[href*=\"/detail/\"],a[href*=\"/browse/entity\"],a[href*=\"/series/\"]'));function tt(a){return n(a.getAttribute('aria-label')||(a.querySelector('img')?a.querySelector('img').alt:'')||a.innerText);}" +
+        "var hit=L.filter(function(a){return tt(a)===want;})[0]||L.filter(function(a){return want&&tt(a).indexOf(want)===0;})[0]||L.filter(function(a){return want&&tt(a).indexOf(want)>=0;})[0];return hit?'go:'+hit.href:'';}" +
+        "var pageId=(document.documentElement.innerHTML.match(/amzn1\\.dv\\.gti\\.[0-9a-f-]{36}/i)||[])[0];" +
+        "if(!E){return SVC==='prime'?(pageId?'found:gti:'+pageId:'found:url:'+location.href):'found:url:'+location.href;}" +
+        "var all=[].slice.call(document.querySelectorAll('a,button,[role=tab],[role=button],[role=option],li,h3,h4,span,div,select')).filter(vis);" +
+        // the season
+        "var sre=new RegExp('^(series|season|s)\\\\s*0*'+E.s+'$','i');" +
+        "if(!st.season){var sl=[].slice.call(document.querySelectorAll('select')).filter(function(x){return [].some.call(x.options,function(o){return sre.test(o.text.trim());});})[0];" +
+        "if(sl){st.season=1;[].forEach.call(sl.options,function(o){if(sre.test(o.text.trim()))sl.value=o.value;});sl.dispatchEvent(new Event('change',{bubbles:true}));return 'wait';}" +
+        "var sb=all.filter(function(b){var l=(b.innerText||b.textContent||'').trim();return l.length<20&&sre.test(l);});var so=sb.filter(function(b){return b.closest('[role=option],[role=menuitem],[role=listbox],ul,li,a[href]');})[0]||sb[0];" +
+        "if(so&&(st.sc=(st.sc||0)+1)<=2){var a2=so.closest('a[href]');if(a2&&a2.href!==location.href){st.season=1;return 'go:'+a2.href;}(so.closest('a,button,[role=tab],[role=option],[role=menuitem]')||so).click();if(so.closest('[role=option],[role=menuitem],[role=listbox]'))st.season=1;return 'wait';}" +
+        "var other=all.filter(function(b){var l=(b.innerText||b.textContent||'').trim();return l.length<20&&/^(series|season)\\s*\\d+$/i.test(l)&&!sre.test(l);})[0];if(other&&(st.so=(st.so||0)+1)<=2){(other.closest('a,button,[role=button],[role=combobox],[aria-haspopup]')||other).click();return 'wait';}}" +
+        // Disney+: the Episodes tab
+        "if(!st.tab){var et2=all.filter(function(b){return /^episodes$/i.test((b.innerText||b.textContent||'').trim());})[0];if(et2){st.tab=1;(et2.closest('a,button,[role=tab]')||et2).click();return 'wait';}}" +
+        // the episode
+        "var et=n(E.t),ere=new RegExp('(^|[^0-9a-z])(episode|ep\\\\.?|e)\\\\s*0*'+E.e+'([^0-9]|$)','i'),ese=new RegExp('(^|[^0-9])(s\\\\s*)?0*'+E.s+'\\\\s*[:.]?\\\\s*e(pisode)?\\\\s*0*'+E.e+'([^0-9]|$)','i'),num=new RegExp('^\\\\s*0*'+E.e+'\\\\.\\\\s');" +
+        "var osn=/(?:season|series|^s|[^a-z]s)\\s*0*(\\d+)/i,osn2=/(?:^|[^0-9])(\\d+)\\s*:\\s*e\\s*\\d+/i;" +
+        "var c=all.filter(function(b){var l=txt(b);if(l.length>400||/resume|continue|remaining|trailer|teaser|preview|making of|behind|bonus/i.test(l))return false;var m=l.match(osn)||l.match(osn2);if(m&&+m[1]!==+E.s)return false;return ese.test(l)||num.test(l)||(et.length>3&&n(l).indexOf(et)>=0)||ere.test(l);});" +
+        "function sc(b){var l=txt(b);return (ese.test(l)?4:0)+(num.test(l)?3:0)+(et.length>3&&n(l).indexOf(et)>=0?2:0)+(ere.test(l)?1:0);}c.sort(function(a,b){return sc(b)-sc(a)||txt(a).length-txt(b).length;});" +
+        "for(var i=0;i<c.length&&i<6;i++){var f=idIn(c[i]);if(f)return 'found:'+f;}" +
+        "window.scrollBy(0,500);[].forEach.call(document.querySelectorAll('[class*=crollable],[class*=ontainer]'),function(x){if(x.scrollHeight>x.clientHeight+50)x.scrollTop+=500;});" +
+        "return st.n>14?(SVC==='prime'&&pageId?'found:gti:'+pageId:'found:url:'+location.href):'wait';}catch(e){return 'wait';}})";
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
-    private void primeFind(String labels, String store, String title, String fallback) {
+    private void appFind(String svc, String labels, String store, String title, String start, String ep, String fallback) {
         stopPrime();
-        primeJob = new String[]{labels, store, title, fallback};
+        primeJob = new String[]{svc, labels, store, title, fallback, ep == null || ep.isEmpty() ? "null" : ep};
         primeQ = new WebView(this);
         primeQ.setAlpha(0f);
         android.webkit.WebSettings qs = primeQ.getSettings();
@@ -234,29 +256,32 @@ public class MainActivity extends Activity {
         android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(primeQ, true);
         root.addView(primeQ, 0, new android.widget.FrameLayout.LayoutParams(1280, 720));
         primeTries = 0;
-        primeQ.loadUrl("https://www.primevideo.com/search/ref=atv_nb_sr?phrase=" + Uri.encode(title));
-        ui.postDelayed(primePoll, 3000);
+        primeQ.loadUrl(start != null && !start.isEmpty() ? start : "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=" + Uri.encode(title));
+        ui.postDelayed(primePoll, 4000);
     }
+    private void primeFind(String labels, String store, String title, String fallback) { appFind("prime", labels, store, title, null, null, fallback); }
     private final Runnable primePoll = new Runnable() { @Override public void run() {
         if (primeQ == null || primeJob == null) return;
-        primeQ.evaluateJavascript(PRIME_FIND + "(" + JSONObject.quote(primeJob[2]) + ")", r -> {
+        primeQ.evaluateJavascript(APP_FIND + "(" + JSONObject.quote(primeJob[3]) + "," + primeJob[5] + "," + JSONObject.quote(primeJob[0]) + ")", r -> {
             String v = r == null ? "" : r.replace("\"", "");
-            if (v.startsWith("go:")) { primeQ.loadUrl(v.substring(3)); }
-            else if (v.startsWith("gti:")) { primeOpen(v.substring(4), null); return; }
-            else if (v.startsWith("page:") && primeTries > 6) {   // a title page without the ID in it: use its page address
-                java.util.regex.Matcher m = Pattern.compile("/detail/([A-Za-z0-9]+)").matcher(v); primeOpen(null, m.find() ? m.group(1) : null); return; }
-            if (++primeTries < 12) ui.postDelayed(primePoll, 1500); else primeOpen(null, null);
+            if (v.startsWith("go:")) { primeQ.loadUrl(v.substring(3)); primeTries++; ui.postDelayed(primePoll, 3500); return; }
+            if (v.startsWith("found:")) { appOpen(v.substring(6)); return; }
+            if (++primeTries < 30) ui.postDelayed(primePoll, 1200); else appOpen("");
         });
     } };
-    private void primeOpen(String gti, String id) {
+    private void appOpen(String found) {
         String[] j = primeJob; stopPrime();
         if (j == null) return;
         String links = "";
-        if (gti != null) links = "https://app.primevideo.com/detail?gti=" + gti + "\nhttps://watch.amazon.co.uk/detail?gti=" + gti + "\nhttps://watch.amazon.com/detail?gti=" + gti + "\nhttps://www.primevideo.com/detail?gti=" + gti + "\n";
-        if (id != null) links += "https://app.primevideo.com/detail?asin=" + id + "\nhttps://www.primevideo.com/detail/" + id + "\n";
-        links += j[3] == null ? "" : j[3];
-        String r = bridge.open2(j[0], links, j[1], j[2]);
-        js("window.app && app.primeOpened && app.primeOpened(" + JSONObject.quote(r) + "," + JSONObject.quote(j[2]) + "," + (gti != null || id != null) + ")");
+        if (found.startsWith("gti:")) { String g = found.substring(4); links = "https://app.primevideo.com/detail?gti=" + g + "\nhttps://watch.amazon.co.uk/detail?gti=" + g + "\nhttps://watch.amazon.com/detail?gti=" + g + "\nhttps://www.primevideo.com/detail?gti=" + g + "\n"; }
+        else if (found.startsWith("url:")) {
+            String u = found.substring(4);
+            if (u.contains("primevideo.com")) { java.util.regex.Matcher m = Pattern.compile("/detail/([A-Za-z0-9]+)").matcher(u); if (m.find()) links = "https://app.primevideo.com/detail?asin=" + m.group(1) + "\n"; }
+            links += u + "\n";
+        }
+        links += j[4] == null ? "" : j[4];
+        String r = bridge.open2(j[1], links, j[2], j[3]);
+        js("window.app && app.primeOpened && app.primeOpened(" + JSONObject.quote(r) + "," + JSONObject.quote(j[3]) + "," + !found.isEmpty() + ")");
     }
     private void stopPrime() {
         ui.removeCallbacks(primePoll);
@@ -651,6 +676,8 @@ public class MainActivity extends Activity {
         public void pipStop() { ui.post(() -> { if (WebPlayerActivity.pip != null) { WebPlayerActivity.pip.finish(); WebPlayerActivity.pip = null; } }); }
         @android.webkit.JavascriptInterface
         public void primeOpen(String labels, String store, String title, String fallback) { ui.post(() -> primeFind(labels, store, title, fallback)); }
+        @android.webkit.JavascriptInterface
+        public void appFind(String svc, String labels, String store, String title, String start, String ep, String fallback) { ui.post(() -> MainActivity.this.appFind(svc, labels, store, title, start, ep, fallback)); }
         @JavascriptInterface
         public void virginSync() {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", "https://virgintvgo.virginmedia.com/en/watchtv").putExtra("title", "Checking which channels you have").putExtra("sync", true);

@@ -881,7 +881,9 @@ var app = (function () {
   }
   /** Open a title in a streaming service: ITVX and Prime on their websites inside Free TV, everything else in its app. */
   /** A series on ITVX / Prime / Disney+ on the web: choose the season and episode in Free TV, then the player goes straight to it. */
-  function webSvc(k) { return (k === 'itv' && itvWeb()) || (k === 'prime' && primeWeb()) || (k === 'disney' && disneyWeb()); }
+  function appFindOK() { return window.Native && Native.appFind && !TOUCH; }
+  // services where Free TV lists the episodes itself: the web players, and the Prime Video / Disney+ apps (found in the background, opened on the episode)
+  function webSvc(k) { return (k === 'itv' && itvWeb()) || (k === 'prime' && (primeWeb() || appFindOK())) || (k === 'disney' && (disneyWeb() || appFindOK())); }
   function pickEpisode(k, url, what, title, it) {
     var id = String(it.tmdb || '').split('/')[1];
     if (!id) { openService(k, url, what, title, 'tv'); return; }
@@ -924,19 +926,23 @@ var app = (function () {
       Native.openWeb((direct || 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=' + encodeURIComponent(title)) + tag, title);
       return;
     }
-    // Prime Video app: look the title up on Prime first, so the app opens straight on it (not its search)
-    if (k === 'prime' && window.Native && Native.primeOpen && !TOUCH) {
-      toast('Finding ' + (title || what) + ' on Prime Video…');
-      Native.primeOpen(SVC.prime.app, SVC.prime.store, String(title || what || '').replace(/^"|"$/g, ''), String(url || '').split('\n').filter(function (u) { return u && !/\/search/.test(u); }).join('\n'));
+    // Prime Video / Disney+ apps: look the title (and episode) up on their website first, so the app opens straight on it
+    if ((k === 'prime' || k === 'disney') && appFindOK()) {
+      var nm = String(title || what || '').replace(/^"|"$/g, '');
+      var links = String(url || '').split('\n').filter(function (u) { return u && !/\/search/.test(u); });
+      var start = k === 'disney' ? links.filter(function (u) { return /disneyplus\.com\/(browse|series|movies)/.test(u); })[0] || '' : '';
+      if (k === 'disney' && !start) { openIn(k, url, what); return; }
+      toast('Finding ' + nm + (ep ? ' S' + ep.s + ' E' + ep.e : '') + ' on ' + SVC[k].name + '…');
+      Native.appFind(k, SVC[k].app, SVC[k].store, nm, start, ep ? JSON.stringify(ep) : '', links.join('\n'));
       return;
     }
     openIn(k, url, what);
   }
   function primeOpened(r, title, found) {
-    if (r === 'link') toast(found ? 'Opened ' + title + ' in Prime Video' : 'Opened Prime Video');
-    else if (r === 'search') toast('Searching Prime Video for "' + title + '"');
-    else if (r === 'store') toast('Prime Video isn\'t installed – opening the Play Store');
-    else if (r === 'app') toast('Opened Prime Video – find ' + title + ' there');
+    if (r === 'link') toast(found ? 'Opened ' + title : 'Opened the app');
+    else if (r === 'search') toast('Searching for "' + title + '"');
+    else if (r === 'store') toast('That app isn\'t installed – opening the Play Store');
+    else if (r === 'app') toast('Opened the app – find ' + title + ' there');
   }
   function openTMDB(it) {
     toast('Finding "' + it.title + '"…');
