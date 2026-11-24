@@ -206,6 +206,14 @@ public class WebPlayerActivity extends Activity {
                     boolean moving = ct2 > 0 && !pz && ct2 - settleCt > 0.5;
                     settleCt = ct2;
                     settleTicks = moving ? settleTicks + 1 : 0;
+                    // Sky's first start often lands on old video and buffers; a second start (what a settings change does) is smooth – so do it once, behind the loading screen
+                    boolean fresh = prefs().getBoolean("skyFresh", true) && startReloads == 0;
+                    boolean slow = android.os.SystemClock.uptimeMillis() > skyGateUntil - 8000;   // 12 s and still not moving
+                    if (fresh && (settleTicks >= 2 || slow)) {
+                        startReloads = 1; settleTicks = 0; settleCt = -1;
+                        applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
+                        return;
+                    }
                     if (settleTicks >= 2) { skySettled = true; reveal.run(); }
                     return;
                 }
@@ -326,7 +334,9 @@ public class WebPlayerActivity extends Activity {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
             int cur = quality();
-            String[] names = new String[QS.length + 4];
+            String[] names = new String[QS.length + 5];
+            boolean freshOn = prefs().getBoolean("skyFresh", true);
+            names[QS.length + 4] = "Fresh start: " + (freshOn ? "on – restarts each channel once as it opens – OK to turn off" : "off – OK to restart each channel once as it opens");
             for (int i = 0; i < QS.length; i++) names[i] = (QS[i] == cur ? "✓ " : "    ") + (QS[i] == 0 ? "Picture: Auto – Sky chooses" : "Picture: " + QS[i] + "p");
             boolean clock = prefs().getBoolean("skyclock", false), page = prefs().getBoolean("skypage", true);
             names[QS.length] = "Page clock: " + (clock ? "8 seconds behind (on) – OK for normal" : "normal – OK for 8 seconds behind");
@@ -342,7 +352,8 @@ public class WebPlayerActivity extends Activity {
                     else if (which == QS.length) prefs().edit().putBoolean("skyclock", !clock).apply();
                     else if (which == QS.length + 1) prefs().edit().putBoolean("skypage", !page).apply();
                     else if (which == QS.length + 2) prefs().edit().putBoolean("skyNoAds", !noAds).apply();
-                    else prefs().edit().putBoolean("skyNet", !net).apply();
+                    else if (which == QS.length + 3) prefs().edit().putBoolean("skyNet", !net).apply();
+                    else prefs().edit().putBoolean("skyFresh", !freshOn).apply();
                     applyQuality();
                 })
                 .show();
