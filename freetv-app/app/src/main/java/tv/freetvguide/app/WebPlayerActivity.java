@@ -139,7 +139,9 @@ public class WebPlayerActivity extends Activity {
     volatile int aheadHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
-    private boolean onSky() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("skysports.com"); }
+    /** Opened from a "Sign in" tile: show every page as it is (no loading screen, no player tricks). */
+    private boolean signIn() { String t = getIntent().getStringExtra("title"); return t != null && t.toLowerCase().endsWith("sign in"); }
+    private boolean onSky() { if (signIn()) return false; String u = web == null ? null : web.getUrl(); return u != null && u.contains("skysports.com"); }
     private boolean pageMode() { return onSky() && prefs().getBoolean("skypage", true); }
     private void showCursor() { if (cursor != null) { cursor.setVisibility(pointerOn() ? View.VISIBLE : View.GONE); cursor.bringToFront(); cursor.invalidate(); } }
     private boolean userPaused = false;
@@ -577,7 +579,7 @@ public class WebPlayerActivity extends Activity {
     private long switchedAt = 0, firstBufAt = 0;
     private boolean wasBuffering = false;
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
-    private void skyGate() { skySettled = false; settleTicks = 0; settleCt = -1; skyGateUntil = android.os.SystemClock.uptimeMillis() + 20000; ui.postDelayed(reveal, 20500); }
+    private void skyGate() { if (signIn()) return; skySettled = false; settleTicks = 0; settleCt = -1; skyGateUntil = android.os.SystemClock.uptimeMillis() + 20000; ui.postDelayed(reveal, 20500); }
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
     private boolean isPlayer(String u) { return find != null || (u != null && (u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*") || u.matches(".*skysports\\.com/watch/.*"))); }
 
@@ -948,6 +950,7 @@ public class WebPlayerActivity extends Activity {
                 else if (autoSite(url) && autoMode && getIntent().getStringExtra("title") != null && !(series() && !url.contains("search"))) { cover.setText("Loading " + getIntent().getStringExtra("title") + "…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 180000); }
                 else if (getIntent().getBooleanExtra("sync", false)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 60000); }
                 else if (isPlayer(url)) { cover.setVisibility(View.VISIBLE); ui.postDelayed(reveal, 15000); if (find == null) { tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 2500); } } else cover.setVisibility(View.GONE);
+                if (signIn()) { ui.removeCallbacks(reveal); ui.removeCallbacks(fill); cover.setVisibility(View.GONE); }
             }
             @Override public void onPageFinished(WebView v, String url) {
                 if (!isPlayer(url) && find == null && !getIntent().getBooleanExtra("sync", false) && !(autoSite(url) && autoMode && !(series() && !url.contains("search")))) cover.setVisibility(View.GONE);
@@ -993,7 +996,7 @@ public class WebPlayerActivity extends Activity {
 
     private final Runnable fill = new Runnable() {
         @Override public void run() {
-            if (web == null) return;
+            if (web == null || signIn()) return;   // sign-in pages are shown just as they are
             web.evaluateJavascript(FILL, r -> {
                 boolean ok = r != null && r.contains("filled");
                 if (ok && pageMode()) { if (!pageFull) { pageFull = true; ui.postDelayed(reveal, 400); } }
