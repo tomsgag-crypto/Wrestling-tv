@@ -1,0 +1,20 @@
+name: US sports listings (Sky Sports TV)
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  epg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cut the US guide down to the sports channels
+        run: python3 tools/us_epg.py us-epg.json
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view us-epg >/dev/null 2>&1 || gh release create us-epg --title "US sports listings" --notes "Listings for Sky Sports TV's US rows, refreshed every 6 hours."
+          gh release upload us-epg us-epg.json --clobber

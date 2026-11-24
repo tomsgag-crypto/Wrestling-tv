@@ -37,6 +37,7 @@ var app = (function () {
     now: { name: 'NOW', app: '^now$|^now tv|nowtv', store: 'q:NOW TV', cls: '', desc: 'Subscription – Sky channels and films', paid: 1 },
     skysports: { name: 'Sky Sports', app: 'sky sports', store: 'q:Sky Sports', cls: '', desc: 'Subscription', paid: 1 },
     paramount: { name: 'Paramount+', app: 'paramount', store: 'q:Paramount+', cls: '', desc: 'Subscription', paid: 1 },
+    sling: { name: 'Sling TV', app: 'sling', store: 'q:Sling TV', cls: '', desc: 'Subscription (US)', paid: 1 },
     discovery: { name: 'discovery+', app: 'discovery', store: 'q:discovery+', cls: '', desc: 'Subscription (some free)', paid: 1 },
     britbox: { name: 'BritBox', app: 'britbox', store: 'q:BritBox', cls: '', desc: 'Subscription – now part of ITVX Premium', paid: 1 },
     mubi: { name: 'MUBI', app: 'mubi', store: 'q:MUBI', cls: '', desc: 'Subscription – arthouse and classic films', paid: 1 },
@@ -571,6 +572,14 @@ var app = (function () {
   var SKY_SLUGS = [[/main ?event/i, 'sky-sports-main-event'], [/\bpl\b|premier/i, 'sky-sports-premier-league'], [/football/i, 'sky-sports-football'], [/cricket/i, 'sky-sports-cricket'],
     [/golf/i, 'sky-sports-golf'], [/f1/i, 'sky-sports-f1'], [/tennis/i, 'sky-sports-tennis'], [/nfl/i, 'sky-sports-nfl'], [/racing/i, 'sky-sports-racing'], [/news/i, 'sky-sports-news'], [/mix/i, 'sky-sports-mix'], [/\+|plus/i, 'sky-sports-plus']];
   function skySlug(n) { for (var i = 0; i < SKY_SLUGS.length; i++) if (SKY_SLUGS[i][0].test(n)) return SKY_SLUGS[i][1]; return ''; }
+  var usEpg = load('usEpg') || {};
+  function loadUSEpg() {
+    return get('https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/us-epg/us-epg.json').then(function (t) {
+      var j = typeof t === 'string' ? JSON.parse(t) : t, out = {};
+      Object.keys(j.ch || {}).forEach(function (k) { out[k] = j.ch[k].map(function (x) { return { s: x[0], e: x[1], t: x[2], sub: x[3], desc: x[4], img: '' }; }); });
+      if (Object.keys(out).length) { usEpg = out; save('usEpg', out); }
+    }).catch(function () {});
+  }
   var usSports = load('usSports') || {};
   function loadUSSports() {
     var d0 = new Date(Date.now() - 86400000), d1 = new Date(Date.now() + 6 * 86400000);
@@ -608,13 +617,14 @@ var app = (function () {
     // US sports on Paramount+ and Sling (they play only with your US VPN on)
     var nowS = nowSec(), live = function (what) { return [{ s: nowS - 3600, e: nowS + 7 * 86400, t: 'Live channel – US VPN on', sub: what, desc: 'Turn on your US VPN, then press OK.', img: '' }]; };
     var PP = 'https://www.paramountplus.com/live-tv/', SL = 'https://watch.sling.com/';
-    var us = function (k, what) { var ev = (usSports[k] || []).filter(function (e) { return e.e > nowS - 86400; }); return ev.length ? ev : live(what); };
+    var us = function (k, what) { var full = (usEpg[k] || []).filter(function (e) { return e.e > nowS - 86400; }); if (full.length) return full;
+      var ev = (usSports[k] || []).filter(function (e) { return e.e > nowS - 86400; }); return ev.length ? ev : live(what); };
     [['Paramount+ Champions League', PP, allUCL.length ? allUCL : live('Every UEFA Champions League match is on Paramount+')],
      ['CBS Sports Golazo Network', PP, us('golazo', '24-hour football channel on Paramount+')], ['CBS Sports HQ', PP, live('Sports news on Paramount+')], ['CBS (US)', PP, us('cbs', 'CBS live on Paramount+ – NFL, college sports, some Champions League')],
      ['ESPN (Sling)', SL + '#ftv-sling=ESPN', us('espn', 'ESPN on Sling TV')], ['ESPN2 (Sling)', SL + '#ftv-sling=ESPN2', us('espn2', 'ESPN2 on Sling TV')],
      ['FS1 (Sling)', SL + '#ftv-sling=FS1', us('fs1', 'FS1 on Sling TV')], ['NFL Network (Sling)', SL + '#ftv-sling=NFL%20Network', us('nfln', 'NFL Network on Sling TV')],
      ['USA Network (Sling)', SL + '#ftv-sling=USA', us('usa', 'USA Network on Sling TV – Premier League, WWE and more')]].forEach(function (r, i) {
-      chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], appK: r[1] === PP ? 'paramount' : '', cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
+      chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], appK: r[1] === PP ? 'paramount' : /sling\.com/.test(r[1]) ? 'sling' : '', cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
     });
     if (gRow >= chans.length) gRow = 0;
   }
@@ -711,7 +721,7 @@ var app = (function () {
     if (SPORTS) {
       status('guide', true);
       settings.virgin = true;
-      return Promise.all([loadVirgin(), loadPrimeUCL(), loadUSSports()]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
+      return Promise.all([loadVirgin(), loadPrimeUCL(), loadUSSports(), loadUSEpg()]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
     }
     setTimeout(autoVirginSync, 8000);
     status('guide', true);
@@ -1695,7 +1705,7 @@ var app = (function () {
           '<div class="bt">' + esc(p.t) + '</div><div class="bl">' + esc(p.sub || clock(p.s)) + '</div>' + (ic ? '<span class="ic">' + ic + '</span>' : '') +
           (live ? '<div class="pg" style="width:' + Math.round((now - p.s) / (p.e - p.s) * 100) + '%"></div>' : '') + '</div>';
       });
-      var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.vid || c.svc === 'u') ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
+      var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.vid || c.svc === 'u') ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.appK ? SVC[c.appK].name + ' (US VPN)' : c.pay ? 'Reminders only' : 'Freeview only';
       h += '<div class="grow' + (ci === gRow && rowSel ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
         '</div><div class="gline"><div class="gin">' + blocks +
         (now >= lo && now < hi ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div></div>';
@@ -1703,7 +1713,7 @@ var app = (function () {
     box.innerHTML = h;
     if (TOUCH) box.scrollTop = keepScroll;
     var ch = chans[gRow];
-    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.vid || ch.svc === 'u') ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
+    $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.vid || ch.svc === 'u') ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.appK ? 'watch in ' + SVC[ch.appK].name + ' (US VPN on)' : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
     plexOnScreen();
     if (settings.virgin) virginListings(ws, ws + SPAN);
     plutoMore(ws, ws + SPAN);
@@ -1784,7 +1794,7 @@ var app = (function () {
       if (c && (!fp || fp.s <= now)) setZap();
       if (c && c.primeLive) { if (fp && fp.s > now) { addMenu(progItem(c, fp)); return; } var m = fp || c.events[0]; toast('Opening Prime Video – ' + (m ? m.t : 'Champions League')); openIn('prime', '', '"' + (m ? m.t : 'Champions League') + '"'); return; }
       // Paramount+ rows: the Paramount+ app (its live TV page when the app accepts the link)
-      if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name + '"'); return; }
+      if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
       if (fp && c && (c.svc || c.play || fp.e <= now || ((c.pay || c.vid) && settings.virgin))) openItem(progItem(c, fp));
