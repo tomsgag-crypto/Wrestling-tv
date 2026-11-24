@@ -41,7 +41,7 @@ public class WebPlayerActivity extends Activity {
     private final java.util.Map<String, java.util.concurrent.Future<Piece>> ahead = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, java.util.concurrent.Future<Piece>>() {
         @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, java.util.concurrent.Future<Piece>> e) { return size() > 16; }
     });
-    private final java.util.Map<String, Long> lastNum = new java.util.concurrent.ConcurrentHashMap<>(), step = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, Long> lastNum = new java.util.concurrent.ConcurrentHashMap<>(), pieceStep = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.regex.Pattern NUM = java.util.regex.Pattern.compile("^(.*[/\\-_=])(\\d{3,})([^/]*)$");
 
     private Piece download(String url, java.util.Map<String, String> reqHdrs, int readMs) throws Exception {
@@ -116,8 +116,8 @@ public class WebPlayerActivity extends Activity {
                 String key = m.group(1) + "#" + m.group(3);
                 long num = Long.parseLong(m.group(2));
                 Long prev = lastNum.put(key, num);
-                if (prev != null && num > prev && num - prev < 1_000_000_000L) step.put(key, num - prev);
-                Long st = step.get(key);
+                if (prev != null && num > prev && num - prev < 1_000_000_000L) pieceStep.put(key, num - prev);
+                Long st = pieceStep.get(key);
                 if (st != null) for (int k = 1; k <= 2; k++) {
                     String nextPath = m.group(1) + (num + k * st) + m.group(3);
                     String nextUrl = req.getUrl().getScheme() + "://" + req.getUrl().getEncodedAuthority() + nextPath + (q == null ? "" : "?" + q);
