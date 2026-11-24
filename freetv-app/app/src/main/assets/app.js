@@ -851,14 +851,14 @@ var app = (function () {
           showPop({ title: title + ' – ' + (sj.name || 'Season ' + sn), opts: eps.map(function (e) {
             return { label: e.episode_number + '. ' + (e.name || 'Episode ' + e.episode_number) + (e.overview ? '  –  ' + e.overview.slice(0, 90) + (e.overview.length > 90 ? '…' : '') : ''),
               fn: function () { openService(k, url, what, title, 'tv', { s: sn, e: e.episode_number, t: e.name || '' }); } };
-          }).concat(seasons.length > 1 ? [{ label: '◀ Other seasons', fn: function () { setTimeout(pickSeasonMenu, 0); } }] : [], [{ label: 'Open the series page instead', fn: function () { openService(k, url, what, title, 'tv'); } }]) });
+          }).concat(seasons.length > 1 ? [{ label: '◀ Other seasons', fn: function () { setTimeout(pickSeasonMenu, 0); } }] : [], [{ label: 'Open the series page instead', fn: function () { openService(k, url, what, title, 'tv'); } }, { label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }]) });
         }, function () { openService(k, url, what, title, 'tv'); });
       };
       var pickSeasonMenu = function () {
         if (seasons.length === 1) { pickSeason(seasons[0].season_number); return; }
         showPop({ title: title + ' – choose a season', opts: seasons.map(function (x) {
           return { label: (x.name || 'Season ' + x.season_number) + '  (' + x.episode_count + ' episodes)', fn: function () { setTimeout(function () { pickSeason(x.season_number); }, 0); } };
-        }) });
+        }).concat([{ label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }]) });
       };
       pickSeasonMenu();
     }, function () { openService(k, url, what, title, 'tv'); });
@@ -906,7 +906,7 @@ var app = (function () {
       showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [].concat(ws.map(function (w) {
         return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (has(w.k) ? '' : ' (not installed)'),
           fn: function () { var u = w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''); if (it.kind === 'tv' && webSvc(w.k)) pickEpisode(w.k, u, '"' + it.title + '"', it.title, it); else openService(w.k, u, '"' + it.title + '"', it.title, it.kind); } };
-      })).concat(TOUCH ? [gsearch] : [], [{ label: 'Cancel' }]) });
+      })).concat(TOUCH ? [gsearch] : [], [{ label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }, { label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
   }
 
@@ -1680,7 +1680,7 @@ var app = (function () {
       else if (k === 'ok' && odChip === 0) { appMenu(); return; }
       else if (k === 'ok' && odChip === 1) { genreMenu(); return; }
       else if (k === 'ok' && odChip === 2) { optionsMenu(); return; }
-      else if (k === 'down' || k === 'ok') odZone = 'cats';
+      else if (k === 'down') { if (items.length) { odZone = 'grid'; if (odRow >= items.length) odRow = 0; } else odZone = 'cats'; }
       else if (k === 'menu') { optionsMenu(); return; }
     } else if (odZone === 'cats') {
       if (k === 'up') { if (odCat === 0) { odZone = 'src'; odChip = 0; } else { odCat--; odRow = 0; ensureODItems(); } }
@@ -2289,7 +2289,7 @@ var app = (function () {
       var VV = SPORTS ? ['guide', 'apps'] : VIEWS, i = VV.indexOf(view);   // Sky Sports TV has just the guide and Apps
       if (k === 'left') { if (i > 0) setView(VV[i - 1]); }            // stops at TV Guide
       else if (k === 'right') { if (i < VV.length - 1) setView(VV[i + 1]); }   // stops at Apps
-      else if (k === 'down' || k === 'ok') { zone = 'main'; if (view === 'search') { sZone = 'input'; setTimeout(function () { $('q').focus(); }, 30); } render(); }
+      else if (k === 'down' || k === 'ok') { zone = 'main'; if (isOD()) { var oi = odItems(); if (oi.length) { odZone = 'grid'; if (odRow >= oi.length) odRow = 0; } else odZone = 'src'; } if (view === 'search') { sZone = 'input'; setTimeout(function () { $('q').focus(); }, 30); } render(); }
       else if (k === 'menu') optionsMenu();
       return true;
     }
