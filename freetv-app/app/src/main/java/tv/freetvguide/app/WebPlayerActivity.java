@@ -977,24 +977,34 @@ public class WebPlayerActivity extends Activity {
             hideZap(); if (stats != null) stats.setVisibility(View.GONE); if (cursor != null) cursor.setVisibility(View.GONE);
             android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
             WindowManager.LayoutParams lp = getWindow().getAttributes();
-            lp.width = (int) (dm.widthPixels * 0.30); lp.height = lp.width * 9 / 16;
-            lp.gravity = android.view.Gravity.TOP | android.view.Gravity.END; lp.x = (int) (dm.widthPixels * 0.02); lp.y = (int) (dm.heightPixels * 0.03);
+            lp.width = (int) (dm.widthPixels * 0.25); lp.height = lp.width * 9 / 16;
+            lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START; lp.x = (int) (dm.widthPixels * 0.02); lp.y = (int) (dm.heightPixels * 0.03);
             getWindow().setAttributes(lp);
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             cornered = true; pip = this;
             tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 400);   // fit the picture to the small window
-            if (MainActivity.current != null) MainActivity.current.jsFromAnywhere("window.app && app.key('resume')");
+            if (MainActivity.current != null) MainActivity.current.jsFromAnywhere("window.app && app.pipStarted && app.pipStarted(" + org.json.JSONObject.quote(String.valueOf(getIntent().getStringExtra("title"))) + ")");
             return true;
         } catch (Throwable t) { return false; }
+    }
+    /** Put the corner window exactly over the guide's picture box (screen pixels); 0 size hides it while a menu is open. */
+    void placeCorner(int x, int y, int w, int h) {
+        if (!cornered) return;
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
+        if (w <= 0 || h <= 0) { lp.x = -4000; lp.y = 0; lp.width = 2; lp.height = 2; }
+        else { lp.x = x; lp.y = y; lp.width = w; lp.height = h; }
+        getWindow().setAttributes(lp);
+        tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 300);
     }
     void exitCorner() {
         if (!cornered) return;
         cornered = false; if (pip == this) pip = null;
         WindowManager.LayoutParams lp = getWindow().getAttributes();
-        lp.width = WindowManager.LayoutParams.MATCH_PARENT; lp.height = WindowManager.LayoutParams.MATCH_PARENT; lp.x = 0; lp.y = 0;
+        lp.width = WindowManager.LayoutParams.MATCH_PARENT; lp.height = WindowManager.LayoutParams.MATCH_PARENT; lp.x = 0; lp.y = 0; lp.gravity = android.view.Gravity.TOP | android.view.Gravity.START;
         getWindow().setAttributes(lp);
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
         try { setTranslucent(false); } catch (Throwable ignored) { }
         tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 400);
         showCursor();
@@ -1177,6 +1187,7 @@ public class WebPlayerActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (cornered && MainActivity.current != null) return MainActivity.current.dispatchKeyEvent(e);   // the guide behind has the remote
         int k = e.getKeyCode();
         if (watching() && zapOn && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) zapOk();

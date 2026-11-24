@@ -712,6 +712,10 @@ public class MainActivity extends Activity {
         }
         /** Where the small window goes (in page pixels); w = 0 hides it. */
         @JavascriptInterface
+        public void pipRect(final double x, final double y, final double w, final double h) {
+            ui.post(() -> { WebPlayerActivity p = WebPlayerActivity.pip; if (p != null && p.cornered) { float d = getResources().getDisplayMetrics().density; p.placeCorner((int) (x * d), (int) (y * d), (int) (w * d), (int) (h * d)); } });
+        }
+        @android.webkit.JavascriptInterface
         public void miniRect(final double x, final double y, final double w, final double h) {
             ui.post(() -> {
                 if (mini == null) return;

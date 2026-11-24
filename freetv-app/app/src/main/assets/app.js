@@ -2172,7 +2172,18 @@ var app = (function () {
     render();
   }
   function miniStopped() { mini = null; placeMini(); if (view === 'guide') renderGuide(); }
+  /** A Sky / Virgin channel shrunk into the corner: put it in the guide's picture box, like Pluto's little player. */
+  var pipOn = false;
+  function pipStarted(name) {
+    pipOn = true; view = 'guide'; zone = 'main'; gZone = 'rows';
+    for (var i = 0; i < chans.length; i++) if (chans[i].name === name) { gRow = i; break; }
+    gT = nowSec(); ws = 0; render(); setTimeout(placeMini, 200);
+  }
   function placeMini() {
+    if (pipOn && window.Native && Native.pipActive && Native.pipRect) {
+      if (!Native.pipActive()) pipOn = false;
+      else { var pe = $('gImg'), pr = pe.getBoundingClientRect(); if (view !== 'guide' || pop || pr.width < 10) Native.pipRect(0, 0, 0, 0); else Native.pipRect(pr.left, pr.top, pr.width, pr.height); }
+    }
     if (!mini || !window.Native || !Native.miniRect) return;
     var el = $('gImg'), r = el.getBoundingClientRect();
     if (view === 'guide' && !pop && r.width < 10) { Native.miniStop(); mini = null; return; }   // no room for it (phone held upright)
@@ -2611,5 +2622,5 @@ var app = (function () {
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
-  return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, zapRemind: zapRemind, primeOpened: primeOpened, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
+  return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, zapRemind: zapRemind, primeOpened: primeOpened, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, pipStarted: pipStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();
