@@ -1133,6 +1133,91 @@ var app = (function () {
   }
 
   // ---------------------------------------------------------------- reminders
+  // ---------------------------------------------------------------- phone ⇄ TV link (home Wi-Fi)
+  // Each change is a record: key → {t: when, del: removed?, v: the thing}. The newest version of each record wins on both devices.
+  var syncApplying = false;
+  function mark(key, del, v) {
+    if (syncApplying || !window.Native || !Native.syncPush) return;
+    var r = {}; r[key] = { t: Date.now(), del: !!del, v: del ? null : v };
+    try { Native.syncPush(JSON.stringify(r)); } catch (e) { }
+  }
+  var SEP = '\u0001';
+  /** First run with the link: put what's already here in the store (as old changes, so the other device's real changes win). */
+  function syncSeed() {
+    if (!window.Native || !Native.syncPush || settings.syncSeeded) return;
+    var r = {}, t = 1;
+    settings.favs.forEach(function (id) { r['fav:' + id] = { t: t, del: false, v: null }; });
+    reminders.forEach(function (x) { r['rem:' + x.id] = { t: t, del: false, v: x }; });
+    lists.forEach(function (l) { r['list:' + l.name] = { t: t, del: false, v: null }; l.items.forEach(function (it) { r['li:' + l.name + SEP + it.k] = { t: t, del: false, v: it }; }); });
+    try { Native.syncPush(JSON.stringify(r)); } catch (e) { }
+    settings.syncSeeded = true; saveSettings();
+  }
+  /** Bring this device in line with the store (after the other device's changes arrive). */
+  function syncApply(status) {
+    if (!window.Native || !Native.syncPull) return;
+    var recs = {}; try { recs = JSON.parse(Native.syncPull()); } catch (e) { return; }
+    var changed = false, now = nowSec();
+    syncApplying = true;
+    try {
+      Object.keys(recs).forEach(function (k) {
+        var r = recs[k], live = !r.del;
+        if (k.indexOf('fav:') === 0) {
+          var id = k.slice(4), i = settings.favs.indexOf(id);
+          if (live && i < 0) { settings.favs.push(id); changed = true; }
+          if (!live && i >= 0) { settings.favs.splice(i, 1); changed = true; }
+        } else if (k.indexOf('rem:') === 0) {
+          var rid = k.slice(4), has = reminders.filter(function (x) { return x.id === rid; })[0];
+          if (live && !has && r.v && r.v.item && r.v.item.e > now) { reminders.push(r.v); if (Native.remind) Native.remind(r.v.id, r.v.at, r.v.title, r.v.text); changed = true; }
+          if (!live && has) { reminders = reminders.filter(function (x) { return x.id !== rid; }); if (Native.unremind) Native.unremind(rid); changed = true; }
+        } else if (k.indexOf('list:') === 0) {
+          var nm = k.slice(5), li = lists.filter(function (l) { return l.name === nm; })[0];
+          if (live && !li) { lists.push({ name: nm, items: [] }); changed = true; }
+          if (!live && li) { lists = lists.filter(function (l) { return l.name !== nm; }); if (!lists.length) lists.push({ name: 'Watch later', items: [] }); changed = true; }
+        } else if (k.indexOf('li:') === 0) {
+          var rest = k.slice(3), cut = rest.indexOf(SEP), ln = rest.slice(0, cut), ik = rest.slice(cut + 1);
+          var l2 = lists.filter(function (l) { return l.name === ln; })[0];
+          if (live && r.v) {
+            if (!l2) { l2 = { name: ln, items: [] }; lists.push(l2); }
+            if (!l2.items.some(function (x) { return x.k === ik; })) { l2.items.push(r.v); changed = true; }
+          }
+          if (!live && l2) { var n0 = l2.items.length; l2.items = l2.items.filter(function (x) { return x.k !== ik; }); if (l2.items.length !== n0) changed = true; }
+        }
+      });
+    } finally { syncApplying = false; }
+    if (changed) { saveSettings(); saveReminders(); saveLists(); buildChans(); render(); }
+    if (status && status !== 'ok' && syncUserAsked) toast(status === 'TV not found' ? 'Couldn\'t find your TV – is Free TV open on it, and are you on the home Wi-Fi?' : status === 'unlinked' ? 'Your TV doesn\'t recognise this phone any more – link again in Apps' : status);
+    else if (status === 'ok' && syncUserAsked) toast('Up to date with your TV');
+    syncUserAsked = false;
+  }
+  var syncUserAsked = false;
+  /** Phone: find the TV, ask it to show a code, type the code. */
+  function linkToTv() {
+    toast('Looking for your TV on the Wi-Fi…');
+    setTimeout(function () {
+      var tvs = []; try { tvs = JSON.parse(Native.syncFind()); } catch (e) { }
+      if (!tvs.length) { toast('No TV found – open Free TV on the TV (version 2.22 or later) and make sure the phone is on the same Wi-Fi'); return; }
+      var go = function (tv) {
+        var r = Native.syncPairStart(tv.host, tv.port);
+        if (r !== 'ok') { toast(r); return; }
+        showPop({ title: 'Type the 4-digit code now showing on the TV', input: true, inputFocus: true,
+          opts: [{ label: 'Link', fn: function () {
+            var code = ($('popIn').value || '').replace(/\D/g, '');
+            var res = Native.syncPair(tv.host, tv.port, tv.name, code);
+            toast(res === 'ok' ? 'Linked to ' + tv.name + ' – your favourites, reminders and lists now go to the TV' : res);
+            render();
+          } }, { label: 'Cancel', fn: function () {} }] });
+        $('popIn').value = ''; $('popIn').setAttribute('inputmode', 'numeric'); $('popIn').style.display = 'block';
+        setTimeout(function () { $('popIn').focus(); }, 30);
+      };
+      if (tvs.length === 1) go(tvs[0]);
+      else showPop({ title: 'Which TV?', opts: tvs.map(function (tv) { return { label: tv.name, fn: function () { setTimeout(function () { go(tv); }, 0); } }; }) });
+    }, 60);
+  }
+  /** TV: show the code the phone asked for. */
+  function showPairCode(code) {
+    showPop({ title: 'Phone link code:  ' + code.split('').join(' ') + '   –  type this on your phone', opts: [{ label: 'OK' }] });
+    render();
+  }
   function remId(it) { return 'r' + String(it.ch || '').replace(/[^A-Za-z0-9]/g, '') + '_' + Math.round(it.s); }
   function reminderFor(it) { var id = remId(it); return reminders.filter(function (r) { return r.id === id; })[0]; }
   function saveReminders() { save('reminders', reminders.map(function (r) { return { id: r.id, at: r.at, title: r.title, text: r.text, mins: r.mins, item: r.item }; })); }
@@ -1144,13 +1229,14 @@ var app = (function () {
       text: clock(it.s) + ' on ' + it.chName + (it.svc ? ' · tap to open ' + SVC[it.svc].name : ''), item: it };
     reminders.push(r);
     saveReminders();
+    mark('rem:' + r.id, false, { id: r.id, at: r.at, title: r.title, text: r.text, mins: r.mins, item: r.item });
     if (window.Native && Native.remind) Native.remind(r.id, r.at, r.title, r.text);
     toast('Reminder set: ' + (mins ? mins + ' mins before ' : 'when ') + '"' + it.title + '" ' + (mins ? 'starts' : 'starts') + ' (' + dayWord(it.s) + ' ' + clock(it.s) + ')');
   }
   function cancelReminder(it, quiet) {
     var id = remId(it), n = reminders.length;
     reminders = reminders.filter(function (r) { return r.id !== id; });
-    if (reminders.length !== n) { saveReminders(); if (window.Native && Native.unremind) Native.unremind(id); if (!quiet) toast('Reminder cancelled'); }
+    if (reminders.length !== n) { saveReminders(); mark('rem:' + id, true); if (window.Native && Native.unremind) Native.unremind(id); if (!quiet) toast('Reminder cancelled'); }
   }
   function tidyReminders() {
     var n = reminders.length, now = nowSec();
@@ -1731,6 +1817,11 @@ var app = (function () {
     keys.sort(function (a, b) { return rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b); });
     var t = keys.map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
     // first tile, top left: update Free TV
+    if (window.Native && Native.syncStatus) {
+      var ss = {}; try { ss = JSON.parse(Native.syncStatus()); } catch (e) { }
+      if (ss.tv) t.push({ kind: 'set', k: 'link', name: '📱 Phone link', desc: ss.phones ? ss.phones + ' phone' + (ss.phones > 1 ? 's' : '') + ' linked – favourites, reminders and lists come across by themselves' : 'Not linked yet. On your phone: Free TV → Apps → Link to my TV' });
+      else t.unshift({ kind: 'set', k: 'link', name: '📺 ' + (ss.linked ? 'Linked to your TV' : 'Link to my TV'), desc: ss.linked ? (ss.tvName || 'Your TV') + (ss.lastSync ? ' · last swapped ' + new Date(ss.lastSync).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '') + '. OK for options' : 'Send your favourites, reminders and lists to Free TV on the TV (same Wi-Fi)' });
+    }
     if (window.Native && Native.googleMoviesRoutes) t.unshift({ kind: 'set', k: 'gmovies', name: '🎬 My Google Movies', desc: settings.gmRoute ? 'Your film library – YouTube and Google Play purchases. Hold OK to choose a different way in' : 'Your film library – YouTube and Google Play purchases. First time: pick the way in that shows your films' });
     if (window.Native && Native.updateSelf) t.unshift({ kind: 'upd', k: 'update', name: '⟳ Update Free TV', desc: 'You have version ' + (Native.version ? Native.version() : '?') + '. OK to get the newest' });
     t.push({ kind: 'set', k: 'bbc1', name: 'BBC One region', desc: settings.bbc1.replace('BBC One ', '') + ' – OK to change' });
@@ -1838,6 +1929,17 @@ var app = (function () {
       }
       if (x.k === 'profile') { askText('Your iPlayer profile name (as shown on "Who\'s watching")', settings.profile, function (v) { settings.profile = v; saveSettings(); }); return; }
       if (x.k === 'record') { recordMenu(); return; }
+      if (x.k === 'link') {
+        var st2 = {}; try { st2 = JSON.parse(Native.syncStatus()); } catch (e) { }
+        if (st2.tv) { toast(st2.phones ? 'Linked – nothing to do here' : 'Link from your phone: Free TV → Apps → Link to my TV'); return; }
+        if (!st2.linked) { linkToTv(); return; }
+        showPop({ title: 'Linked to ' + (st2.tvName || 'your TV'), opts: [
+          { label: 'Swap with the TV now', fn: function () { syncUserAsked = true; Native.syncNow(); toast('Swapping…'); } },
+          { label: 'Link to a different TV', fn: function () { setTimeout(linkToTv, 0); } },
+          { label: 'Unlink', fn: function () { Native.syncUnlink(); toast('Unlinked'); render(); } },
+          { label: 'Cancel' }] });
+        return;
+      }
       if (x.k === 'gmovies') { googleMovies(false); return; }
       if (x.k === 'webNoAds') { Native.setPlayerPref('webNoAds', !Native.playerPref('webNoAds', false)); render(); return; }
       if (x.k === 'itvWeb') { settings.itvWeb = !itvWeb(); saveSettings(); render(); return; }
@@ -1941,8 +2043,8 @@ var app = (function () {
   function toggleIn(i, it) {
     var k = keyOf(it), l = lists[i], at = -1;
     l.items.forEach(function (x, j) { if (x.k === k) at = j; });
-    if (at >= 0) { l.items.splice(at, 1); toast('Removed from ' + l.name); }
-    else { var c = Object.assign({}, it, { k: k, added: Date.now() }); l.items.push(c); toast('Added to ' + l.name); }
+    if (at >= 0) { l.items.splice(at, 1); toast('Removed from ' + l.name); mark('li:' + l.name + SEP + k, true); }
+    else { var c = Object.assign({}, it, { k: k, added: Date.now() }); l.items.push(c); toast('Added to ' + l.name); mark('list:' + l.name, false, null); mark('li:' + l.name + SEP + k, false, c); }
     saveLists();
   }
   function newList(it) {
@@ -1954,6 +2056,7 @@ var app = (function () {
     function finish() {
       name = $('popIn').value.trim() || 'My list ' + (lists.length + 1);
       lists.push({ name: name, items: [] });
+      mark('list:' + name, false, null);
       if (it) toggleIn(lists.length - 1, it);
       saveLists();
       if (!it) { lsCat = lists.length - 1; toast('Made "' + name + '"'); }
@@ -1977,7 +2080,7 @@ var app = (function () {
         saveLists(); toast('Removed ' + (n - l.items.length));
       } },
       { label: 'Delete this list', fn: function () {
-        showPop({ title: 'Delete "' + l.name + '" and everything in it?', opts: [{ label: 'Yes, delete it', fn: function () { lists.splice(i, 1); if (!lists.length) lists.push({ name: 'Watch later', items: [] }); lsCat = 0; saveLists(); } }, { label: 'No, keep it' }] });
+        showPop({ title: 'Delete "' + l.name + '" and everything in it?', opts: [{ label: 'Yes, delete it', fn: function () { mark('list:' + l.name, true); l.items.forEach(function (x) { mark('li:' + l.name + SEP + x.k, true); }); lists.splice(i, 1); if (!lists.length) lists.push({ name: 'Watch later', items: [] }); lsCat = 0; saveLists(); } }, { label: 'No, keep it' }] });
       } },
       { label: 'Cancel' }
     ] });
@@ -1996,8 +2099,8 @@ var app = (function () {
   }
   function toggleFav(c) {
     var i = settings.favs.indexOf(c.id);
-    if (i >= 0) { settings.favs.splice(i, 1); toast(c.name + ' removed from favourites'); }
-    else { settings.favs.push(c.id); toast(c.name + ' added to favourites'); }
+    if (i >= 0) { settings.favs.splice(i, 1); toast(c.name + ' removed from favourites'); mark('fav:' + c.id, true); }
+    else { settings.favs.push(c.id); toast(c.name + ' added to favourites'); mark('fav:' + c.id, false, null); }
     saveSettings();
     var keep = c.id; buildChans();
     if (!settings.favOnly) { for (var j = 0; j < chans.length; j++) if (chans[j].id === keep && (chans[j].fav || j >= settings.favs.length)) { gRow = j; break; } }
@@ -2142,7 +2245,7 @@ var app = (function () {
   function key(k) {
     var ae = document.activeElement;
     if (k === 'ok' && ae && ae.tagName === 'INPUT') { ae.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return true; }
-    if (k === 'resume') { refreshInstalled(); var oraw = window.Native && Native.virginOwned ? Native.virginOwned() : ''; if (oraw !== ownedRaw) { buildChans(); buildFilmsOnTV(); } if (Date.now() - guideAt > 3 * 3600 * 1000) loadGuide(); render(); return true; }
+    if (k === 'resume') { refreshInstalled(); if (!SPORTS) { syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); } var oraw = window.Native && Native.virginOwned ? Native.virginOwned() : ''; if (oraw !== ownedRaw) { buildChans(); buildFilmsOnTV(); } if (Date.now() - guideAt > 3 * 3600 * 1000) loadGuide(); render(); return true; }
     if (pop) { popKey(k); return true; }
     if (zone === 'tabs') {
       var i = VIEWS.indexOf(view);
@@ -2288,8 +2391,9 @@ var app = (function () {
   render();
   loadGuide();
   if (!SPORTS) loadOD();
+  if (!SPORTS) setTimeout(function () { syncSeed(); syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); }, 1500);
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
-  return { zap: zap, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
+  return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();

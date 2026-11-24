@@ -27,6 +27,7 @@ public class ReminderReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         if (Intent.ACTION_BOOT_COMPLETED.equals(action) || "android.intent.action.MY_PACKAGE_REPLACED".equals(action)) {
             rescheduleAll(ctx);
+            SyncService.start(ctx);
             if (!Intent.ACTION_BOOT_COMPLETED.equals(action)) SelfUpdate.reopen(ctx);
             return;
         }

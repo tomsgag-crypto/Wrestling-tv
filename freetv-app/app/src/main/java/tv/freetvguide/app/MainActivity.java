@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private long lastBack = 0;
-    private static MainActivity current;
+    static MainActivity current;
     private boolean visible = false;
 
     /** A reminder went off while the app is open: show it in the app as well. */
@@ -86,6 +86,8 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Bridge(), "Native");
         web.loadUrl("file:///android_asset/index.html");
         web.requestFocus();
+        SyncService.start(this);
+        SyncJob.schedule(this);
         current = this;
         ReminderReceiver.ensureChannel(this);
         pendingReminder = getIntent() != null ? getIntent().getStringExtra("reminder") : null;
@@ -211,6 +213,13 @@ public class MainActivity extends Activity {
         root.removeView(quiet); quiet.destroy(); quiet = null;
     }
     private void js(String code) { ui.post(() -> web.evaluateJavascript(code, null)); }
+    private void syncInBackground() {
+        new Thread(() -> {
+            String r = SyncStore.syncWithTv(MainActivity.this);
+            js("window.app && app.syncApply && app.syncApply(" + JSONObject.quote(r) + ")");
+        }).start();
+    }
+    void jsFromAnywhere(String code) { if (web != null) js(code); }
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
@@ -526,6 +535,48 @@ public class MainActivity extends Activity {
             java.util.List<Intent> r = movieRoutes(names);
             if (n < 0 || n >= r.size()) return false;
             try { startActivity(r.get(n)); return true; } catch (Exception e) { return false; }
+        }
+        // ---- phone ⇄ TV link over Wi-Fi
+        /** The guide hands over its records; the phone then swaps them with the TV in the background. */
+        @JavascriptInterface
+        public void syncPush(String json) {
+            try { SyncStore.merge(MainActivity.this, new JSONObject(json)); } catch (Exception ignored) { }
+            if (!SyncService.isTv(MainActivity.this) && SyncStore.paired(MainActivity.this)) syncInBackground();
+        }
+        @JavascriptInterface
+        public String syncPull() { return SyncStore.records(MainActivity.this).toString(); }
+        @JavascriptInterface
+        public void syncNow() { if (!SyncService.isTv(MainActivity.this) && SyncStore.paired(MainActivity.this)) syncInBackground(); }
+        @JavascriptInterface
+        public String syncStatus() {
+            try {
+                android.content.SharedPreferences p = SyncStore.prefs(MainActivity.this);
+                return new JSONObject().put("tv", SyncService.isTv(MainActivity.this)).put("linked", SyncStore.paired(MainActivity.this))
+                    .put("tvName", p.getString("tvName", "")).put("lastSync", p.getLong("lastSync", 0))
+                    .put("phones", p.getString("tokens", "").split(",").length - (p.getString("tokens", "").isEmpty() ? 1 : 0)).toString();
+            } catch (Exception e) { return "{}"; }
+        }
+        /** Look for TVs running Free TV (takes a few seconds). */
+        @JavascriptInterface
+        public String syncFind() { return SyncStore.find(MainActivity.this, 4500).toString(); }
+        @JavascriptInterface
+        public String syncPairStart(String host, int port) {
+            try { SyncStore.http("http://" + host + ":" + port + "/pairstart", "{}"); return "ok"; } catch (Exception e) { return "Couldn't reach the TV"; }
+        }
+        @JavascriptInterface
+        public String syncPair(String host, int port, String name, String code) {
+            try {
+                JSONObject j = new JSONObject(SyncStore.http("http://" + host + ":" + port + "/pair", new JSONObject().put("code", code).toString()));
+                SyncStore.prefs(MainActivity.this).edit().putString("token", j.getString("token")).putString("host", host).putInt("port", port).putString("tvName", name).apply();
+                SyncJob.schedule(MainActivity.this);
+                syncInBackground();
+                return "ok";
+            } catch (Exception e) { return String.valueOf(e.getMessage()).contains("403") ? "That code didn't match – try again" : "Couldn't reach the TV"; }
+        }
+        @JavascriptInterface
+        public void syncUnlink() {
+            SyncStore.prefs(MainActivity.this).edit().remove("token").remove("tokens").apply();
+            try { ((android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE)).cancel(7311); } catch (Exception ignored) { }
         }
         @JavascriptInterface
         public void setZap(String json, int index) { zapList = json; zapIndex = index; }
