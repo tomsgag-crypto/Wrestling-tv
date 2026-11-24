@@ -820,8 +820,8 @@ var app = (function () {
   }
   // ITVX and Prime Video programmes: play the programme's own web page in Free TV (their TV apps only open at the home screen)
   function itvWeb() { return window.Native && Native.openWeb && (settings.itvWeb == null ? !TOUCH : settings.itvWeb); }
-  function disneyWeb() { return window.Native && Native.openWeb && (settings.disneyWeb == null ? !TOUCH : settings.disneyWeb); }
-  function primeWeb() { return window.Native && Native.openWeb && (settings.primeWeb == null ? !TOUCH : settings.primeWeb); }
+  function disneyWeb() { return window.Native && Native.openWeb && (settings.disneyWeb2 == null ? false : settings.disneyWeb2); }
+  function primeWeb() { return window.Native && Native.openWeb && (settings.primeWeb2 == null ? false : settings.primeWeb2); }
   function slugify(t) { return String(t).toLowerCase().replace(/&/g, 'and').replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
   /** The programme's page on itv.com, found with ITVX's own search. */
   function itvPage(title) {
@@ -1866,8 +1866,8 @@ var app = (function () {
     t.push({ kind: 'set', k: 'virgin', name: 'Virgin TV Go', desc: settings.virgin ? 'On – U and pay channels open on the Virgin TV Go website (sign in once). OK to switch off' : 'Off – OK to open U and pay channels with your Virgin TV account' });
     t.push({ kind: 'set', k: 'bbcWeb', name: 'BBC channels', desc: bbcWeb() ? 'Play in Free TV from the BBC iPlayer website (sign in once). OK to use the iPlayer app instead' : 'Open the BBC iPlayer app. OK to play in Free TV from the BBC website instead' });
     t.push({ kind: 'set', k: 'itvWeb', name: 'ITVX programmes', desc: itvWeb() ? 'Play in Free TV from the ITVX website, straight to the programme (sign in once). OK to use the ITVX app' : 'Open the ITVX app. OK to play in Free TV instead' });
-    t.push({ kind: 'set', k: 'disneyWeb', name: 'Disney+ titles (test)', desc: disneyWeb() ? 'Play in Free TV from the Disney+ website, straight to the title (sign in once). OK to use the Disney+ app' : 'Open the Disney+ app. OK to try playing in Free TV instead' });
-    t.push({ kind: 'set', k: 'primeWeb', name: 'Prime Video titles', desc: primeWeb() ? 'Play in Free TV from the Prime Video website, straight to the title (sign in once). OK to use the Prime Video app' : 'Open the Prime Video app. OK to play in Free TV instead' });
+    t.push({ kind: 'set', k: 'disneyWeb', name: 'Disney+ titles', desc: disneyWeb() ? 'Play in Free TV from the Disney+ website (test – adverts sped up, episodes may not be found). OK to use the Disney+ app' : 'Open the Disney+ app on the show. OK to try the website in Free TV instead (test)' });
+    t.push({ kind: 'set', k: 'primeWeb', name: 'Prime Video titles', desc: primeWeb() ? 'Play in Free TV from the Prime Video website (test – adverts sped up, episodes may not be found). OK to use the Prime Video app' : 'Open the Prime Video app on the show. OK to try the website in Free TV instead (test)' });
     if (window.Native && Native.playerPref) t.push({ kind: 'set', k: 'webNoAds', name: 'Adverts on ITVX, Prime and Disney+', desc: Native.playerPref('webNoAds', false) ? 'Skipped – muted and run at 16x speed (and blocked where possible). OK to allow' : 'Allowed – OK to skip them (muted and run at 16x speed)' });
     t.push({ kind: 'set', k: 'plutoInApp', name: 'Pluto TV', desc: settings.plutoInApp ? 'Plays in Free TV – ▲ ▼ changes channel. OK to open the Pluto app instead' : 'Opens the Pluto TV app – OK to play in Free TV instead' });
     if (!TOUCH) {
@@ -1981,8 +1981,8 @@ var app = (function () {
       if (x.k === 'gmovies') { googleMovies(false); return; }
       if (x.k === 'webNoAds') { Native.setPlayerPref('webNoAds', !Native.playerPref('webNoAds', false)); render(); return; }
       if (x.k === 'itvWeb') { settings.itvWeb = !itvWeb(); saveSettings(); render(); return; }
-      if (x.k === 'disneyWeb') { settings.disneyWeb = !disneyWeb(); saveSettings(); render(); return; }
-      if (x.k === 'primeWeb') { settings.primeWeb = !primeWeb(); saveSettings(); render(); return; }
+      if (x.k === 'disneyWeb') { settings.disneyWeb2 = !disneyWeb(); saveSettings(); render(); return; }
+      if (x.k === 'primeWeb') { settings.primeWeb2 = !primeWeb(); saveSettings(); render(); return; }
       if (x.k === 'vsync') { Native.virginSync(); return; }
       if (x.k === 'pay') { cyclePay(); return; }
       if (x.k === 'payOld') { settings.pay = !settings.pay; saveSettings(); if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); loadSkyDay(0).then(render); }); buildChans(); buildFilmsOnTV(); }
