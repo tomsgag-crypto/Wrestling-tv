@@ -841,18 +841,23 @@ var app = (function () {
   function loadStreamPage(c) {
     if (c.loading || c.done) return Promise.resolve();
     c.loading = true;
-    var today = new Date().toISOString().slice(0, 10);
-    var q = 'watch_region=GB&sort_by=' + (c.sort || 'popularity.desc') + '&include_adult=false&page=' + (c.page + 1) + '&with_watch_monetization_types=' + encodeURIComponent(c.mon) +
-      (c.sort === 'vote_average.desc' ? '&vote_count.gte=' + (c.kind === 'movie' ? 400 : 150) : '') +
-      (c.sort === 'primary_release_date.desc' ? '&primary_release_date.lte=' + today + '&vote_count.gte=10' : '') +
-      (c.sort === 'first_air_date.desc' ? '&first_air_date.lte=' + today + '&vote_count.gte=5' : '') +
+    var today = new Date().toISOString().slice(0, 10), mv = c.kind === 'movie';
+    // your chosen order (Sort by… in the menu) replaces each list's own
+    var mode = settings.odSort || '', srt = c.sort || 'popularity.desc', fresh = c.fresh;
+    if (mode) { fresh = false; srt = mode === 'az' ? (mv ? 'title.asc' : 'name.asc') : mode === 'new' ? (mv ? 'primary_release_date.desc' : 'first_air_date.desc') : mode === 'top' ? 'vote_average.desc' : 'popularity.desc'; }
+    var q = 'watch_region=GB&sort_by=' + srt + '&include_adult=false&page=' + (c.page + 1) + '&with_watch_monetization_types=' + encodeURIComponent(c.mon) +
+      (srt === 'vote_average.desc' ? '&vote_count.gte=' + (c.kind === 'movie' ? 400 : 150) : '') +
+      (srt === 'primary_release_date.desc' ? '&primary_release_date.lte=' + today + '&vote_count.gte=10' : '') +
+      (srt === 'first_air_date.desc' ? '&first_air_date.lte=' + today + '&vote_count.gte=5' : '') +
+      (mode === 'az' ? '&vote_count.gte=' + (mv ? 50 : 20) : '') +
+      (mode === 'trend' ? (mv ? '&primary_release_date.gte=' : '&air_date.gte=') + new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10) + (mv ? '&primary_release_date.lte=' : '&air_date.lte=') + today : '') +
       (c.prov ? '&with_watch_providers=' + c.prov : '') + (c.kind === 'movie' ? '&with_original_language=en' : '');
     var g = OD_GENRES[odGenre], gids = c.kind === 'movie' ? g[1] : g[2];
     if (odGenre && !gids) { c.items = []; c.done = true; c.loading = false; return Promise.resolve(); }
     if (gids || c.genres) q += '&with_genres=' + encodeURIComponent(c.genres ? (gids ? gids.split('|')[0] + ',' + c.genres : c.genres) : gids);   // TMDB: comma = both
     // "newest first": first things out recently (TV with episodes in the last 2 months, films from the last year), then the rest by popularity
-    if (c.fresh && !c.phase) { c.phase = 'new'; c.npage = 0; c.seen = {}; }
-    var newPhase = c.fresh && c.phase === 'new';
+    if (fresh && !c.phase) { c.phase = 'new'; c.npage = 0; c.seen = {}; }
+    var newPhase = fresh && c.phase === 'new';
     if (newPhase) {
       var ago = function (d) { return new Date(Date.now() - d * 86400000).toISOString().slice(0, 10); };
       q = q.replace(/&page=\d+/, '&page=' + (c.npage + 1)) + (c.kind === 'tv' ? '&air_date.gte=' + ago(60) + '&air_date.lte=' + today : '&primary_release_date.gte=' + ago(365) + '&primary_release_date.lte=' + today);
@@ -2399,6 +2404,9 @@ var app = (function () {
     }
     if (view === 'guide' && window.Native && Native.pipActive && Native.pipActive()) opts.unshift({ label: '■ Stop ' + Native.pipName() + ' (playing in the corner window)', fn: function () { Native.pipStop(); toast('Stopped'); } });
     if (mini && view === 'guide') opts.unshift({ label: '■ Stop ' + mini.name + ' (playing in the corner)', fn: function () { Native.miniStop(); mini = null; toast('Stopped'); render(); } });
+    if (isOD()) { var SORTS = [['', 'Each list\'s own order'], ['pop', 'Most popular'], ['trend', 'Trending (popular lately)'], ['new', 'Newest first'], ['top', 'Top rated'], ['az', 'A–Z']];
+      var cur = SORTS.filter(function (x) { return x[0] === (settings.odSort || ''); })[0];
+      opts.unshift({ label: '⇅ Sort by: ' + cur[1] + '  ▸', fn: sub(function () { showPop({ title: 'Sort films & TV by…', opts: SORTS.map(function (x) { return { label: x[1], tick: x[0] === (settings.odSort || ''), fn: function () { settings.odSort = x[0]; saveSettings(); setGenre(odGenre); } }; }) }); }) }); }
     if (isOD()) opts.push({ label: settings.hideWatched ? 'Show things I\'ve watched' : 'Hide things I\'ve watched', fn: function () { settings.hideWatched = !settings.hideWatched; saveSettings(); odRow = 0; } });
     opts.push({ label: 'More settings  ▸', fn: sub(function () { moreMenu(c); }) });
     opts.push({ label: 'Cancel' });
