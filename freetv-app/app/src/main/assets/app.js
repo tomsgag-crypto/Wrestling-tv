@@ -271,6 +271,31 @@ var app = (function () {
       }).sort(function (x, y) { return x.num - y.num; });
     }).catch(function () { pluto = pluto || []; });
   }
+  /** Pluto TV listings beyond the first 12 hours: fetched in 12-hour blocks as the guide scrolls there. */
+  var plutoSegs = {};
+  function plutoMore(a, b) {
+    if (!pluto || !pluto.length) return;
+    var byId = {}; pluto.forEach(function (c) { byId[c.id] = c; });
+    for (var t0 = Math.floor(a / 43200) * 43200; t0 < b; t0 += 43200) (function (t) {
+      if (t + 43200 <= nowSec() + 11 * 3600) return;   // covered by the first load
+      if (plutoSegs[t] && (plutoSegs[t] === 1 || Date.now() - plutoSegs[t] < 120000)) return;
+      plutoSegs[t] = 1;
+      getJSON('https://api.pluto.tv/v2/channels?start=' + encodeURIComponent(new Date(t * 1000).toISOString()) + '&stop=' + encodeURIComponent(new Date((t + 43200) * 1000).toISOString())).then(function (list) {
+        list.forEach(function (c) {
+          var x = byId[c._id]; if (!x || !c.timelines) return;
+          var seen = {}; x.events.forEach(function (e) { seen[e.s] = 1; });
+          c.timelines.forEach(function (tl) {
+            var ep = tl.episode || {}, series = ep.series && ep.series.name, st = Date.parse(tl.start) / 1000;
+            if (seen[st]) return; seen[st] = 1;
+            x.events.push({ s: st, e: Date.parse(tl.stop) / 1000, t: tl.title || series || ep.name || '', sub: ep.name && ep.name !== tl.title ? ep.name : '', desc: ep.description || '',
+              img: ep.poster && ep.poster.path || (ep.featuredImage && ep.featuredImage.path) || '' });
+          });
+          x.events.sort(function (p, q) { return p.s - q.s; });
+        });
+        if (view === 'guide') render();
+      }).catch(function () { plutoSegs[t] = Date.now(); });
+    })(t0);
+  }
   // ---------------------------------------------------------------- Samsung TV Plus and Plex: free channels that play in Free TV
   var samsung = [], plex = [], plexTok = '';
   function loadSamsung() {
@@ -1408,6 +1433,14 @@ var app = (function () {
     var t = new Date((day0 + d * 86400 + 43200) * 1000);
     return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][t.getDay()] + ' ' + t.getDate();
   }
+  function dayMenu() {
+    var cur = Math.floor((gT - day0) / 86400), o = [];
+    for (var d = 0; d < DAYS; d++) (function (d) {
+      var t = new Date((day0 + d * 86400 + 43200) * 1000);
+      o.push({ label: (d === cur ? '✓ ' : '') + dayLabel(d) + (d > 1 ? ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][t.getMonth()] : ''), fn: function () { goDay(d); gZone = 'rows'; zone = 'main'; render(); } });
+    })(d);
+    showPop({ title: 'TV guide – choose a day', opts: o });
+  }
   /** Go to day d, at the same time of day (or 7pm if that's still to come today). */
   function goDay(d) {
     var now = nowSec();
@@ -1427,8 +1460,8 @@ var app = (function () {
     // phones: draw a screen's worth either side too, so dragging sideways shows programmes straight away
     var lo = TOUCH ? ws - SPAN : ws, hi = TOUCH ? ws + 2 * SPAN : ws + SPAN;
     var curDay = Math.floor((gT - day0) / 86400), dh = '';
-    if (gZone !== 'days') gDay = curDay;
-    for (var d = 0; d < DAYS; d++) dh += '<div class="day' + (d === curDay ? ' on' : '') + (gZone === 'days' && zone === 'main' && d === gDay ? ' sel' : '') + '" data-day="' + d + '">' + dayLabel(d) + '</div>';
+    if (gZone !== 'days') gDay = 0;
+    dh += '<div class="day on' + (gZone === 'days' && zone === 'main' && gDay < DAYS ? ' sel' : '') + '" data-day="pick">▾ ' + dayLabel(curDay) + '</div>';   // days are a drop-down
     var nHide = Object.keys(settings.hide).length + (settings.favOnly ? 1 : 0);
     dh += '<div class="day opts' + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">☰ Filter & options' + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
     dh += '<div class="day sec on' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 ? ' sel' : '') + '" data-day="src">▾ Channels: ' + esc(settings.guideSec || 'All') + (settings.guideType ? ' · ' + esc(settings.guideType) : '') + '</div>';
@@ -1479,6 +1512,7 @@ var app = (function () {
     $('gChan').textContent = ch.name + '  ·  ' + (ch.play ? ch.sec + ' – plays in Free TV' : settings.virgin && (ch.pay || ch.vid || ch.svc === 'u') ? 'watch with Virgin TV Go' : ch.svc ? 'watch in ' + SVC[ch.svc].name : ch.pay ? 'pay channel – set reminders' : 'Freeview only');
     plexOnScreen();
     if (settings.virgin) virginListings(ws, ws + SPAN);
+    plutoMore(ws, ws + SPAN);
     if (fp) {
       $('gTitle').textContent = fp.t;
       var live = fp.s <= now && fp.e > now, past = fp.e <= now, rem = reminders.some(function (r) { return r.item.ch === ch.id && r.item.s === fp.s; });
@@ -1531,12 +1565,13 @@ var app = (function () {
     var now = nowSec(), fp = focused();
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
-      if (k === 'left') gDay = Math.max(0, gDay - 1);
-      else if (k === 'right') gDay = Math.min(DAYS + 1, gDay + 1);
+      // the chips: day drop-down (0), Filter & options (DAYS), Channels (DAYS + 1)
+      if (k === 'left') gDay = gDay > DAYS ? DAYS : 0;
+      else if (k === 'right') gDay = gDay < DAYS ? DAYS : DAYS + 1;
       else if (k === 'ok' && gDay === DAYS) { optionsMenu(); return; }
       else if (k === 'ok' && gDay > DAYS) { sourceMenu(); return; }
-      else if (k === 'down' && gDay >= DAYS) { gZone = 'rows'; }
-      else if (k === 'ok' || k === 'down') { goDay(gDay); gZone = 'rows'; }
+      else if (k === 'ok') { dayMenu(); return; }
+      else if (k === 'down') { gZone = 'rows'; }
       else if (k === 'menu') { optionsMenu(); return; }
       render(); return;
     }
@@ -2308,7 +2343,7 @@ var app = (function () {
     if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = 0; render(); return true; }
     if (mini && view === 'guide') { Native.miniStop(); mini = null; toast('Stopped'); renderGuide(); return true; }
-    if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = Math.max(0, Math.min(DAYS - 1, Math.floor((gT - day0) / 86400))); render(); return true; }
+    if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = 0; render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }
     if (zone === 'main') { zone = 'tabs'; render(); return true; }
     if (view !== 'guide') { setView('guide'); return true; }
@@ -2395,7 +2430,7 @@ var app = (function () {
     if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var dy = e.target.closest('[data-day]');
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { optionsMenu(); return; }
-      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
+      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
     if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'a') { appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
