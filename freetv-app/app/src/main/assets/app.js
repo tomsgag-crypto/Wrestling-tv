@@ -1067,7 +1067,7 @@ var app = (function () {
   function sources() {
     if (view === 'popular') return popularSources();
     var out = [];
-    if (streamCats.length) out.push({ id: 'family', name: 'Family', cats: familyCats() });
+    if (streamCats.length) out.push({ id: 'family', name: 'Family & genres', cats: familyCats() });
     out.push({ id: 'rec', name: 'Recommended', cats: recCats() }, { id: 'tv', name: 'On TV', cats: [filmsOnTV] });
     out.push({ id: 'bbc', name: 'BBC iPlayer', cats: bbcCats.length ? bbcCats : [{ src: 'msg', name: 'Loading…', items: [] }] });
     out.push({ id: 'pluto', name: 'Pluto TV', cats: plutoCats.length ? plutoCats : [{ src: 'msg', name: plutoTried ? 'Not available' : 'Loading…', items: [] }] });
@@ -1090,6 +1090,12 @@ var app = (function () {
     famCache = [mk('Family films', 'movie', 'popularity.desc', '10751'), mk('New family films', 'movie', 'popularity.desc', '10751', true),
       mk('Animated films', 'movie', 'popularity.desc', '16'), mk('Top rated family films', 'movie', 'vote_average.desc', '10751'),
       mk('Family TV', 'tv', 'popularity.desc', '10751'), mk('Kids TV', 'tv', 'popularity.desc', '10762')];
+    // then every genre, films and TV, down the side (no drop-down needed)
+    OD_GENRES.forEach(function (g, i) {
+      if (!i || /family/i.test(g[0])) return;
+      if (g[1]) famCache.push(mk(g[0] + ' films', 'movie', 'popularity.desc', g[1]));
+      if (g[2]) famCache.push(mk(g[0] + ' TV', 'tv', 'popularity.desc', g[2]));
+    });
     return famCache;
   }
   function buildOD() { od = sources().filter(function (x) { return !settings.hide[x.id] || x.id === 'tv' || x.id === 'rec'; }); if (odSrc >= od.length) odSrc = 0; }
