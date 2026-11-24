@@ -50,5 +50,24 @@ for k, ids in CH.items():
     for i in ids:
         if got.get(i):
             out[k] = sorted(got[i]); break
-json.dump({"at": int(now), "ch": out}, open(sys.argv[1], "w"), separators=(",", ":"))
+# Pluto TV's US line-up (the runner is in the US, so Pluto gives US channels)
+pluto = []
+try:
+    t0 = datetime.utcfromtimestamp(now - 3600).strftime("%Y-%m-%dT%H:00:00Z"); t1 = datetime.utcfromtimestamp(now + 18 * 3600).strftime("%Y-%m-%dT%H:00:00Z")
+    req = urllib.request.Request("https://api.pluto.tv/v2/channels?start=" + t0 + "&stop=" + t1, headers={"User-Agent": "Mozilla/5.0"})
+    for c in json.loads(urllib.request.urlopen(req, timeout=120).read()):
+        if not c.get("isStitched", True) and not c.get("timelines"): continue
+        ev = []
+        for tl in c.get("timelines") or []:
+            try:
+                s1 = int(datetime.strptime(tl["start"][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=__import__("datetime").timezone.utc).timestamp())
+                e1 = int(datetime.strptime(tl["stop"][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=__import__("datetime").timezone.utc).timestamp())
+            except Exception: continue
+            ep = tl.get("episode") or {}
+            ev.append([s1, e1, tl.get("title") or ep.get("name") or "", (ep.get("description") or "")[:120]])
+        pluto.append({"id": c.get("_id"), "n": c.get("name"), "num": c.get("number"), "slug": c.get("slug"), "cat": c.get("category") or "", "ev": ev})
+except Exception as x:
+    print("pluto failed", x)
+print("pluto channels", len(pluto))
+json.dump({"at": int(now), "ch": out, "pluto": pluto}, open(sys.argv[1], "w"), separators=(",", ":"))
 print({k: len(v) for k, v in out.items()})
