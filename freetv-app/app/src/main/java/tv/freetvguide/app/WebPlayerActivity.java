@@ -504,20 +504,59 @@ public class WebPlayerActivity extends Activity {
     private int zapAt = -1;
     private org.json.JSONArray zapArr;
     private final Runnable zapHide = this::hideZap;
+    private int zapProg = 0;   // which programme in the list is picked (◀ ▶); 0 = on now
     private void moveZap(int dir) {
-        try { if (zapArr == null) zapArr = new org.json.JSONArray(MainActivity.zapList); } catch (Exception x) { zapArr = new org.json.JSONArray(); }
+        boolean fresh = !zapOn;
+        if (fresh) { try { zapArr = new org.json.JSONArray(MainActivity.zapList); } catch (Exception x) { zapArr = new org.json.JSONArray(); } }
         int n = zapArr.length();
         if (n == 0) { android.widget.Toast.makeText(this, "Open channels from the TV guide to flick through them here", android.widget.Toast.LENGTH_SHORT).show(); return; }
-        if (zapAt < 0) zapAt = MainActivity.zapIndex;
-        zapAt = ((zapAt + dir) % n + n) % n;
-        org.json.JSONObject c = zapArr.optJSONObject(zapAt);
+        if (fresh) {
+            // first press: the channel you're watching
+            zapAt = -1; String cur = getIntent().getStringExtra("title");
+            for (int i = 0; i < n && cur != null; i++) if (cur.equals(zapArr.optJSONObject(i).optString("name"))) { zapAt = i; break; }
+            if (zapAt < 0) zapAt = Math.max(0, Math.min(n - 1, MainActivity.zapIndex));
+        } else zapAt = ((zapAt + dir) % n + n) % n;
+        zapProg = 0;
+        drawZap();
+    }
+    private void drawZap() {
+        org.json.JSONObject c = zapArr == null ? null : zapArr.optJSONObject(zapAt);
         if (c == null) return;
-        String now = c.optString("now"), next = c.optString("next");
-        zapBox.setText(android.text.Html.fromHtml("<small>" + android.text.TextUtils.htmlEncode(c.optString("sec")) + "  ·  ▲▼ more channels  ·  OK watch  ·  Back stay here</small><br><big><b>"
-            + android.text.TextUtils.htmlEncode(c.optString("name")) + "</b></big>"
-            + (now.isEmpty() ? "" : "<br>Now: " + android.text.TextUtils.htmlEncode(now)) + (next.isEmpty() ? "" : "<br>Next: " + android.text.TextUtils.htmlEncode(next))));
+        org.json.JSONArray ev = c.optJSONArray("ev");
+        int m = ev == null ? 0 : ev.length();
+        if (zapProg >= m) zapProg = Math.max(0, m - 1);
+        long nowS = System.currentTimeMillis() / 1000;
+        StringBuilder h = new StringBuilder("<small>" + android.text.TextUtils.htmlEncode(c.optString("sec")) + "  ·  ▲▼ channels  ·  ◀▶ programmes  ·  OK " + (zapProg == 0 ? "watch" : "reminder on/off") + "  ·  Back close</small><br><big><b>"
+            + android.text.TextUtils.htmlEncode(c.optString("name")) + "</b></big>");
+        for (int i = 0; i < m; i++) {
+            org.json.JSONObject e = ev.optJSONObject(i);
+            String line = (e.optLong("s") <= nowS ? "Now" : e.optString("c")) + "  " + e.optString("t") + (e.optBoolean("r") ? "  🔔" : "");
+            line = android.text.TextUtils.htmlEncode(line);
+            h.append("<br>").append(i == zapProg ? "<font color='#2be0a8'><b>▶ " + line + "</b></font>" : "&nbsp;&nbsp;&nbsp;" + line);
+        }
+        if (m == 0) h.append("<br>No listings");
+        zapBox.setText(android.text.Html.fromHtml(h.toString()));
         zapBox.setVisibility(View.VISIBLE); zapBox.bringToFront(); zapOn = true;
-        ui.removeCallbacks(zapHide); ui.postDelayed(zapHide, 8000);
+        ui.removeCallbacks(zapHide); ui.postDelayed(zapHide, 10000);
+    }
+    private void zapSideways(int dir) {
+        org.json.JSONObject c = zapArr == null ? null : zapArr.optJSONObject(zapAt);
+        org.json.JSONArray ev = c == null ? null : c.optJSONArray("ev");
+        if (ev == null || ev.length() == 0) return;
+        zapProg = Math.max(0, Math.min(ev.length() - 1, zapProg + dir));
+        drawZap();
+    }
+    /** OK in the mini guide: watch the channel (on now), or set / cancel a reminder (later programme). */
+    private void zapOk() {
+        org.json.JSONObject c = zapArr == null ? null : zapArr.optJSONObject(zapAt);
+        org.json.JSONArray ev = c == null ? null : c.optJSONArray("ev");
+        org.json.JSONObject e = ev == null ? null : ev.optJSONObject(zapProg);
+        if (e == null || zapProg == 0 || e.optLong("s") <= System.currentTimeMillis() / 1000) { goZap(); return; }
+        boolean had = e.optBoolean("r");
+        try { e.put("r", !had); } catch (Exception ignored) { }
+        if (MainActivity.current != null) MainActivity.current.jsFromAnywhere("window.app && app.zapRemind && app.zapRemind(" + org.json.JSONObject.quote(c.optString("id")) + "," + e.optLong("s") + ")");
+        android.widget.Toast.makeText(this, (had ? "Reminder cancelled: " : "Reminder set: ") + e.optString("c") + " " + e.optString("t"), android.widget.Toast.LENGTH_SHORT).show();
+        drawZap();
     }
     private void hideZap() { zapOn = false; zapAt = -1; if (zapBox != null) zapBox.setVisibility(View.GONE); ui.removeCallbacks(zapHide); }
     private void goZap() {
@@ -1062,7 +1101,11 @@ public class WebPlayerActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
         if (watching() && zapOn && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
-            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) goZap();
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) zapOk();
+            return true;
+        }
+        if (watching() && zapOn && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) zapSideways(k == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
             return true;
         }
         // ITVX / Prime programmes: ◀ ▶ (and ⏪ ⏩) move through the programme; ▲ opens the player menu

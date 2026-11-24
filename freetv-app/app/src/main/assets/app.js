@@ -1497,6 +1497,8 @@ var app = (function () {
       var ev = c.events.filter(function (e) { return e.e > now; }).slice(0, 2);
       if (i === gRow) idx = list.length;
       var z = { id: c.id, name: c.name, sec: c.sec, now: ev[0] && ev[0].s <= now ? ev[0].t : '', next: ev[0] && ev[0].s > now ? clock(ev[0].s) + ' ' + ev[0].t : ev[1] ? clock(ev[1].s) + ' ' + ev[1].t : '' };
+      // the next few hours, for the mini guide's programme list (with reminders marked)
+      z.ev = c.events.filter(function (e) { return e.e > now && e.s < now + 5 * 3600; }).slice(0, 8).map(function (e) { return { s: e.s, c: clock(e.s), t: e.t, r: !!reminderFor(progItem(c, e)) }; });
       // channels the player can switch to by itself (faster than starting again)
       if (settings.virgin && c.vweb) { z.kind = 'sky'; z.url = c.vweb; }
       else if (settings.virgin && c.vid) {
@@ -1506,6 +1508,16 @@ var app = (function () {
       list.push(z);
     });
     Native.setZap(JSON.stringify(list), idx);
+  }
+  /** Mini guide: set (or cancel) a reminder for a programme. Returns 'set' or 'cancelled'. */
+  function zapRemind(id, st) {
+    for (var i = 0; i < chans.length; i++) if (chans[i].id === id) {
+      var e = chans[i].events.filter(function (x) { return x.s === st; })[0]; if (!e) return 'gone';
+      var it = progItem(chans[i], e);
+      if (reminderFor(it)) { cancelReminder(it, true); setZap(); return 'cancelled'; }
+      var m = settings.remindMins || 0; addReminder(it, it.s - nowSec() > m * 60 ? m : 0); setZap(); return 'set';
+    }
+    return 'gone';
   }
   /** Watch another channel picked in the player's mini guide. */
   function zap(id) {
@@ -2450,5 +2462,5 @@ var app = (function () {
   setInterval(function () { if (!pop) render(); }, 30000);
   setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
-  return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
+  return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, zapRemind: zapRemind, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();
