@@ -1408,7 +1408,9 @@ var app = (function () {
     if (!ws || gT < ws) ws = floor30(gT);
     if (gT >= ws + SPAN) ws = TOUCH ? floor30(gT) : floor30(gT - SPAN / 3);
     if (ws < floor30(now)) ws = floor30(now);
-    ensureDays(ws, ws + SPAN);
+    ensureDays(ws, ws + (TOUCH ? 2 : 1) * SPAN);
+    // phones: draw a screen's worth either side too, so dragging sideways shows programmes straight away
+    var lo = TOUCH ? ws - SPAN : ws, hi = TOUCH ? ws + 2 * SPAN : ws + SPAN;
     var curDay = Math.floor((gT - day0) / 86400), dh = '';
     if (gZone !== 'days') gDay = curDay;
     for (var d = 0; d < DAYS; d++) dh += '<div class="day' + (d === curDay ? ' on' : '') + (gZone === 'days' && zone === 'main' && d === gDay ? ' sel' : '') + '" data-day="' + d + '">' + dayLabel(d) + '</div>';
@@ -1419,8 +1421,8 @@ var app = (function () {
     var dsel = $('gDays').querySelector('.day.sel');
     if (dsel) { var gb = $('gDays'); if (dsel.offsetLeft + dsel.offsetWidth > gb.scrollLeft + gb.clientWidth) gb.scrollLeft = dsel.offsetLeft + dsel.offsetWidth - gb.clientWidth + 20; if (dsel.offsetLeft < gb.scrollLeft) gb.scrollLeft = Math.max(0, dsel.offsetLeft - 20); }
     var th = '';
-    for (var t = ws; t < ws + SPAN; t += 1800) th += '<div class="tick" style="left:' + ((t - ws) / SPAN * 100) + '%">' + clock(t) + '</div>';
-    $('gTimes').innerHTML = th;
+    for (var t = Math.ceil(lo / 1800) * 1800; t < hi; t += 1800) th += '<div class="tick" style="left:' + ((t - ws) / SPAN * 100) + '%">' + clock(t) + '</div>';
+    $('gTimes').innerHTML = '<div id="gTin">' + th + '</div>';
     if (TOUCH) $('gTimes').innerHTML += '<div id="tNav"><span data-tn="-1">◀</span><span data-tn="0">Now</span><span data-tn="1">▶</span></div>';
     if (!chans.length) {
       $('rows').innerHTML = '<div class="empty">' + (loading.guide ? '<span class="spinner"></span>Loading the TV guide…' : 'The TV guide couldn\'t be loaded. Press Menu to try again.') + '</div>';
@@ -1441,8 +1443,8 @@ var app = (function () {
       var c = chans[ci], blocks = '';
       if (isUS() && secGroup(c.sec) !== lastGrp) { lastGrp = secGroup(c.sec); h += '<div class="gsec ggrp">' + esc(lastGrp) + (lastGrp === 'UK TV' ? ' – needs a UK connection (switch the VPN off)' : '') + '</div>'; }
       if (c.sec !== lastSec) { h += '<div class="gsec">' + esc(c.sec) + '</div>'; lastSec = c.sec; }
-      eventsAt(c, ws, ws + SPAN).forEach(function (p) {
-        var a = Math.max(p.s, ws), b = Math.min(p.e, ws + SPAN);
+      eventsAt(c, lo, hi).forEach(function (p) {
+        var a = Math.max(p.s, lo), b = Math.min(p.e, hi);
         if (b <= a) return;
         var sel = rowSel && ci === gRow && fp === p, live = p.s <= now && p.e > now, k = c.id + '|' + p.s;
         var ic = remKeys[k] ? '🔔' : listedKeys[k] ? '★' : watched[keyOf(progItem(c, p))] ? '✓' : '';
@@ -1453,8 +1455,8 @@ var app = (function () {
       });
       var sv = c.play ? 'Plays here' : settings.virgin && (c.pay || c.vid || c.svc === 'u') ? 'Virgin TV Go' : c.svc ? SVC[c.svc].name : c.pay ? 'Reminders only' : 'Freeview only';
       h += '<div class="grow' + (ci === gRow && rowSel ? ' selrow' : '') + '"><div class="gch" data-r="' + ci + '"><div class="nm">' + (c.fav ? '<span class="fv">♥</span> ' : '') + esc(c.name) + '</div>' +
-        '<div class="sv' + (c.svc || c.play ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline">' + blocks +
-        (now >= ws && now < ws + SPAN ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div>';
+        '<div class="sv' + (c.svc || c.play ? '' : ' no') + '">' + esc(sv) + '</div></div><div class="gline"><div class="gin">' + blocks +
+        (now >= lo && now < hi ? '<div class="nowline" style="left:' + ((now - ws) / SPAN * 100) + '%"></div>' : '') + '</div></div></div>';
     }
     box.innerHTML = h;
     if (TOUCH) box.scrollTop = keepScroll;
@@ -2317,13 +2319,38 @@ var app = (function () {
   }
   var scrollT = null;
   $('rows').addEventListener('scroll', function () { clearTimeout(scrollT); scrollT = setTimeout(plexOnScreen, 250); }, { passive: true });
+  // phones: the programmes follow your finger sideways; on release the guide settles on the nearest quarter of an hour
   var sw = null;
-  $('rows').addEventListener('touchstart', function (e) { var t = e.touches[0]; sw = { x: t.clientX, y: t.clientY }; }, { passive: true });
-  $('rows').addEventListener('touchend', function (e) {
+  function dragEls() { return [].slice.call(document.querySelectorAll('#rows .gin, #gTin')); }
+  function setShift(px, anim) { dragEls().forEach(function (el) { el.style.transition = anim ? 'transform .22s ease-out' : 'none'; el.style.transform = px ? 'translateX(' + px + 'px)' : ''; }); }
+  $('rows').addEventListener('touchstart', function (e) { var t = e.touches[0]; sw = { x: t.clientX, y: t.clientY, mode: '', w: (document.querySelector('#rows .gline') || {}).clientWidth || innerWidth }; }, { passive: true });
+  $('rows').addEventListener('touchmove', function (e) {
     if (!sw) return;
-    var t = e.changedTouches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
-    sw = null;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { e.preventDefault(); shiftTime(dx < 0 ? 1 : -1); }
+    var t = e.touches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    if (!sw.mode && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) sw.mode = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+    if (sw.mode !== 'h') return;
+    e.preventDefault();
+    // can't go back before now
+    var back = (ws - floor30(nowSec())) / SPAN * sw.w;   // how far right you can drag before reaching "now"
+    var px = dx > back ? back + (dx - back) * 0.25 : dx;   // a little give past "now"   // a little give at "now"
+    sw.px = px;
+    setShift(px, false);
+  }, { passive: false });
+  $('rows').addEventListener('touchend', function () {
+    if (!sw) return;
+    var s0 = sw; sw = null;
+    if (s0.mode !== 'h' || !s0.px) return;
+    var secs = -s0.px / s0.w * SPAN, snap = Math.round(secs / 900) * 900;
+    var target = Math.max(floor30(nowSec()), ws + snap);
+    var moved = target - ws;
+    if (!moved) { setShift(0, true); return; }
+    ws = target; gT = Math.max(nowSec(), ws + 60);
+    if (gT >= ws + SPAN) gT = ws + 60;
+    renderGuide();
+    // carry on from where the finger left it, then glide into place
+    var left = s0.px + moved / SPAN * s0.w;
+    setShift(left, false);
+    requestAnimationFrame(function () { requestAnimationFrame(function () { setShift(0, true); }); });
   });
 
   // touch
