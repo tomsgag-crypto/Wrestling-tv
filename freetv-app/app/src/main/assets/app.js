@@ -1070,9 +1070,9 @@ var app = (function () {
     }).catch(function () { bbcPopular.items = []; }).then(function () { bbcPopular.loading = false; });
   }
   function sources() {
-    if (view === 'popular') return popularSources();
+    if (view === 'popular') return familySources();   // the tab is now Family
     var out = [];
-    if (streamCats.length) out.push({ id: 'family', name: 'Family & genres', cats: familyCats() });
+    if (streamCats.length) out.push({ id: 'family', name: 'Genres', cats: familyCats() });
     out.push({ id: 'rec', name: 'Recommended', cats: recCats() }, { id: 'tv', name: 'On TV', cats: [filmsOnTV] });
     out.push({ id: 'bbc', name: 'BBC iPlayer', cats: bbcCats.length ? bbcCats : [{ src: 'msg', name: 'Loading…', items: [] }] });
     out.push({ id: 'pluto', name: 'Pluto TV', cats: plutoCats.length ? plutoCats : [{ src: 'msg', name: plutoTried ? 'Not available' : 'Loading…', items: [] }] });
@@ -1092,16 +1092,36 @@ var app = (function () {
     var ids = myProvIds().join('|');
     if (!ids) return [{ src: 'msg', name: 'Loading…', items: [] }];
     var mk = function (name, kind, sort, gen, fresh) { var c = { src: 'tmdb', name: name, kind: kind, sort: sort, fresh: fresh, prov: ids, mon: 'flatrate|free|ads', genres: gen, items: null, page: 0 }; popAll.push(c); return c; };
-    famCache = [mk('Family films', 'movie', 'popularity.desc', '10751'), mk('New family films', 'movie', 'popularity.desc', '10751', true),
-      mk('Animated films', 'movie', 'popularity.desc', '16'), mk('Top rated family films', 'movie', 'vote_average.desc', '10751'),
-      mk('Family TV', 'tv', 'popularity.desc', '10751'), mk('Kids TV', 'tv', 'popularity.desc', '10762')];
-    // then every genre, films and TV, down the side (no drop-down needed)
+    famCache = [];
+    // every genre, films and TV, down the side (no drop-down needed); family has its own tab
     OD_GENRES.forEach(function (g, i) {
       if (!i || /family/i.test(g[0])) return;
       if (g[1]) famCache.push(mk(g[0] + ' films', 'movie', 'popularity.desc', g[1]));
       if (g[2]) famCache.push(mk(g[0] + ' TV', 'tv', 'popularity.desc', g[2]));
     });
     return famCache;
+  }
+  /** The Family tab: family films and TV, on all your apps together, then app by app. */
+  var famTab = null, famBySvc = {};
+  function famListsFor(prov) {
+    var mk = function (name, kind, sort, gen, fresh) { var c = { src: 'tmdb', name: name, kind: kind, sort: sort, fresh: fresh, prov: prov, mon: 'flatrate|free|ads', genres: gen, items: null, page: 0 }; popAll.push(c); return c; };
+    return [mk('Popular family films', 'movie', 'popularity.desc', '10751'), mk('New family films', 'movie', 'popularity.desc', '10751', true),
+      mk('Animated films', 'movie', 'popularity.desc', '16'), mk('Top rated family films', 'movie', 'vote_average.desc', '10751'),
+      mk('Family TV', 'tv', 'popularity.desc', '10751'), mk('New family TV', 'tv', 'popularity.desc', '10751', true),
+      mk('Kids TV', 'tv', 'popularity.desc', '10762'), mk('Animated TV', 'tv', 'popularity.desc', '16')];
+  }
+  function familySources() {
+    var ids = myProvIds();
+    if (!ids.length) return [{ id: 'fam', name: 'Family', cats: [{ src: 'msg', name: tmdbKey ? 'Loading…' : 'Needs a TMDB key (see Apps)', items: [] }] }];
+    if (!famTab) famTab = famListsFor(ids.join('|'));
+    var out = [{ id: 'fam', name: 'All your apps', cats: famTab }], seen = {};
+    streamCats.forEach(function (c) {
+      if (!c.svcKey || !c.prov || seen[c.svcKey] || !mineSvc(c.svcKey)) return;
+      seen[c.svcKey] = 1;
+      if (!famBySvc[c.svcKey]) famBySvc[c.svcKey] = famListsFor(c.prov);
+      out.push({ id: 'fam_' + c.svcKey, name: SVC[c.svcKey] ? SVC[c.svcKey].name : c.svcKey, cats: famBySvc[c.svcKey] });
+    });
+    return out;
   }
   function buildOD() { od = sources().filter(function (x) { return !settings.hide[x.id] || x.id === 'tv' || x.id === 'rec'; }); if (odSrc >= od.length) odSrc = 0; }
   /** Recommended: things like what you've watched, what's trending, and what's new on your apps. */
@@ -1800,7 +1820,7 @@ var app = (function () {
     if (odChip > 2) odChip = 0;
     var act = zone === 'main';
     var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o'][n] + '">' + esc(txt) + '</div>'; };
-    $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'App: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(2, '☰ Filter & options');
+    $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
     $('odCats').innerHTML = cats.map(function (c, i) {
@@ -1818,7 +1838,7 @@ var app = (function () {
   function scrollChip(box) { var el = box.querySelector('.chip.sel'); if (!el) return; if (el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = el.offsetLeft + el.offsetWidth - box.clientWidth + 20; if (el.offsetLeft < box.scrollLeft) box.scrollLeft = Math.max(0, el.offsetLeft - 20); }
   /** The app / place drop-down on Most Popular and On Demand. */
   function appMenu() {
-    showPop({ title: view === 'popular' ? 'Most popular on…' : 'On Demand from…', row: odSrc, opts: od.map(function (x, i) {
+    showPop({ title: view === 'popular' ? 'Family films & TV on…' : 'On Demand from…', row: odSrc, opts: od.map(function (x, i) {
       return { label: x.name + (x.id !== 'tv' && x.id !== 'rec' && x.id !== 'all' && has(x.id.replace(/^pop_/, '')) ? '  (installed)' : ''), tick: i === odSrc, fn: function () { pickSrc(i); odZone = 'cats'; } };
     }) });
   }
