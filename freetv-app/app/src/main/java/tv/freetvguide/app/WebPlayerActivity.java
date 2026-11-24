@@ -173,7 +173,9 @@ public class WebPlayerActivity extends Activity {
             "if(!v.__ftvW){v.__ftvW=1;window.__ftvLog=window.__ftvLog||[];v.addEventListener('pause',function(){if(window.__ftvUserPaused||v.ended||!/bbc\\.co\\.uk/.test(location.host))return;window.__ftvLog.push('paused');setTimeout(function(){if(v.paused&&!window.__ftvUserPaused)v.play();},150);});" +
             "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');if(!v.__ftvWait)v.__ftvWait=Date.now();});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});v.addEventListener('playing',function(){v.__ftvWait=0;});}" +
             // Sky: waiting although the video is already here (a tiny hole in it, or the decoder stuck) → jump over the hole or nudge it on, instead of sitting on "Buffering"
-            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvWait&&Date.now()-v.__ftvWait>1200){var ct=v.currentTime,inside=false,nx=-1;for(var g=0;g<v.buffered.length;g++){var bs=v.buffered.start(g),be=v.buffered.end(g);if(bs<=ct+0.02&&be>ct+0.5)inside=true;else if(bs>ct&&(nx<0||bs<nx))nx=bs;}" +
+            "var tfr=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality().totalVideoFrames:-1;if(v.paused||tfr!==v.__ftvF){if(!v.paused&&v.__ftvF>=0&&tfr>v.__ftvF)v.__ftvWait=0;v.__ftvF=tfr;v.__ftvFs=0;}else if(!v.__ftvFs){v.__ftvFs=Date.now();}" +
+            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvFs&&Date.now()-v.__ftvFs>1500&&!v.__ftvWait)v.__ftvWait=v.__ftvFs;" +
+            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvWait&&Date.now()-v.__ftvWait>1200){v.__ftvFs=0;var ct=v.currentTime,inside=false,nx=-1;for(var g=0;g<v.buffered.length;g++){var bs=v.buffered.start(g),be=v.buffered.end(g);if(bs<=ct+0.02&&be>ct+0.5)inside=true;else if(bs>ct&&(nx<0||bs<nx))nx=bs;}" +
             "if(!inside&&nx>0&&nx-ct<6){v.currentTime=nx+0.1;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}else if(inside){v.currentTime=ct+0.2;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}v.__ftvWait=Date.now();}" +
             "if(v.paused&&!v.ended&&v.currentTime>1&&/bbc\\.co\\.uk/.test(location.host)){v.play();window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('paused');}" +
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&v.seekable&&v.seekable.length){var end=v.seekable.end(v.seekable.length-1);if(end-v.currentTime>40&&end-v.currentTime<7200&&!window.__ftvJump&&v.currentTime>0){window.__ftvJump=Date.now();" +
@@ -182,7 +184,7 @@ public class WebPlayerActivity extends Activity {
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
             "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
-            "var L=(window.__ftvLog||[]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+(isFinite(v.duration)?Math.round(v.duration):0)+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
+            "var L=(window.__ftvLog||[]).concat(['F'+tfr]).join(',');window.__ftvLog=[];return L+'|'+window.__ftvStat+'|'+(isFinite(v.duration)?Math.round(v.duration):0)+'|'+v.currentTime.toFixed(2)+'|'+(v.paused?1:0);})()", r -> {
                 if (r == null) return;
                 int bar = r.indexOf('|');
                 if (bar > 0 && stats != null) { String st = r.substring(bar + 1).replace("\"", ""); int b2 = st.indexOf('|'); if (b2 >= 0) st = st.substring(0, b2);   // (length, position and paused follow)
@@ -219,8 +221,12 @@ public class WebPlayerActivity extends Activity {
                 // buffering = the picture has stopped although nobody paused it (Sky only says "buffering" once, when it starts)
                 double sct = -1; boolean spz = false;
                 try { String[] sp = r.replace("\"", "").split("\\|"); sct = Double.parseDouble(sp[sp.length - 2]); spz = "1".equals(sp[sp.length - 1].trim()); } catch (Exception ignored) { }
-                boolean bufNow = sct > 0 && !spz && !userPaused && stallCt >= 0 && Math.abs(sct - stallCt) < 0.3;
+                long fr = -1;
+                try { java.util.regex.Matcher fm = java.util.regex.Pattern.compile("(?:^|,)F(\\d+)").matcher(r); if (fm.find()) fr = Long.parseLong(fm.group(1)); } catch (Exception ignored) { }
+                // stopped = the clock isn't moving, or the picture isn't (Sky can keep the clock and sound going on a frozen picture)
+                boolean bufNow = sct > 0 && !spz && !userPaused && ((stallCt >= 0 && Math.abs(sct - stallCt) < 0.3) || (fr >= 0 && fr == stallFr));
                 if (sct >= 0) stallCt = sct;
+                stallFr = fr;
                 // the start-up wait is over (shown or not): from now on watch for buffering, even if it never settled
                 if (onSky() && !skySettled && now2 > skyGateUntil + 1000) skySettled = true;
                 if (onSky() && skySettled && watching() && !userPaused) {
@@ -229,7 +235,7 @@ public class WebPlayerActivity extends Activity {
                     while (!bufStarts.isEmpty() && now2 - bufStarts.peekFirst() > 90000) bufStarts.pollFirst();
                     stallRun = bufNow ? stallRun + 1 : 0;
                     if ((bufStarts.size() >= 3 || stallRun >= 6) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 15000) {
-                        lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1;
+                        lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Buffering – restarting " + (tt == null ? "" : tt) + "…");
                         return;
                     }
@@ -591,7 +597,7 @@ public class WebPlayerActivity extends Activity {
     private long switchedAt = 0, firstBufAt = 0;
     private boolean wasBuffering = false;
     private final java.util.ArrayDeque<Long> bufStarts = new java.util.ArrayDeque<>();
-    private double stallCt = -1; private int stallRun = 0;
+    private double stallCt = -1; private int stallRun = 0; private long stallFr = -2;
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
     private void skyGate() { if (signIn()) return; skySettled = false; settleTicks = 0; settleCt = -1; skyGateUntil = android.os.SystemClock.uptimeMillis() + 20000; ui.postDelayed(reveal, 20500); }
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
