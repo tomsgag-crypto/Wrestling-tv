@@ -125,11 +125,15 @@ public class WebPlayerActivity extends Activity {
                 }
             }
         } catch (Exception ignored) { }
-        java.util.Map<String, String> out = new java.util.HashMap<>(p.hdrs);
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        for (java.util.Map.Entry<String, String> e : p.hdrs.entrySet()) if (!e.getKey().toLowerCase().startsWith("access-control-")) out.put(e.getKey(), e.getValue());
+        // always name the page's own site (never "*"): Sky's player may ask with its sign-in attached, and then "*" is refused
         String origin = req.getRequestHeaders().get("Origin");
-        out.put("Access-Control-Allow-Origin", origin == null ? "*" : origin);
-        if (origin != null) out.put("Access-Control-Allow-Credentials", "true");
-        out.put("Access-Control-Expose-Headers", "*");
+        if (origin == null || origin.isEmpty() || "null".equals(origin)) origin = "https://www.skysports.com";
+        out.put("Access-Control-Allow-Origin", origin);
+        out.put("Access-Control-Allow-Credentials", "true");
+        out.put("Access-Control-Expose-Headers", "Content-Length, Content-Range, Date, Age, Last-Modified, ETag");
+        out.put("Vary", "Origin");
         return new android.webkit.WebResourceResponse(p.type, null, p.code, p.reason, out, new java.io.ByteArrayInputStream(p.body));
     }
     volatile int aheadHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
