@@ -328,6 +328,31 @@ var app = (function () {
       if (view === 'guide') render();
     }).catch(function () {});
   }
+  /** Champions League matches shown on Prime Video (not TNT): from live-footballontv.com's UK TV schedule. */
+  var primeUCL = (load('primeUCL') || []).filter(function (e) { return e.e > nowSec(); });
+  function loadPrimeUCL() {
+    if (SPORTS || isUS()) return Promise.resolve();
+    return get('https://live-footballontv.com/live-champions-league-football-on-tv.html').then(function (html) {
+      var txt = String(html).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<\/?(div|p|h\d|li|tr|td|th|span|br|a|section|article|header|ul|table)\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#0?39;|&rsquo;/g, "'");
+      var lines = txt.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+      var MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+      var day = null, out = [], seenM = {};
+      for (var i = 0; i < lines.length; i++) {
+        var dm = lines[i].match(/^(?:mon|tues|wednes|thurs|fri|satur|sun)day (\d{1,2})(?:st|nd|rd|th)? ([a-z]+) (\d{4})$/i);
+        if (dm && MON[dm[2].slice(0, 3).toLowerCase()] != null) { day = [+dm[3], MON[dm[2].slice(0, 3).toLowerCase()], +dm[1]]; continue; }
+        var tm = lines[i].match(/^(\d{1,2}):(\d{2})$/);
+        if (!tm || !day) continue;
+        var j = i + 1, block = [];
+        while (j < lines.length && block.length < 8 && !/^\d{1,2}:\d{2}$/.test(lines[j]) && !/^(?:mon|tues|wednes|thurs|fri|satur|sun)day \d/i.test(lines[j])) block.push(lines[j++]);
+        if (!block.length || !/ v /.test(block[0]) || !block.some(function (l) { return /amazon prime|prime video/i.test(l); })) continue;
+        var ko = new Date(day[0], day[1], day[2], +tm[1], +tm[2]).getTime() / 1000;
+        if (seenM[ko + block[0]]) continue; seenM[ko + block[0]] = 1;
+        out.push({ s: ko - 30 * 60, e: ko + 150 * 60, t: block[0], sub: 'UEFA Champions League · kick-off ' + tm[1] + ':' + tm[2], desc: 'Live on Prime Video (included with Prime)', img: '', ko: ko });
+      }
+      if (out.length || !primeUCL.length) { primeUCL = out.filter(function (e) { return e.e > nowSec(); }).sort(function (a, b) { return a.s - b.s; }); save('primeUCL', primeUCL); }
+    }).catch(function () {});
+  }
   var PLEX_H = '#h=' + encodeURIComponent('X-Plex-Product:Plex Mediaverse') + '#h=' + encodeURIComponent('X-Plex-Version:1.0.0');
   function loadPlex() {
     if (settings.hide['Plex']) return Promise.resolve();
@@ -588,6 +613,8 @@ var app = (function () {
       seen[k] = 1;
       out.push({ sec: c.sec, id: 's' + c.sid, name: c.name, svc: c.svc, live: '', pay: true, events: sky.ev[c.sid].list });
     });
+    // Prime Video's Champions League match nights (just the games on Prime)
+    if (!SPORTS && !isUS() && primeUCL.length) out.push({ sec: 'Prime Video', id: 'primeucl', name: 'Prime Video Champions League', cat: 'Sports', svc: 'prime', primeLive: true, events: primeUCL });
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
@@ -644,7 +671,7 @@ var app = (function () {
       status('guide', false);
       render();
       // pay channels after the free ones are showing
-      Promise.all([loadSamsung(), loadPlex(), loadVirgin()]).then(function () { buildChans(); buildFilmsOnTV(); render(); });
+      Promise.all([loadSamsung(), loadPlex(), loadVirgin(), loadPrimeUCL()]).then(function () { buildChans(); buildFilmsOnTV(); render(); });
       if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); return Promise.all([loadSkyDay(0), loadSkyDay(1)]); }).then(function () { render(); });
     });
   }
@@ -1625,6 +1652,7 @@ var app = (function () {
     else if (k === 'ok') {
       var c = chans[gRow];
       if (c && (!fp || fp.s <= now)) setZap();
+      if (c && c.primeLive) { if (fp && fp.s > now) { addMenu(progItem(c, fp)); return; } var m = fp || c.events[0]; openService('prime', '', m ? m.t : 'Champions League', m ? m.t : 'Champions League', 'movie'); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
       if (fp && c && (c.svc || c.play || fp.e <= now || ((c.pay || c.vid) && settings.virgin))) openItem(progItem(c, fp));
