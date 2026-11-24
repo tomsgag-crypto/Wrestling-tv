@@ -1826,7 +1826,13 @@ var app = (function () {
   var REGIONS = ['BBC One London', 'BBC One NE&C', 'BBC One NW', 'BBC One Yorks', 'BBC One Yk&Li', 'BBC One E Mids', 'BBC One W Mids', 'BBC One East',
     'BBC One SE', 'BBC One South', 'BBC One SW', 'BBC One West', 'BBC One CI', 'BBC One Scotland', 'BBC One Wales', 'BBC One NI'];
   function tiles() {
-    if (SPORTS) { var st = []; if (window.Native && Native.updateSelf) st.push({ kind: 'upd', k: 'update', name: '⟳ Update Sky Sports TV', desc: 'Get the newest version' + (Native.version ? ' (you have ' + Native.version() + ')' : '') }); return st; }
+    if (SPORTS) {
+      var st = [];
+      st.push({ kind: 'set', k: 'signVirgin', name: '🔑 Sign in to Virgin TV Go', desc: 'Opens Virgin TV Go – sign in with your My Virgin Media details, then press Back. It stays signed in' });
+      st.push({ kind: 'set', k: 'signSky', name: '🔑 Sign in to Sky Sports', desc: 'Opens Sky Sports – if it asks, choose Virgin Media as your TV provider and sign in, then press Back' });
+      st.push({ kind: 'upd', k: 'update', name: '⟳ Update Sky Sports TV', desc: (window.Native && Native.updateSelf ? 'Get the newest version' : 'Updates aren\'t available on this device') + (window.Native && Native.version ? ' (you have ' + Native.version() + ')' : '') });
+      return st;
+    }
     // free services first, then subscriptions (installed ones first within each)
     var NOT_ON_APPS = ['s4c', 'stv', 'rakuten', 'plex', 'skysports', 'discovery', 'britbox', 'mubi', 'spotify'];   // Tom doesn't want these on the Apps tab
     var keys = Object.keys(SVC).filter(function (k) { return NOT_ON_APPS.indexOf(k) < 0; }), rank = function (k) { return (SVC[k].paid ? 2 : 0) + (has(k) ? 0 : 1); };
@@ -1923,6 +1929,9 @@ var app = (function () {
     else if (k === 'up') moveV(-1);
     else if (k === 'ok') {
       var x = t[apRow];
+      if (x.k === 'signVirgin' && window.Native && Native.openWeb) { Native.openWeb('https://virgintvgo.virginmedia.com/en/watchtv', 'Virgin TV Go – sign in'); return; }
+      if (x.k === 'signSky' && window.Native && Native.openWeb) { Native.openWeb('https://www.skysports.com/watch/sky-sports-main-event', 'Sky Sports – sign in'); return; }
+      if (x.k === 'update' && !(window.Native && Native.updateSelf)) return;
       if (x.k === 'update') {
         var r = Native.updateSelf();
         if (r === 'overlay') {
@@ -2264,9 +2273,9 @@ var app = (function () {
     if (k === 'resume') { refreshInstalled(); if (!SPORTS) { syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); } var oraw = window.Native && Native.virginOwned ? Native.virginOwned() : ''; if (oraw !== ownedRaw) { buildChans(); buildFilmsOnTV(); } if (Date.now() - guideAt > 3 * 3600 * 1000) loadGuide(); render(); return true; }
     if (pop) { popKey(k); return true; }
     if (zone === 'tabs') {
-      var i = VIEWS.indexOf(view);
-      if (k === 'left') { if (i > 0) setView(VIEWS[i - 1]); }            // stops at TV Guide
-      else if (k === 'right') { if (i < VIEWS.length - 1) setView(VIEWS[i + 1]); }   // stops at Apps
+      var VV = SPORTS ? ['guide', 'apps'] : VIEWS, i = VV.indexOf(view);   // Sky Sports TV has just the guide and Apps
+      if (k === 'left') { if (i > 0) setView(VV[i - 1]); }            // stops at TV Guide
+      else if (k === 'right') { if (i < VV.length - 1) setView(VV[i + 1]); }   // stops at Apps
       else if (k === 'down' || k === 'ok') { zone = 'main'; if (view === 'search') { sZone = 'input'; setTimeout(function () { $('q').focus(); }, 30); } render(); }
       else if (k === 'menu') optionsMenu();
       return true;
