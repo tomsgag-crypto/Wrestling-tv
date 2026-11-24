@@ -397,8 +397,7 @@ public class WebPlayerActivity extends Activity {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
             int cur = quality();
-            String[] names = new String[QS.length + 7];
-            names[QS.length + 6] = splitOn ? "Split screen: on – OK to close the second channel" : "Split screen (test): add a second Sky channel beside this one";
+            String[] names = new String[QS.length + 6];
             boolean autoR = prefs().getBoolean("skyAutoRestart", true);
             names[QS.length + 5] = "Auto restart: " + (autoR ? "on – restarts if it keeps buffering – OK to turn off" : "off – OK to restart when it keeps buffering");
             boolean freshOn = prefs().getBoolean("skyFresh", true);
@@ -420,8 +419,7 @@ public class WebPlayerActivity extends Activity {
                     else if (which == QS.length + 2) prefs().edit().putBoolean("skyNoAds", !noAds).apply();
                     else if (which == QS.length + 3) prefs().edit().putBoolean("skyNet", !net).apply();
                     else if (which == QS.length + 4) prefs().edit().putBoolean("skyFresh", !freshOn).apply();
-                    else if (which == QS.length + 5) prefs().edit().putBoolean("skyAutoRestart", !autoR).apply();
-                    else { if (splitOn) stopSplit(); else pickSplit(); return; }
+                    else prefs().edit().putBoolean("skyAutoRestart", !autoR).apply();
                     applyQuality();
                 })
                 .show();
@@ -964,65 +962,6 @@ public class WebPlayerActivity extends Activity {
                 startScript = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, desktopJs(), java.util.Collections.singleton("*"));
         } catch (Throwable ignored) { }
     }
-    // ---- split screen (test): a second Sky channel beside this one; ◀ ▶ picks which one you hear
-    WebView web2; boolean splitOn = false; int splitSide = 0; View splitFrame;
-    private void pickSplit() {
-        org.json.JSONArray all; try { all = new org.json.JSONArray(MainActivity.zapList); } catch (Exception x) { all = new org.json.JSONArray(); }
-        final java.util.List<String> names = new java.util.ArrayList<>(), urls = new java.util.ArrayList<>();
-        String cur = getIntent().getStringExtra("title");
-        for (int i = 0; i < all.length(); i++) { org.json.JSONObject c = all.optJSONObject(i);
-            if (c != null && "sky".equals(c.optString("kind")) && c.optString("url").contains("skysports.com") && !c.optString("name").equals(cur)) { names.add(c.optString("name")); urls.add(c.optString("url")); } }
-        if (names.isEmpty()) { android.widget.Toast.makeText(this, "Open Sky channels from the guide first, then try again", android.widget.Toast.LENGTH_LONG).show(); return; }
-        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Split screen – second channel")
-            .setItems(names.toArray(new String[0]), (d, w) -> startSplit(urls.get(w), names.get(w))).show();
-    }
-    @SuppressLint("SetJavaScriptEnabled")
-    private void startSplit(String url, String name) {
-        stopSplit();
-        web2 = new WebView(this);
-        WebSettings s2 = web2.getSettings();
-        s2.setJavaScriptEnabled(true); s2.setDomStorageEnabled(true); s2.setMediaPlaybackRequiresUserGesture(false);
-        s2.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36");
-        looksLikeDesktop(s2);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web2, true);
-        try { if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT))
-            androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web2, desktopJs(), java.util.Collections.singleton("*")); } catch (Throwable ignored) { }
-        web2.setWebChromeClient(new android.webkit.WebChromeClient() {
-            @Override public void onPermissionRequest(android.webkit.PermissionRequest req) { req.grant(req.getResources()); }
-        });
-        web2.setWebViewClient(new WebViewClient());
-        int w = root.getWidth() / 2, h = w * 9 / 16, top = (root.getHeight() - h) / 2;
-        FrameLayout.LayoutParams l1 = new FrameLayout.LayoutParams(w, h); l1.topMargin = top; web.setLayoutParams(l1);
-        FrameLayout.LayoutParams l2 = new FrameLayout.LayoutParams(w, h); l2.topMargin = top; l2.leftMargin = w;
-        root.addView(web2, 1, l2);
-        if (splitFrame == null) { splitFrame = new View(this); android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable(); g.setStroke(6, 0xFF2BE0A8); g.setColor(0x00000000); splitFrame.setBackground(g); }
-        root.addView(splitFrame, new FrameLayout.LayoutParams(w, h));
-        splitOn = true; splitSide = 0;
-        web2.loadUrl(url);
-        android.widget.Toast.makeText(this, name + " on the right · ◀ ▶ choose which one you hear · Back closes it", android.widget.Toast.LENGTH_LONG).show();
-        ui.removeCallbacks(splitTick); ui.postDelayed(splitTick, 1500);
-        tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 500);
-    }
-    private final Runnable splitTick = new Runnable() { @Override public void run() {
-        if (!splitOn || web2 == null) return;
-        // fit the right-hand picture to its half, and sound only from the chosen side
-        web2.evaluateJavascript("window.__ftvFillOK=1;" + FILL, null);
-        String mute = "(function(m){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){v.muted=m;});})(";
-        web.evaluateJavascript(mute + (splitSide != 0) + ")", null);
-        web2.evaluateJavascript(mute + (splitSide != 1) + ")", null);
-        if (splitFrame != null) { FrameLayout.LayoutParams fl = (FrameLayout.LayoutParams) splitFrame.getLayoutParams(); FrameLayout.LayoutParams wl = (FrameLayout.LayoutParams) web.getLayoutParams();
-            fl.leftMargin = splitSide == 0 ? 0 : wl.width; fl.topMargin = wl.topMargin; fl.width = wl.width; fl.height = wl.height; splitFrame.setLayoutParams(fl); splitFrame.bringToFront(); }
-        ui.postDelayed(this, 2000);
-    } };
-    private void stopSplit() {
-        ui.removeCallbacks(splitTick);
-        if (web2 != null) { root.removeView(web2); web2.loadUrl("about:blank"); web2.destroy(); web2 = null; }
-        if (splitFrame != null) root.removeView(splitFrame);
-        if (splitOn) { web.setLayoutParams(new FrameLayout.LayoutParams(-1, -1)); tries = 0; ui.removeCallbacks(fill); ui.postDelayed(fill, 400);
-            web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){v.muted=false;});})()", null); }
-        splitOn = false;
-    }
-
     // ---- picture in picture: Back while watching shrinks the channel into a corner window over the guide
     static WebPlayerActivity pip;
     private boolean canPip() {
@@ -1251,12 +1190,6 @@ public class WebPlayerActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (cornered && MainActivity.current != null) return MainActivity.current.dispatchKeyEvent(e);   // the guide behind has the remote
-        if (splitOn) {
-            int sk = e.getKeyCode();
-            if (sk == KeyEvent.KEYCODE_DPAD_LEFT || sk == KeyEvent.KEYCODE_DPAD_RIGHT) { if (e.getAction() == KeyEvent.ACTION_DOWN) { splitSide = sk == KeyEvent.KEYCODE_DPAD_LEFT ? 0 : 1; ui.removeCallbacks(splitTick); ui.post(splitTick); } return true; }
-            if (sk == KeyEvent.KEYCODE_BACK) { if (e.getAction() == KeyEvent.ACTION_UP) stopSplit(); return true; }
-            if (sk == KeyEvent.KEYCODE_DPAD_UP || sk == KeyEvent.KEYCODE_DPAD_DOWN) return true;
-        }
         // the Back press that brought it back full screen: its "up" mustn't shrink it again
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && android.os.SystemClock.uptimeMillis() - backFullAt < 1500) { if (e.getAction() == KeyEvent.ACTION_UP) backFullAt = 0; return true; }
         int k = e.getKeyCode();
@@ -1331,5 +1264,5 @@ public class WebPlayerActivity extends Activity {
     @Override protected void onPause() { super.onPause(); if (cornered || (android.os.Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode())) return;   // keep playing in the corner
         ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
     @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); ui.removeCallbacks(hush); ui.post(hush); }
-    @Override protected void onDestroy() { stopSplit(); if (pip == this) pip = null; ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
+    @Override protected void onDestroy() { if (pip == this) pip = null; ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }
