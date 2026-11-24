@@ -962,6 +962,17 @@ public class WebPlayerActivity extends Activity {
                 startScript = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, desktopJs(), java.util.Collections.singleton("*"));
         } catch (Throwable ignored) { }
     }
+    // ---- Sling: find the channel in Sling's guide and open it (its own address is then remembered for next time)
+    private String slingCh; private int slingTries = 0;
+    private final Runnable slingFind = new Runnable() { @Override public void run() {
+        if (web == null || slingCh == null || ++slingTries > 25) return;
+        String js = "(function(T){function n(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');}var w=n(T);" +
+            "var c=[].slice.call(document.querySelectorAll('img[alt],[aria-label],[title],[data-testid*=channel],[data-channel-name]'));" +
+            "var hit=c.filter(function(e){var r=e.getBoundingClientRect();if(r.width<4||r.height<4)return false;return [e.getAttribute('alt'),e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('data-channel-name')].some(function(x){return x&&n(x)===w;});})[0];" +
+            "if(!hit){window.scrollBy(0,400);return '';}var t=hit.closest('a,button,[role=button],[role=link],[tabindex]')||hit;t.click();return 'clicked';})(" + org.json.JSONObject.quote(slingCh) + ")";
+        web.evaluateJavascript(js, r -> { if (r == null || !r.contains("clicked")) ui.postDelayed(slingFind, 1500); });
+    } };
+
     // ---- picture in picture: Back while watching shrinks the channel into a corner window over the guide
     static WebPlayerActivity pip;
     private boolean canPip() {
@@ -1112,6 +1123,7 @@ public class WebPlayerActivity extends Activity {
                 return true;
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
+                if (slingCh != null && url != null && url.contains("watch.sling.com") && url.matches(".*/channel/[^/]+/watch.*")) { getSharedPreferences("sling", MODE_PRIVATE).edit().putString(slingCh, url).apply(); ui.removeCallbacks(slingFind); }
                 fsTries = 0; skyPage = url != null && url.contains("skysports.com"); if (skyPage && !skySettled) skyGate(); adPage = url != null && (skyPage || autoSite(url) || url.contains("amazon.co.uk")); itvPage = url != null && url.contains("itv.com"); pageFull = false;
                 if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) v.evaluateJavascript(desktopJs(), null);
                 // keep the page hidden while the player is set up; show other pages (sign-in, TV licence) straight away
@@ -1169,6 +1181,11 @@ public class WebPlayerActivity extends Activity {
             }
         }
         if (find != null) { cover.setVisibility(View.VISIBLE); ui.postDelayed(step, 1500); }
+        if (start != null && start.contains("#ftv-sling=")) {
+            slingCh = Uri.decode(start.substring(start.indexOf("#ftv-sling=") + 11));
+            String known = getSharedPreferences("sling", MODE_PRIVATE).getString(slingCh, null);
+            if (known != null) start = known; else { slingTries = 0; ui.postDelayed(slingFind, 4000); }
+        }
         web.loadUrl(start);
         web.requestFocus();
         ui.post(cursorWatch);

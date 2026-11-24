@@ -585,8 +585,8 @@ var app = (function () {
     var PP = 'https://www.paramountplus.com/live-tv/', SL = 'https://watch.sling.com/dashboard/grid';
     [['Paramount+ Champions League', PP, allUCL.length ? allUCL : live('Every UEFA Champions League match is on Paramount+')],
      ['CBS Sports Golazo Network', PP, live('24-hour football channel on Paramount+')], ['CBS Sports HQ', PP, live('Sports news on Paramount+')], ['CBS (US)', PP, live('CBS live on Paramount+ – NFL, college sports, some Champions League')],
-     ['ESPN (Sling)', SL, live('Opens Sling TV – choose ESPN in its guide')], ['ESPN2 (Sling)', SL, live('Opens Sling TV – choose ESPN2 in its guide')],
-     ['FS1 (Sling)', SL, live('Opens Sling TV – choose FS1 in its guide')], ['NFL Network (Sling)', SL, live('Opens Sling TV – choose NFL Network in its guide')]].forEach(function (r, i) {
+     ['ESPN (Sling)', SL + '#ftv-sling=ESPN', live('ESPN on Sling TV')], ['ESPN2 (Sling)', SL + '#ftv-sling=ESPN2', live('ESPN2 on Sling TV')],
+     ['FS1 (Sling)', SL + '#ftv-sling=FS1', live('FS1 on Sling TV')], ['NFL Network (Sling)', SL + '#ftv-sling=NFL%20Network', live('NFL Network on Sling TV')]].forEach(function (r, i) {
       chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
     });
     if (gRow >= chans.length) gRow = 0;
