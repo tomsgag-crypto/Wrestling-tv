@@ -339,14 +339,15 @@ var app = (function () {
   }
   /** Champions League matches shown on Prime Video (not TNT): from live-footballontv.com's UK TV schedule. */
   var primeUCL = (load('primeUCL') || []).filter(function (e) { return e.e > nowSec(); });
+  var allUCL = (load('allUCL') || []).filter(function (e) { return e.e > nowSec(); });   // every match: Paramount+ (US) streams them all
   function loadPrimeUCL() {
-    if (SPORTS || isUS()) return Promise.resolve();
+    if (isUS() && !SPORTS) return Promise.resolve();
     return get('https://live-footballontv.com/live-champions-league-football-on-tv.html').then(function (html) {
       var txt = String(html).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<\/?(div|p|h\d|li|tr|td|th|span|br|a|section|article|header|ul|table)\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' ')
         .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#0?39;|&rsquo;/g, "'");
       var lines = txt.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
       var MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-      var day = null, out = [], seenM = {};
+      var day = null, out = [], seenM = {}, everyM = [];
       for (var i = 0; i < lines.length; i++) {
         var dm = lines[i].match(/^(?:mon|tues|wednes|thurs|fri|satur|sun)day (\d{1,2})(?:st|nd|rd|th)? ([a-z]+) (\d{4})$/i);
         if (dm && MON[dm[2].slice(0, 3).toLowerCase()] != null) { day = [+dm[3], MON[dm[2].slice(0, 3).toLowerCase()], +dm[1]]; continue; }
@@ -354,11 +355,16 @@ var app = (function () {
         if (!tm || !day) continue;
         var j = i + 1, block = [];
         while (j < lines.length && block.length < 8 && !/^\d{1,2}:\d{2}$/.test(lines[j]) && !/^(?:mon|tues|wednes|thurs|fri|satur|sun)day \d/i.test(lines[j])) block.push(lines[j++]);
-        if (!block.length || !/ v /.test(block[0]) || !block.some(function (l) { return /amazon prime|prime video/i.test(l); })) continue;
+        if (!block.length || !/ v /.test(block[0])) continue;
         var ko = new Date(day[0], day[1], day[2], +tm[1], +tm[2]).getTime() / 1000;
         if (seenM[ko + block[0]]) continue; seenM[ko + block[0]] = 1;
-        out.push({ s: ko - 30 * 60, e: ko + 150 * 60, t: block[0], sub: 'UEFA Champions League · kick-off ' + tm[1] + ':' + tm[2], desc: 'Live on Prime Video (included with Prime)', img: '', ko: ko });
+        var onPrime = block.some(function (l) { return /amazon prime|prime video/i.test(l); });
+        everyM.push({ s: ko - 15 * 60, e: ko + 120 * 60, t: block[0], sub: 'UEFA Champions League · kick-off ' + tm[1] + ':' + tm[2] + ' UK', desc: 'Every Champions League match streams live on Paramount+ in the US (turn your US VPN on)', img: '', ko: ko });
+        if (onPrime) out.push({ s: ko - 30 * 60, e: ko + 150 * 60, t: block[0], sub: 'UEFA Champions League · kick-off ' + tm[1] + ':' + tm[2], desc: 'Live on Prime Video (included with Prime)', img: '', ko: ko });
       }
+      if (everyM.length) { allUCL = everyM.filter(function (e) { return e.e > nowSec(); }).sort(function (a, b) { return a.s - b.s; });
+        // matches at the same time can't share one row: the earliest listed shows, the rest are in its description
+        var row = []; allUCL.forEach(function (m) { var last = row[row.length - 1]; if (last && m.s < last.e) { last.desc += '\nAlso at ' + m.sub.replace(/.*kick-off /, '') + ': ' + m.t; } else row.push(m); }); allUCL = row; save('allUCL', allUCL); }
       if (out.length || !primeUCL.length) { primeUCL = out.filter(function (e) { return e.e > nowSec(); }).sort(function (a, b) { return a.s - b.s; }); save('primeUCL', primeUCL); }
     }).catch(function () {});
   }
@@ -574,6 +580,15 @@ var app = (function () {
       var nice = slug.replace(/-/g, ' ').replace(/\b\w/g, function (x) { return x.toUpperCase(); }).replace('F1', 'F1').replace(/\bNfl\b/, 'NFL').replace(/\bF1\b/i, 'F1').replace('Plus', '+');
       return { sec: 'Sky Sports', id: c.id, vid: c.vid, vname: c.vname, vweb: 'https://www.skysports.com/watch/' + slug, name: nice, num: c.num, cat: 'Sports', type: 'Sport', svc: '', events: c.events };
     }).filter(Boolean);
+    // US sports on Paramount+ and Sling (they play only with your US VPN on)
+    var nowS = nowSec(), live = function (what) { return [{ s: nowS - 3600, e: nowS + 7 * 86400, t: 'Live channel – US VPN on', sub: what, desc: 'Turn on your US VPN, then press OK.', img: '' }]; };
+    var PP = 'https://www.paramountplus.com/live-tv/', SL = 'https://watch.sling.com/dashboard/grid';
+    [['Paramount+ Champions League', PP, allUCL.length ? allUCL : live('Every UEFA Champions League match is on Paramount+')],
+     ['CBS Sports Golazo Network', PP, live('24-hour football channel on Paramount+')], ['CBS Sports HQ', PP, live('Sports news on Paramount+')], ['CBS (US)', PP, live('CBS live on Paramount+ – NFL, college sports, some Champions League')],
+     ['ESPN (Sling)', SL, live('Opens Sling TV – choose ESPN in its guide')], ['ESPN2 (Sling)', SL, live('Opens Sling TV – choose ESPN2 in its guide')],
+     ['FS1 (Sling)', SL, live('Opens Sling TV – choose FS1 in its guide')], ['NFL Network (Sling)', SL, live('Opens Sling TV – choose NFL Network in its guide')]].forEach(function (r, i) {
+      chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
+    });
     if (gRow >= chans.length) gRow = 0;
   }
   function buildChans() {
@@ -669,7 +684,7 @@ var app = (function () {
     if (SPORTS) {
       status('guide', true);
       settings.virgin = true;
-      return loadVirgin().then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
+      return Promise.all([loadVirgin(), loadPrimeUCL()]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
     }
     setTimeout(autoVirginSync, 8000);
     status('guide', true);
