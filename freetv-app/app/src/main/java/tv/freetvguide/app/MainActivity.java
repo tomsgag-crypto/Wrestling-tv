@@ -450,8 +450,6 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String open(String labels, String url, String store) { return open2(labels, url, store, ""); }
 
-        /** As open(), and if no link works, ask the app itself to search for `query` (the way Google Assistant does). */
-        @JavascriptInterface
         /** My Purchases: the YouTube key from the build (GitHub secret YT_API_KEY), never in the code. */
         @android.webkit.JavascriptInterface
         public String ytKey() { return BuildConfig.YT_API_KEY; }
@@ -466,6 +464,7 @@ public class MainActivity extends Activity {
             });
         }
         /** Ask an app to play something by name (what "play USA Network" on the remote does), then its search, then just open it. */
+        @JavascriptInterface
         public String openPlay(String labels, String store, String what) {
             PackageManager pm = getPackageManager();
             String pkg = null;
