@@ -1821,6 +1821,8 @@ var app = (function () {
       if (c && (!fp || fp.s <= now)) setZap();
       if (c && c.primeLive) { if (fp && fp.s > now) { addMenu(progItem(c, fp)); return; } var m = fp || c.events[0]; toast('Opening Prime Video – ' + (m ? m.t : 'Champions League')); openIn('prime', '', '"' + (m ? m.t : 'Champions League') + '"'); return; }
       // Paramount+ rows: the Paramount+ app (its live TV page when the app accepts the link)
+      // Sling: Google TV's own search knows Sling's live channels ("Watch on Sling" goes straight to the channel); else ask the Sling app
+      if (c && c.appK === 'sling' && window.Native && Native.search && Native.search(c.name.replace(/ \((Sling|US)\)$/, '') + ' live on Sling TV')) { toast('Choose "Watch on Sling" for ' + c.name.replace(/ \((Sling|US)\)$/, '')); return; }
       if (c && c.appK === 'sling' && window.Native && Native.openPlay) { var nm = c.name.replace(/ \((Sling|US)\)$/, ''); var rr = Native.openPlay(SVC.sling.app, SVC.sling.store, nm);
         toast(rr === 'play' ? 'Asking Sling to play ' + nm + '…' : rr === 'search' ? 'Searching Sling for ' + nm : rr === 'app' ? 'Opened Sling – choose ' + nm : 'Sling TV isn\'t installed'); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
