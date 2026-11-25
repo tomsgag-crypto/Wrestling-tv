@@ -25,7 +25,9 @@ INFO = {}   # videoId -> (minutes, upload year)
 for i in range(0, len(films), 50):
     try:
         ids = ",".join(f[0] for f in films[i:i + 50])
-        for v in get("https://www.googleapis.com/youtube/v3/videos?" + urllib.parse.urlencode({"part": "contentDetails,snippet", "id": ids, "key": YT})).get("items", []):
+        for v in get("https://www.googleapis.com/youtube/v3/videos?" + urllib.parse.urlencode({"part": "contentDetails,snippet,topicDetails", "id": ids, "key": YT})).get("items", []):
+            if os.environ.get("DEBUG_TITLES") and re.search(os.environ["DEBUG_TITLES"], v["snippet"]["title"], re.I):
+                print("YTDEBUG", json.dumps({"t": v["snippet"]["title"], "pub": v["snippet"].get("publishedAt"), "desc": v["snippet"].get("description", "")[:400], "tags": v["snippet"].get("tags"), "cat": v["snippet"].get("categoryId"), "cd": v["contentDetails"], "topics": v.get("topicDetails")}, ensure_ascii=False))
             d = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?", v["contentDetails"].get("duration", "")) or None
             mins = (int(d.group(1) or 0) * 60 + int(d.group(2) or 0)) if d else 0
             INFO[v["id"]] = (mins, (v["snippet"].get("publishedAt") or "")[:4])
