@@ -452,6 +452,25 @@ public class MainActivity extends Activity {
 
         /** As open(), and if no link works, ask the app itself to search for `query` (the way Google Assistant does). */
         @JavascriptInterface
+        /** Ask an app to play something by name (what "play USA Network" on the remote does), then its search, then just open it. */
+        public String openPlay(String labels, String store, String what) {
+            PackageManager pm = getPackageManager();
+            String pkg = null;
+            try {
+                Pattern p = Pattern.compile(labels, Pattern.CASE_INSENSITIVE);
+                JSONArray a = launchable();
+                for (int i = 0; i < a.length(); i++) { JSONObject o = a.getJSONObject(i); if (p.matcher(o.getString("label")).find() || p.matcher(o.getString("pkg")).find()) { pkg = o.getString("pkg"); break; } }
+            } catch (Exception ignored) { }
+            if (pkg != null) {
+                try {
+                    Intent i = new Intent("android.media.action.MEDIA_PLAY_FROM_SEARCH").setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra(android.app.SearchManager.QUERY, what).putExtra("query", what).putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*");
+                    if (i.resolveActivity(pm) != null) { startActivity(i); return "play"; }
+                } catch (Exception ignored) { }
+            }
+            return open2(labels, "", store, what);
+        }
+        @android.webkit.JavascriptInterface
         public String open2(String labels, String url, String store, String query) {
             PackageManager pm = getPackageManager();
             String pkg = null;
