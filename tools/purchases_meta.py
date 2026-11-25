@@ -98,12 +98,15 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807}
+FIXED = {"seven": 807, "the hulk": ("Hulk", "2003"), "holmes and watson": ("Holmes & Watson", "2018"), "girl house": ("Girl House", "2014"), "ju-on 2": ("Ju-on: The Curse 2", "2000")}
 SKIP = r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film|Box ?Set)\b"    # bundles/clips: leave without genres
 
 def fixed(title):
     i = FIXED.get(clean(title)[0].lower())
     if not i: return None
+    if isinstance(i, tuple):
+        r = get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode({"api_key": TM, "query": i[0], "year": i[1]})).get("results", [])
+        return r[0] if r else None
     d = get("https://api.themoviedb.org/3/movie/%d?api_key=%s" % (i, TM))
     return dict(d, genre_ids=[g["id"] for g in d.get("genres", [])])
 
@@ -128,6 +131,9 @@ def match(title):
             if part == t: continue
             b = tm_search(part, yr, 0.82, cmp=t)
             if b: return b, part + " (part)"
+    for t in vs[:1] + ([en] if en and lang and lang != "en" else []):   # last resort: TMDB's own first hit (it knows UK/alternative titles)
+        r = get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode({"api_key": TM, "query": t, "include_adult": "false"})).get("results", [])
+        if r: return r[0], t + " (tmdb first hit)"
     return None, en
 out, looked, missing = {}, 0, []
 for vid, title, p, added in films:
