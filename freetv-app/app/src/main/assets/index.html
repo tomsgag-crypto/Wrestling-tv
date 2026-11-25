@@ -110,7 +110,7 @@
     grid-template-columns: repeat(4, 1fr); grid-auto-rows: max-content; gap: 2vh 1.2vw; align-content: start; scrollbar-width: none; }
   .grid::-webkit-scrollbar { display: none; }
   .grid.full { top: 0; }
-  .card { position: relative; border-radius: 1.2vh; overflow: hidden; background: var(--panel2); border: 2px solid transparent; transition: transform .12s, box-shadow .12s; }
+  .card { position: relative; border-radius: 1.2vh; overflow: hidden; background: var(--panel2); border: 2px solid transparent; transition: transform .12s; will-change: transform; }
   .card .im { width: 100%; aspect-ratio: 16 / 9; background: #18223d center/cover no-repeat; position: relative; }
   @supports not (aspect-ratio: 1) { .card .im { height: 10vw; } #v-search .card .im { height: 8.4vw; } }
   .card .im .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1vh 1vw; text-align: center;
@@ -121,7 +121,7 @@
   .card .tags { position: absolute; top: .8vh; left: .6vw; display: flex; gap: .4vw; flex-wrap: wrap; }
   .tag { font-size: 1.25vh; font-weight: 900; padding: .25vh .5vw; border-radius: .5vh; background: rgba(7,11,22,.82); color: #fff; }
   .tag.on { background: var(--red); } .tag.w { background: var(--accent2); } .tag.l { background: #3b5bdb; } .tag.r { background: #f08c00; }
-  .card.sel { border-color: var(--focus); transform: scale(1.05); box-shadow: 0 1.2vh 3vh rgba(0,0,0,.55), 0 0 2.4vh rgba(255,204,77,.35); z-index: 2; }
+  .card.sel { border-color: var(--focus); transform: scale(1.05); box-shadow: 0 0 0 .3vh rgba(255,204,77,.5); z-index: 2; }
   .card.done { opacity: .6; }
   .more { grid-column: 1 / -1; text-align: center; color: var(--dim); font-size: 1.8vh; padding: 1vh; }
 

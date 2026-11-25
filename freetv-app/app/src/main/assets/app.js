@@ -130,7 +130,7 @@ var app = (function () {
     });
   }
   function getJSON(url) { return get(url).then(JSON.parse); }
-  function _cb(id, body, err) { var f = cbs[id]; delete cbs[id]; if (f) f(body, err); }
+  function _cb(id, body, err) { gridVer++; var f = cbs[id]; delete cbs[id]; if (f) f(body, err); }
 
   // ---------------------------------------------------------------- saved things
   var settings = Object.assign({ guideType: '', plutoInApp: true, helper: true, profile: '', bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, hide: {}, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
@@ -138,7 +138,11 @@ var app = (function () {
   var watched = load('watched') || {};          // key -> {at, item}
   var history = load('history') || [];          // [{at, item}] most recent first
   var lastOpen = null;
-  var lists = load('lists') || [{ name: 'Watch later', items: [] }];
+  var lists = load('lists') || [];
+  if (!settings.noWatchLater) {
+    lists = lists.filter(function (l) { if (l.name !== 'Watch later') return true; setTimeout(function () { mark('list:Watch later', true); (l.items || []).forEach(function (x) { mark('li:Watch later' + SEP + x.k, true); }); }, 0); return false; });
+    settings.noWatchLater = true; save('lists', lists); save('settings', settings);
+  }
   // two lists with the same name (from a double "Save" press) become one
   (function () { var by = {}, out = []; lists.forEach(function (l) { var k = String(l.name).trim().toLowerCase(), m = by[k];
     if (!m) { by[k] = l; out.push(l); return; }
@@ -1586,7 +1590,7 @@ var app = (function () {
         } else if (k.indexOf('list:') === 0) {
           var nm = k.slice(5), li = lists.filter(function (l) { return l.name === nm; })[0];
           if (live && !li) { lists.push({ name: nm, items: [] }); changed = true; }
-          if (!live && li) { lists = lists.filter(function (l) { return l.name !== nm; }); if (!lists.length) lists.push({ name: 'Watch later', items: [] }); changed = true; }
+          if (!live && li) { lists = lists.filter(function (l) { return l.name !== nm; }); changed = true; }
         } else if (k.indexOf('li:') === 0) {
           var rest = k.slice(3), cut = rest.indexOf(SEP), ln = rest.slice(0, cut), ik = rest.slice(cut + 1);
           var l2 = lists.filter(function (l) { return l.name === ln; })[0];
@@ -2037,15 +2041,32 @@ var app = (function () {
   }
   function colsOf(box) { var t = getComputedStyle(box).gridTemplateColumns; return t && t !== 'none' ? t.split(' ').length : 4; }
   /** Draw a grid of cards; long lists only draw what's near the selection. */
+  var gridVer = 0;   // bumped by anything other than moving (OK, hold, Back, new data) so the grid is redrawn in full
   function drawGrid(box, items, row, emptyMsg, active) {
     if (!items.length) { box.innerHTML = '<div class="empty">' + emptyMsg + '</div>'; return; }
     var cols = colsOf(box), from = TOUCH ? 0 : Math.max(0, Math.floor((row - 40) / cols) * cols), to = Math.min(items.length, TOUCH ? 300 : from + 100), h = '';
+    // moving round the same page of cards: only redraw the card you left and the one you're on (much smoother on the Chromecast)
+    var g = box._g, selNow = active ? row : -1;
+    if (g && g.items === items && g.from === from && g.to === to && g.view === view && g.len === items.length && g.first === box.firstElementChild && g.first && g.ver === gridVer) {
+      if (g.sel !== selNow) {
+        [g.sel, selNow].forEach(function (i) {
+          if (i < from || i >= to) return;
+          var el = box.querySelector('.card[data-i="' + i + '"]'); if (!el) return;
+          var t = document.createElement('div'); t.innerHTML = card(items[i], i === selNow, i); if (t.firstChild) el.replaceWith(t.firstChild);
+        });
+        g.sel = selNow;
+      }
+      if (active) scrollInto(box, box.querySelector('.card.sel'));
+      return;
+    }
+    box._g = null;
     if (from > 0) h += '<div class="more">… ' + from + ' more above</div>';
     for (var i = from; i < to; i++) h += card(items[i], active && i === row, i);
     if (to < items.length) h += '<div class="more">… ' + (items.length - to) + ' more</div>';
     var keep = box.scrollTop;
     box.innerHTML = h;
     box.scrollTop = keep;
+    box._g = { items: items, from: from, to: to, view: view, len: items.length, sel: selNow, first: box.firstElementChild, ver: gridVer };
     if (active) scrollInto(box, box.querySelector('.card.sel'));
     else if (row === 0) box.scrollTop = 0;
     if (view === 'purchases') [].forEach.call(box.querySelectorAll('.card.poster.still'), function (el) { var it = items[+el.getAttribute('data-i')]; if (it && buyNoPoster[it.yt] == null) buyPoster(it, el.querySelector('.im')); });
@@ -2064,7 +2085,7 @@ var app = (function () {
     var hero = $('hero');
     if (!it) { hero.style.backgroundImage = ''; hero.querySelector('.ht').textContent = ''; hero.querySelector('.hs').textContent = ''; hero.querySelector('.hd').textContent = ''; return; }
     var img = it.big || it.img;
-    hero.style.backgroundImage = img ? 'url("' + img + '")' : '';
+    clearTimeout(setHero.t); setHero.t = setTimeout(function () { hero.style.backgroundImage = img ? 'url("' + img + '")' : ''; }, 180);
     hero.querySelector('.ht').textContent = it.title;
     var now = nowSec();
     hero.querySelector('.hs').textContent = it.src === 'tv' ? it.chName + '  ·  ' + dayWord(it.s) + ' ' + clock(it.s) + (it.s <= now && it.e > now ? '  ·  on now' : '')
@@ -2596,7 +2617,7 @@ var app = (function () {
         saveLists(); toast('Removed ' + (n - l.items.length));
       } },
       { label: 'Delete this list', fn: function () {
-        showPop({ title: 'Delete "' + l.name + '" and everything in it?', opts: [{ label: 'Yes, delete it', fn: function () { mark('list:' + l.name, true); l.items.forEach(function (x) { mark('li:' + l.name + SEP + x.k, true); }); lists.splice(i, 1); if (!lists.length) lists.push({ name: 'Watch later', items: [] }); lsCat = 0; saveLists(); } }, { label: 'No, keep it' }] });
+        showPop({ title: 'Delete "' + l.name + '" and everything in it?', opts: [{ label: 'Yes, delete it', fn: function () { mark('list:' + l.name, true); l.items.forEach(function (x) { mark('li:' + l.name + SEP + x.k, true); }); lists.splice(i, 1); lsCat = 0; saveLists(); } }, { label: 'No, keep it' }] });
       } },
       { label: 'Cancel' }
     ]) });
@@ -2762,6 +2783,7 @@ var app = (function () {
 
   // ---------------------------------------------------------------- keys
   function key(k) {
+    if (!/^(up|down|left|right|pageup|pagedown)$/.test(k)) gridVer++;
     var ae = document.activeElement;
     if (k === 'ok' && ae && ae.tagName === 'INPUT') { ae.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return true; }
     if (k === 'resume') { refreshInstalled(); if (!SPORTS) { syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); } var oraw = window.Native && Native.virginOwned ? Native.virginOwned() : ''; if (oraw !== ownedRaw) { buildChans(); buildFilmsOnTV(); } if (Date.now() - guideAt > 3 * 3600 * 1000) loadGuide(); render(); return true; }
@@ -2785,6 +2807,7 @@ var app = (function () {
   }
   var backFromFull = false;   // set when Back sent the corner channel full screen; any other key clears it
   function back() {
+    gridVer++;
     if (pop) { closePop(); return true; }
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
     if (zone === 'main' && isOD() && odZone === 'grid') { odZone = 'cats'; render(); return true; }
@@ -2814,6 +2837,8 @@ var app = (function () {
       return;
     }
     e.preventDefault();
+    // holding a direction: the remote repeats very fast; skip repeats that arrive before the last move has been drawn
+    if (e.repeat && k !== 'ok') { var tn = performance.now(); if (tn - (window._lastRep || 0) < 55) return; window._lastRep = tn; }
     backFromFull = false;
     if (k === 'ok') {
       if (okTimer || okHeld) return;
