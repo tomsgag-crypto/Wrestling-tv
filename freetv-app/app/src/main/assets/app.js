@@ -573,6 +573,7 @@ var app = (function () {
   function setSource(sc, t) { settings.guideSec = sc; settings.guideType = t; saveSettings(); buildChans(); gRow = 0; rTop = 0; gZone = 'rows'; render(); }
   function setType(t) { settings.guideType = t; saveSettings(); buildChans(); gRow = 0; rTop = 0; gZone = 'rows'; render(); }
 
+  var BUYONLY = window.FTV_FLAVOR === 'purchases';   // the My Purchases app: just your YouTube films
   var SPORTS = window.FTV_FLAVOR === 'sports';   // the Sky Sports TV app: only Sky Sports channels
   var SKY_SLUGS = [[/main ?event/i, 'sky-sports-main-event'], [/\bpl\b|premier/i, 'sky-sports-premier-league'], [/football/i, 'sky-sports-football'], [/cricket/i, 'sky-sports-cricket'],
     [/golf/i, 'sky-sports-golf'], [/f1/i, 'sky-sports-f1'], [/tennis/i, 'sky-sports-tennis'], [/nfl/i, 'sky-sports-nfl'], [/racing/i, 'sky-sports-racing'], [/news/i, 'sky-sports-news'], [/mix/i, 'sky-sports-mix'], [/\+|plus/i, 'sky-sports-plus']];
@@ -2112,13 +2113,24 @@ var app = (function () {
     if (c && c.src === 'tmdbrec' && !c.items && !c.loading) loadRec(c).then(function () { if (isOD()) render(); });
     if (c && c.src === 'tmdb' && !c.loading && (!c.items || (odRow > c.items.length - 40 && !c.done))) loadStreamPage(c).then(function () { if (isOD()) render(); });
   }
+  function doUpdate() {
+    if (!(window.Native && Native.updateSelf)) return;
+    var nm = BUYONLY ? 'My Purchases' : SPORTS ? 'Sky Sports TV' : 'Free TV', r = Native.updateSelf();
+    if (r === 'overlay') {
+      showPop({ title: 'So ' + nm + ' can reopen itself after updating: on the next screen turn on "Allow display over other apps" for ' + nm + ', then press Back and choose Update again.',
+        opts: [{ label: 'Open that setting', fn: function () { Native.openOverlaySettings(); } }, { label: 'Skip – just update', fn: function () { Native.skipOverlay(); Native.updateSelf(); updateMsg('Downloading the update…'); } }] });
+      return;
+    }
+    if (r === 'allow') showPop({ title: 'First allow ' + nm + ' to install updates: turn on "Allow from this source" on the next screen, press Back, then choose Update again.', opts: [{ label: 'OK' }] });
+    else updateMsg('Downloading the update…');
+  }
   function renderOD() {
     if (!od.length) buildOD();
     if (odCat >= curSrc().cats.length) odCat = 0;
     if (odChip > 3) odChip = 0;
     var act = zone === 'main';
     var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z'][n] + '">' + esc(txt) + '</div>'; };
-    if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search my films' + (buyQ ? ': ' + buyQ : '')) + chip(3, '⇅ Sort: ' + (BUY_SORTS.filter(function (x) { return x[0] === buyCatSort(curCat() ? curCat().id : ''); })[0] || BUY_SORTS[0])[1]) + chip(1, '⟳ Refresh') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
+    if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search my films' + (buyQ ? ': ' + buyQ : '')) + chip(3, '⇅ Sort: ' + (BUY_SORTS.filter(function (x) { return x[0] === buyCatSort(curCat() ? curCat().id : ''); })[0] || BUY_SORTS[0])[1]) + chip(1, '⟳ Refresh') + (BUYONLY ? chip(4, '⬆ Update app') : '') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
     else $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
@@ -2147,9 +2159,9 @@ var app = (function () {
     if (odZone === 'src') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       if (view === 'purchases') {
-        var BO = [0, 3, 1], bi = Math.max(0, BO.indexOf(odChip));
-        if (k === 'left') odChip = BO[Math.max(0, bi - 1)]; else if (k === 'right') odChip = BO[Math.min(2, bi + 1)];
-        else if (k === 'ok') { if (odChip === 0) buySearch(); else if (odChip === 3) buySortMenu(curCat()); else { buyFetch(true); buyMetaLoad(); toast('Refreshing your films from YouTube…'); } return; }
+        var BO = BUYONLY ? [0, 3, 1, 4] : [0, 3, 1], bi = Math.max(0, BO.indexOf(odChip));
+        if (k === 'left') odChip = BO[Math.max(0, bi - 1)]; else if (k === 'right') odChip = BO[Math.min(BO.length - 1, bi + 1)];
+        else if (k === 'ok') { if (odChip === 0) buySearch(); else if (odChip === 3) buySortMenu(curCat()); else if (odChip === 4) doUpdate(); else { buyFetch(true); buyMetaLoad(); toast('Refreshing your films from YouTube…'); } return; }
         else if (k === 'down') odZone = 'cats';
         render(); return;
       }
@@ -2429,17 +2441,7 @@ var app = (function () {
       if (x.k === 'signVirgin' && window.Native && Native.openWeb) { Native.openWeb('https://virgintvgo.virginmedia.com/en/watchtv', 'Virgin TV Go – sign in'); return; }
       if (x.k === 'signSky' && window.Native && Native.openWeb) { Native.openWeb('https://www.skysports.com/watch/sky-sports-main-event', 'Sky Sports – sign in'); return; }
       if (x.k === 'update' && !(window.Native && Native.updateSelf)) return;
-      if (x.k === 'update') {
-        var r = Native.updateSelf();
-        if (r === 'overlay') {
-          showPop({ title: 'So Free TV can reopen itself after updating: on the next screen turn on "Allow display over other apps" for Free TV, then press Back and choose Update Free TV again.',
-            opts: [{ label: 'Open that setting', fn: function () { Native.openOverlaySettings(); } }, { label: 'Skip – just update', fn: function () { Native.skipOverlay(); Native.updateSelf(); updateMsg('Downloading the update…'); } }] });
-          return;
-        }
-        if (r === 'allow') showPop({ title: 'First allow Free TV to install updates: turn on "Allow from this source" on the next screen, press Back, then choose Update Free TV again.', opts: [{ label: 'OK' }] });
-        else updateMsg('Downloading the update…');
-        return;
-      }
+      if (x.k === 'update') { doUpdate(); return; }
       if (x.k === 'showhide') { showMenu(); return; }
       if (x.k === 'vpin') { Native.setVirginPin(); setTimeout(render, 1500); }
       if (x.k === 'virgin') { settings.virgin = !settings.virgin; saveSettings(); if (settings.virgin && !virgin.length) loadVirgin().then(function () { buildChans(); render(); }); buildChans(); }
@@ -2786,10 +2788,10 @@ var app = (function () {
     if (!/^(up|down|left|right|pageup|pagedown)$/.test(k)) gridVer++;
     var ae = document.activeElement;
     if (k === 'ok' && ae && ae.tagName === 'INPUT') { ae.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return true; }
-    if (k === 'resume') { refreshInstalled(); if (!SPORTS) { syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); } var oraw = window.Native && Native.virginOwned ? Native.virginOwned() : ''; if (oraw !== ownedRaw) { buildChans(); buildFilmsOnTV(); } if (Date.now() - guideAt > 3 * 3600 * 1000) loadGuide(); render(); return true; }
+    if (k === 'resume') { refreshInstalled(); if (!SPORTS && !BUYONLY) { syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); } var oraw = window.Native && Native.virginOwned ? Native.virginOwned() : ''; if (oraw !== ownedRaw) { buildChans(); buildFilmsOnTV(); } if (Date.now() - guideAt > 3 * 3600 * 1000) loadGuide(); render(); return true; }
     if (pop) { popKey(k); return true; }
     if (zone === 'tabs') {
-      var VV = SPORTS ? ['guide', 'apps'] : VIEWS, i = VV.indexOf(view);   // Sky Sports TV has just the guide and Apps
+      var VV = BUYONLY ? ['purchases'] : SPORTS ? ['guide', 'apps'] : VIEWS, i = VV.indexOf(view);   // Sky Sports TV has just the guide and Apps
       if (k === 'left') { if (i > 0) setView(VV[i - 1]); }            // stops at TV Guide
       else if (k === 'right') { if (i < VV.length - 1) setView(VV[i + 1]); }   // stops at Apps
       else if (k === 'down' || k === 'ok') { zone = 'main'; if (isOD()) { var oi = odItems(); if (oi.length) { odZone = 'grid'; if (odRow >= oi.length) odRow = 0; } else odZone = 'src'; } if (view === 'search') { sZone = 'input'; setTimeout(function () { $('q').focus(); }, 30); } render(); }
@@ -2965,15 +2967,22 @@ var app = (function () {
     if (!/^(guide|apps)$/.test(view)) view = 'guide';
     var lb = document.querySelector('#logo b'); if (lb) lb.textContent = 'SKY SPORTS TV';
   }
+  if (BUYONLY) {
+    document.title = 'My Purchases';
+    document.body.classList.add('buyonly');
+    [].forEach.call(document.querySelectorAll('.tab'), function (t) { if (t.getAttribute('data-v') !== 'purchases') t.style.display = 'none'; });
+    view = 'purchases'; zone = 'main';
+    var lb2 = document.querySelector('#logo b'); if (lb2) lb2.textContent = 'MY PURCHASES';
+  }
   refreshInstalled();
   tidyReminders();
   buildOD();
   render();
-  loadGuide();
-  if (!SPORTS) loadOD();
-  if (!SPORTS) setTimeout(function () { syncSeed(); syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); }, 1500);
+  if (!BUYONLY) loadGuide();
+  if (!SPORTS && !BUYONLY) loadOD();
+  if (!SPORTS && !BUYONLY) setTimeout(function () { syncSeed(); syncApply(); if (window.Native && Native.syncNow) Native.syncNow(); }, 1500);
   setInterval(function () { if (!pop) render(); }, 30000);
-  setInterval(function () { if (Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
+  setInterval(function () { if (!BUYONLY && Date.now() - guideAt > 2 * 3600 * 1000) loadGuide(); }, 10 * 60 * 1000);
 
   return { syncApply: syncApply, showPairCode: showPairCode, zap: zap, zapRemind: zapRemind, primeOpened: primeOpened, key: key, back: back, _cb: _cb, updateMsg: updateMsg, miniStarted: miniStarted, pipStarted: pipStarted, miniStopped: miniStopped, reminderDue: reminderDue, openReminder: openReminder, _dbg: { chans: function () { return chans; }, lists: function () { return lists; }, od: function () { return od; } } };
 })();

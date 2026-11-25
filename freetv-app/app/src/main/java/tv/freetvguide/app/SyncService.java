@@ -41,7 +41,7 @@ public class SyncService extends Service {
     }
 
     static void start(Context c) {
-        if (!isTv(c) || "sports".equals(BuildConfig.FLAVOR)) return;   // the Sky Sports app doesn't link to phones
+        if (!isTv(c) || !"full".equals(BuildConfig.FLAVOR)) return;   // the Sky Sports app doesn't link to phones
         try {
             Intent i = new Intent(c, SyncService.class);
             if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);

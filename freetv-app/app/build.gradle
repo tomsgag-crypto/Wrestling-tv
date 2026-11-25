@@ -12,8 +12,8 @@ android {
         applicationId "tv.freetvguide.app"
         minSdk 21
         targetSdk 34
-        versionCode 168
-        versionName "2.36.6"
+        versionCode 169
+        versionName "2.37"
     }
 
     // One fixed key for every build, so new versions install as updates (the key is a GitHub secret, never in the code)
@@ -37,6 +37,12 @@ android {
             dimension "app"
             resValue "string", "app_name", "Free TV"
             buildConfigField "String", "UPDATE_URL", '"https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/free-tv/FreeTV.apk"'
+        }
+        purchases {
+            dimension "app"
+            applicationId "tv.freetvguide.purchases"
+            resValue "string", "app_name", "My Purchases"
+            buildConfigField "String", "UPDATE_URL", '"https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/my-purchases/MyPurchases.apk"'
         }
         sports {
             dimension "app"

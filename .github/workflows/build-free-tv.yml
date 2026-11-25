@@ -63,27 +63,23 @@ jobs:
       - name: Build APKs (Free TV and Sky Sports TV)
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
-        run: gradle assembleFullRelease assembleSportsRelease --no-daemon
+        run: gradle assembleFullRelease assembleSportsRelease assemblePurchasesRelease --no-daemon
 
       - name: Rename APKs
         run: |
           cp app/build/outputs/apk/full/release/app-full-release.apk ../FreeTV.apk
           cp app/build/outputs/apk/sports/release/app-sports-release.apk ../SkySportsTV.apk
+          cp app/build/outputs/apk/purchases/release/app-purchases-release.apk ../MyPurchases.apk
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: free-tv
-          name: Free TV (latest build)
-          body: Built from commit ${{ github.sha }}
-          files: FreeTV.apk
-          make_latest: false
-
-      - name: Publish Sky Sports TV
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: sky-sports-tv
-          name: Sky Sports TV (latest build)
-          body: Built from commit ${{ github.sha }}
-          files: SkySportsTV.apk
-          make_latest: false
+      - name: Publish the three apps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          up() {   # tag, title, file — make the release if it's missing, then replace the file (retries: GitHub sometimes hiccups)
+            gh release view "$1" >/dev/null 2>&1 || gh release create "$1" --title "$2" --notes "Built from commit $GITHUB_SHA" --latest=false
+            for i in 1 2 3 4; do gh release upload "$1" "$3" --clobber && break; sleep 15; done
+            gh release edit "$1" --notes "Built from commit $GITHUB_SHA" >/dev/null || true
+          }
+          up free-tv "Free TV (latest build)" FreeTV.apk
+          up sky-sports-tv "Sky Sports TV (latest build)" SkySportsTV.apk
+          up my-purchases "My Purchases (latest build)" MyPurchases.apk

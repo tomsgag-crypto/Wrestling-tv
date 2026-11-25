@@ -459,6 +459,7 @@ public class MainActivity extends Activity {
             Uri u = Uri.parse("https://www.youtube.com/watch?v=" + id);
             ui.post(() -> {
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u).setPackage("com.google.android.youtube.tv").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return; } catch (Exception ignored) { }
+                try { startActivity(new Intent(Intent.ACTION_VIEW, u).setPackage("com.amazon.firetv.youtube").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return; } catch (Exception ignored) { }   // YouTube on a Fire TV Stick
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u).setPackage("com.google.android.youtube").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return; } catch (Exception ignored) { }
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) { }
             });
