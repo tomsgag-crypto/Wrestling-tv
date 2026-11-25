@@ -1,0 +1,26 @@
+name: My Purchases details (Free TV)
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Match films to TMDB (genres, year, rating, poster)
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+        run: |
+          if [ -z "$YT_API_KEY" ]; then echo "No YT_API_KEY secret yet"; exit 0; fi
+          python3 tools/purchases_meta.py purchases.json
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f purchases.json ] || exit 0
+          gh release view purchases-meta >/dev/null 2>&1 || gh release create purchases-meta --title "My Purchases details" --notes "Genres, years and posters for Free TV's My Purchases tab, refreshed daily."
+          gh release upload purchases-meta purchases.json --clobber
