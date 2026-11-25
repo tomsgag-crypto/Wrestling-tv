@@ -275,7 +275,10 @@ public class WebPlayerActivity extends Activity {
                     // Sky's first start often lands on old video and buffers; a second start (what a settings change does) is smooth – so do it once, behind the loading screen
                     boolean fresh = prefs().getBoolean("skyFresh", true) && startReloads == 0;
                     boolean slow = android.os.SystemClock.uptimeMillis() > skyGateUntil - 14000;   // 6 s and still nothing
-                    if (fresh && (ct2 > 0 || slow)) {   // the page has its video: restart straight away
+                    if (fresh && ct2 > 0) {   // the page has its video: jump it to live straight away (no page reload)
+                        startReloads = 1; settleTicks = 0; settleCt = -1; quickRestart(); return;
+                    }
+                    if (fresh && slow) {   // 6 s and nothing at all: reload the page
                         startReloads = 1; settleTicks = 0; settleCt = -1;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;

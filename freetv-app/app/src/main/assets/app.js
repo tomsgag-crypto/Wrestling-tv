@@ -1224,11 +1224,30 @@ var app = (function () {
   // ---------------------------------------------------------------- My Purchases: Tom's YouTube film library (playlist "All Movies A–Z")
   var BUY_PL = 'PLayBy19w9yIU';
   var buy = load('buyFilms') || null, buyAt = +(load('buyAt') || 0), buyBusy = false, buyErr = '', buyQ = '', buyNoPoster = load('buyNoPoster') || {}, buyCats = null;
+  var buyMeta = load('buyMeta') || {}, buySort = settings.buySort || 'az', buyGenre = '';
+  function buyMetaLoad() {
+    return get('https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/purchases-meta/purchases.json').then(function (t) {
+      var j = typeof t === 'string' ? JSON.parse(t) : t; if (j && j.m) { buyMeta = j.m; save('buyMeta', buyMeta); if (view === 'purchases') { od = []; buildOD(); render(); } }
+    }, function () {});
+  }
+  var BUY_GENRES = [['Action', [28]], ['Adventure', [12]], ['Animation', [16]], ['Comedy', [35]], ['Crime', [80]], ['Documentary', [99]], ['Drama', [18]], ['Family', [10751]],
+    ['Fantasy', [14]], ['History', [36]], ['Horror', [27]], ['Music', [10402]], ['Mystery', [9648]], ['Romance', [10749]], ['Sci-Fi', [878]], ['Thriller', [53]], ['War', [10752]], ['Western', [37]]];
+  var BUY_SORTS = [['az', 'A–Z'], ['za', 'Z–A'], ['new', 'Newest films first'], ['old', 'Oldest films first'], ['top', 'Best rated'], ['added', 'Recently added']];
+  function buySorted(list) {
+    var m = function (it) { return buyMeta[it.yt] || {}; }, a = list.slice();
+    if (buySort === 'za') a.reverse();
+    else if (buySort === 'new' || buySort === 'old') a.sort(function (x, y) { var d = (+m(y).y || 0) - (+m(x).y || 0); return buySort === 'new' ? d : -d; });
+    else if (buySort === 'top') a.sort(function (x, y) { return (m(y).r || 0) - (m(x).r || 0); });
+    else if (buySort === 'added') a.sort(function (x, y) { return (m(y).a != null ? m(y).a : -1) - (m(x).a != null ? m(x).a : -1); });
+    return a;
+  }
+  function buySortMenu() { showPop({ title: 'Sort your films', opts: BUY_SORTS.map(function (x) { return { label: x[1], tick: x[0] === buySort, fn: function () { buySort = x[0]; settings.buySort = x[0]; saveSettings(); od = []; buildOD(); odRow = 0; } }; }) }); }
   function buyKey() { return window.Native && Native.ytKey ? Native.ytKey() : ''; }
   function sortTitle(t) { return String(t || '').replace(/^\s*(the|a|an)\s+/i, '').toLowerCase(); }
   function letterOf(t) { var c = sortTitle(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; }
   function buyItem(x) {
-    return { src: 'yt', yt: x.id, title: x.t, sub: 'Bought on YouTube', desc: '', kind: 'movie', k: 'yt:' + x.id,
+    var md = buyMeta[x.id] || {}, gn = (md.g || []).map(function (g) { return tmdbGenres[g]; }).filter(Boolean).slice(0, 2).join(', ');
+    return { src: 'yt', yt: x.id, title: x.t, sub: [md.y, gn, md.r ? '★ ' + md.r : ''].filter(Boolean).join(' · ') || 'Bought on YouTube', desc: '', kind: 'movie', k: 'yt:' + x.id, tposter: md.p ? 'https://image.tmdb.org/t/p/w342' + md.p : '', meta: md,
       img: 'https://i.ytimg.com/vi_webp/' + x.id + '/movieposter_en.webp', still: 'https://i.ytimg.com/vi/' + x.id + '/hqdefault.jpg', big: 'https://i.ytimg.com/vi/' + x.id + '/maxresdefault.jpg' };
   }
   /** Fetch every page of the playlist (50 a time), keep real films, sort A–Z ignoring The/A/An. */
@@ -1260,14 +1279,22 @@ var app = (function () {
   /** The side list: All, a search result, #, A–Z (each letter jumps to its films). */
   function buySources() {
     if (!buy && !buyBusy) buyFetch(false);
+    if (!buySources.metaAsked) { buySources.metaAsked = 1; buyMetaLoad(); }
     if (buy && Date.now() - buyAt > 12 * 3600000 && !buyBusy) buyFetch(false);
     var all = (buy || []).map(buyItem), cats = [];
     if (!buy) cats.push({ src: 'msg', name: buyErr || 'Loading your films from YouTube…', items: [] });
     else {
-      if (buyQ) { var q = buyQ.toLowerCase(); cats.push({ src: 'buy', id: 'buyq', name: '🔍 "' + buyQ + '"', items: all.filter(function (it) { return it.title.toLowerCase().indexOf(q) >= 0; }) }); }
+      if (buyQ) { var q = buyQ.toLowerCase().trim(), gq = BUY_GENRES.filter(function (g) { return g[0].toLowerCase() === q || (q.length > 3 && g[0].toLowerCase().indexOf(q) === 0) || (q === 'animated' && g[0] === 'Animation') || (q === 'scifi' || q === 'sci fi' ? g[0] === 'Sci-Fi' : false); })[0];
+        cats.push({ src: 'buy', id: 'buyq', name: '🔍 "' + buyQ + '"', items: buySorted(all.filter(function (it) { var md = buyMeta[it.yt] || {};
+          return it.title.toLowerCase().indexOf(q) >= 0 || (gq && (md.g || []).some(function (x) { return gq[1].indexOf(x) >= 0; })) || (/^(19|20)\d\d$/.test(q) && md.y === q); })) }); }
+      all = buySorted(all);
       cats.push({ src: 'buy', id: 'buyall', name: 'All films', items: all });
+      if (Object.keys(buyMeta).length) BUY_GENRES.forEach(function (g) {
+        var its = all.filter(function (it) { var gg = (buyMeta[it.yt] || {}).g || []; return g[1].some(function (x) { return gg.indexOf(x) >= 0; }); });
+        if (its.length) cats.push({ src: 'buy', id: 'buyg' + g[0], name: g[0], items: its });
+      });
       var by = {}; all.forEach(function (it) { var L = letterOf(it.title); (by[L] = by[L] || []).push(it); });
-      ['#'].concat('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')).forEach(function (L) { if (by[L]) cats.push({ src: 'buy', id: 'buy' + L, name: L, items: by[L] }); });
+      ['#'].concat('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')).forEach(function (L) { if (by[L]) cats.push({ src: 'buy', id: 'buy' + L, name: 'Starts with ' + L, items: by[L] }); });
     }
     return [{ id: 'buy', name: 'My Purchases', cats: cats }];
   }
@@ -1290,10 +1317,11 @@ var app = (function () {
     if (buyNoPoster[it.yt] === 1) return;
     if (buyNoPoster[it.yt] === 2) { el.style.backgroundImage = 'url("' + it.img + '")'; return; }
     var im = new Image();
-    im.onload = function () { var ok = im.naturalWidth > 130; buyNoPoster[it.yt] = ok ? 2 : 1; buyPosterSave(); if (ok) { var c = el.closest('.card'); if (c) c.classList.remove('still'); var t = el.querySelector('.stt'); if (t) t.remove(); el.style.backgroundImage = 'url("' + it.img + '")'; } };
-    im.onerror = function () { buyNoPoster[it.yt] = 1; buyPosterSave(); };
+    im.onload = function () { var ok = im.naturalWidth > 130; buyNoPoster[it.yt] = ok ? 2 : 1; buyPosterSave(); if (!ok) buyTmdbPoster(it, el); if (ok) { var c = el.closest('.card'); if (c) c.classList.remove('still'); var t = el.querySelector('.stt'); if (t) t.remove(); el.style.backgroundImage = 'url("' + it.img + '")'; } };
+    im.onerror = function () { buyNoPoster[it.yt] = 1; buyPosterSave(); buyTmdbPoster(it, el); };
     im.src = it.img;
   }
+  function buyTmdbPoster(it, el) { if (!it.tposter) return; var c = el.closest('.card'); if (c) c.classList.remove('still'); var t = el.querySelector('.stt'); if (t) t.remove(); el.style.backgroundImage = 'url("' + it.tposter + '")'; }
   var buySaveT = 0;
   function buyPosterSave() { clearTimeout(buySaveT); buySaveT = setTimeout(function () { save('buyNoPoster', buyNoPoster); }, 3000); }
   /** The Family tab: family films and TV, on all your apps together, then app by app. */
@@ -1981,7 +2009,8 @@ var app = (function () {
     if (w) tags += '<span class="tag w">✓ WATCHED</span>';
     var sub = it.src === 'tv' ? (it.chName + (it.e <= now ? (it.url ? ' · catch up' : ' · was on ' + dayWord(it.s)) : '')) : [itemSvcName(it), it.sub].filter(Boolean).join(' · ');
     if (it.src === 'yt') {
-      var hasP = buyNoPoster[it.yt] === 2;
+      var hasP = buyNoPoster[it.yt] === 2 || (buyNoPoster[it.yt] === 1 && it.tposter);
+      if (buyNoPoster[it.yt] === 1 && it.tposter) it = Object.assign({}, it, { img: it.tposter });
       return '<div class="card poster' + (hasP ? '' : ' still') + (sel ? ' sel' : '') + (w ? ' done' : '') + '" data-i="' + i + '" data-yt="' + it.yt + '"><div class="im" style="background-image:url(&quot;' + esc(hasP ? it.img : it.still) + '&quot;)">' +
         (hasP ? '' : '<div class="stt">' + esc(it.title) + '</div>') + '<div class="tags">' + tags + '</div></div>' + (sel ? '<div class="tx"><div class="t">' + esc(it.title) + '</div></div>' : '') + '</div>';
     }
@@ -2056,7 +2085,7 @@ var app = (function () {
     if (odChip > 3) odChip = 0;
     var act = zone === 'main';
     var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z'][n] + '">' + esc(txt) + '</div>'; };
-    if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search' + (buyQ ? ': ' + buyQ : '')) + chip(1, '⟳ Refresh') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
+    if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search my films' + (buyQ ? ': ' + buyQ : '')) + chip(3, '⇅ Sort: ' + (BUY_SORTS.filter(function (x) { return x[0] === buySort; })[0] || BUY_SORTS[0])[1]) + chip(1, '⟳ Refresh') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
     else $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
@@ -2085,8 +2114,9 @@ var app = (function () {
     if (odZone === 'src') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       if (view === 'purchases') {
-        if (k === 'left') odChip = 0; else if (k === 'right') odChip = 1;
-        else if (k === 'ok') { if (odChip === 0) buySearch(); else { buyFetch(true); toast('Refreshing your films from YouTube…'); } return; }
+        var BO = [0, 3, 1], bi = Math.max(0, BO.indexOf(odChip));
+        if (k === 'left') odChip = BO[Math.max(0, bi - 1)]; else if (k === 'right') odChip = BO[Math.min(2, bi + 1)];
+        else if (k === 'ok') { if (odChip === 0) buySearch(); else if (odChip === 3) buySortMenu(); else { buyFetch(true); buyMetaLoad(); toast('Refreshing your films from YouTube…'); } return; }
         else if (k === 'down') odZone = 'cats';
         render(); return;
       }
