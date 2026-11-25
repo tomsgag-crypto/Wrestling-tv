@@ -191,7 +191,7 @@ public class WebPlayerActivity extends Activity {
             "try{localStorage.removeItem('timeToLiveEdgeInMs');}catch(e){}v.currentTime=end-15;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
             "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
-            "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(window.__ftvDRM?window.__ftvDRM+' · ':'')+(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
+            "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
             "var sb=false;if(/skysports/.test(location.host)){try{var roots=[],rn=v.getRootNode?v.getRootNode():document,hops=0;while(rn&&hops++<4){roots.push(rn);if(rn===document||!rn.host)break;rn=rn.host.getRootNode?rn.host.getRootNode():document;}" +
             // Sky's own "Buffering…" message on the player: if it's showing, it's buffering, whatever the clock says
@@ -405,9 +405,7 @@ public class WebPlayerActivity extends Activity {
         web.evaluateJavascript("(function(){return window.__ftvQs||'';})()", r -> {
             String offers = r == null ? "" : r.replace("\"", "");
             int cur = quality();
-            String[] names = new String[QS.length + 7];
-            boolean hd = prefs().getBoolean("skyHD", false);
-            names[QS.length + 6] = "HD protection (test): " + (hd ? "on – asks for hardware protection so Sky may send HD – OK to turn off" : "off – OK to try hardware protection for HD");
+            String[] names = new String[QS.length + 6];
             boolean autoR = prefs().getBoolean("skyAutoRestart", true);
             names[QS.length + 5] = "Auto restart: " + (autoR ? "on – restarts if it keeps buffering – OK to turn off" : "off – OK to restart when it keeps buffering");
             boolean freshOn = prefs().getBoolean("skyFresh", true);
@@ -429,8 +427,7 @@ public class WebPlayerActivity extends Activity {
                     else if (which == QS.length + 2) prefs().edit().putBoolean("skyNoAds", !noAds).apply();
                     else if (which == QS.length + 3) prefs().edit().putBoolean("skyNet", !net).apply();
                     else if (which == QS.length + 4) prefs().edit().putBoolean("skyFresh", !freshOn).apply();
-                    else if (which == QS.length + 5) prefs().edit().putBoolean("skyAutoRestart", !autoR).apply();
-                    else { prefs().edit().putBoolean("skyHD", !hd).apply(); applyQuality(); return; }
+                    else prefs().edit().putBoolean("skyAutoRestart", !autoR).apply();
                     applyQuality();
                 })
                 .show();
@@ -965,15 +962,7 @@ public class WebPlayerActivity extends Activity {
         "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
         "}catch(e){}})();";
     private int quality() { return getSharedPreferences("player", MODE_PRIVATE).getInt("skyq", 0); }
-    // test: ask for the Chromecast's hardware copy protection (what apps use for HD); if the device says no, the normal kind is used
-    private static final String HWDRM = "(function(){var o=navigator.requestMediaKeySystemAccess&&navigator.requestMediaKeySystemAccess.bind(navigator);if(!o)return;" +
-        "var LV=[['HW_SECURE_ALL','hardware protection (full)'],['HW_SECURE_DECODE','hardware protection (decode)'],['HW_SECURE_CRYPTO','hardware protection (keys)']];" +
-        "navigator.requestMediaKeySystemAccess=function(ks,cfgs){if(!/widevine/i.test(ks))return o(ks,cfgs);" +
-        "function tryLv(i){if(i>=LV.length){window.__ftvDRM='normal protection (all hardware levels refused)';return o(ks,cfgs);}var up;" +
-        "try{up=JSON.parse(JSON.stringify(cfgs));up.forEach(function(c){(c.videoCapabilities||[]).forEach(function(v){v.robustness=LV[i][0];});(c.audioCapabilities||[]).forEach(function(a){a.robustness=a.robustness||'SW_SECURE_CRYPTO';});});}catch(e){return o(ks,cfgs);}" +
-        "return o(ks,up).then(function(a){window.__ftvDRM=LV[i][1];return a;},function(){return tryLv(i+1);});}" +
-        "return tryLv(0);};})();";
-    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", false) ? 8000 : 0) + ",") + (prefs().getBoolean("skyHD", false) ? HWDRM : ""); }
+    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", false) ? 8000 : 0) + ",") ; }
     private Object startScript;   // the script handle, so a new quality can replace it
     private void looksLikeDesktop(WebSettings s) {
         try {
