@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient());
         web.setWebChromeClient(new WebChromeClient());
         web.addJavascriptInterface(bridge = new Bridge(), "Native");
+        if ("prices".equals(BuildConfig.FLAVOR)) System.setProperty("http.keepAlive", "false");   // Film Prices: never reuse a connection from before a VPN switch
         // tell the page when the connection changes (a VPN switching country) so it can check prices straight away
         try {
             android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);

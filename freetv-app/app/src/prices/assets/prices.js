@@ -17,7 +17,8 @@ window.app = (function () {
       if (!window.Native) { fetch(url.split('#')[0]).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(res, rej); return; }
       var id = 'p' + (++cbN);
       cbs[id] = function (body, err) { if (err) rej(new Error(err)); else res(body); };
-      Native.fetch(url, id);
+      // a fresh connection every time: one opened before the VPN came on would carry on around it
+      Native.fetch(url + (url.indexOf('#') >= 0 ? '' : '#') + '#h=' + encodeURIComponent('Connection: close'), id);
     });
   }
   function _cb(id, body, err) { var f = cbs[id]; delete cbs[id]; if (f) f(body, err); }
@@ -71,15 +72,17 @@ window.app = (function () {
   function day(off) { var d = new Date(Date.now() + off * 864e5); return d.toISOString().slice(0, 10); }
   function tmList(name, path) {
     var c = S.cache[name];
-    if (c && Date.now() - c.at < 6 * 3600e3) return Promise.resolve(c.items);
-    return getJSON(TM + path + (path.indexOf('?') < 0 ? '?' : '&') + 'api_key=' + KEY + '&language=en-GB').then(function (j) {
-      var items = (j.results || []).filter(function (x) { return x.poster_path; }).map(film);
-      S.cache[name] = { at: Date.now(), items: items }; persist(); return items;
+    if (c && c.v === 2 && Date.now() - c.at < 6 * 3600e3) return Promise.resolve(c.items);
+    var base = TM + path + (path.indexOf('?') < 0 ? '?' : '&') + 'api_key=' + KEY + '&language=en-GB&page=';
+    return Promise.all([1, 2, 3, 4, 5].map(function (pg) { return getJSON(base + pg).then(function (j) { return j.results || []; }, function () { return []; }); })).then(function (pages) {
+      var seen = {}, items = [].concat.apply([], pages).filter(function (x) { if (!x.poster_path || seen[x.id]) return false; seen[x.id] = 1; return true; }).map(film);
+      if (!items.length) throw new Error('none');
+      S.cache[name] = { at: Date.now(), items: items, v: 2 }; persist(); return items;
     }, function () { return c ? c.items : []; });
   }
   // digital (buy/rent) releases: TMDB release type 4
-  function newToBuy() { return tmList('new', '/discover/movie?region=US&with_release_type=4&release_date.gte=' + day(-75) + '&release_date.lte=' + day(0) + '&sort_by=popularity.desc&vote_count.gte=25&include_adult=false'); }
-  function comingSoon() { return tmList('soon', '/discover/movie?region=US&with_release_type=4&release_date.gte=' + day(1) + '&release_date.lte=' + day(45) + '&sort_by=popularity.desc&include_adult=false'); }
+  function newToBuy() { return tmList('new', '/discover/movie?region=US&with_release_type=4&release_date.gte=' + day(-75) + '&release_date.lte=' + day(0) + '&sort_by=popularity.desc&vote_count.gte=10&include_adult=false'); }
+  function comingSoon() { return tmList('soon', '/discover/movie?region=US&with_release_type=4&release_date.gte=' + day(1) + '&release_date.lte=' + day(75) + '&sort_by=popularity.desc&include_adult=false'); }
   function popular() { return tmList('pop', '/trending/movie/week'); }
   function searchFilms(q) { return getJSON(TM + '/search/movie?api_key=' + KEY + '&language=en-GB&include_adult=false&query=' + encodeURIComponent(q)).then(function (j) { return (j.results || []).map(film); }); }
 
@@ -112,17 +115,24 @@ window.app = (function () {
   }
   /** this connection's country */
   var curCC = load('lastcc') || '';
+  var whereErr = '';
   function whereAmI() {
-    return getJSON('https://api.country.is/').then(function (j) { return j.country; }, function () {
-      return getJSON('https://ipapi.co/json/').then(function (j) { return j.country_code; }, function () { return ''; });
-    });
+    var tries = [['https://api.country.is/', 'country'], ['https://ipwho.is/', 'country_code'], ['https://ipapi.co/json/', 'country_code']];
+    function go(i) {
+      if (i >= tries.length) { whereErr = 'Couldn’t work out your connection’s country'; return Promise.resolve(''); }
+      return getJSON(tries[i][0] + '#nc=' + Date.now()).then(function (j) { var c = j && j[tries[i][1]]; if (c) { whereErr = ''; return String(c).toUpperCase(); } return go(i + 1); }, function () { return go(i + 1); });
+    }
+    return go(0);
   }
   function confirmHere(f, cc) {
     var p = S.prices[f.k] = S.prices[f.k] || {}, slot = p[cc] = p[cc] || {};
+    return confirmHere2(f, cc, p, slot).then(function (c) { delete slot.err; persist(); return c; }, function (e) { slot.err = { msg: String(e && e.message || e), at: Date.now() }; persist(); throw e; });
+  }
+  function confirmHere2(f, cc, p, slot) {
     var known = slot.conf && slot.conf.id || (slot.est && slot.est.id);
     var pick = known ? Promise.resolve(known) : playFind(f);
     return pick.then(function (id) {
-      if (!id) { slot.conf = { none: true, at: Date.now() }; persist(); return slot.conf; }
+      if (!id) { if (cc !== curCC) return { none: true, stale: true }; slot.conf = { none: true, at: Date.now(), why: 'Not found on Google Play there' }; persist(); return slot.conf; }
       return playOffers(id).then(function (o) {
         if (!o.buy.length && !o.rent.length && known && !slot.conf) return playFind(f).then(function (id2) { return id2 && id2 !== id ? playOffers(id2) : o; });
         return o;
@@ -218,7 +228,7 @@ window.app = (function () {
   function grid(items, empty) { shown = items; return items.length ? '<div class="grid">' + items.map(card).join('') + '</div>' : '<div class="note">' + empty + '</div>'; }
   function render() {
     $('tabs').innerHTML = TABS.map(function (t) { return '<button class="tab f' + (t[0] === view && !open ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
-    $('status').innerHTML = '<button class="btn f" data-act="switched" style="float:right;margin-left:8px">🔄 I’ve switched country</button>' + (curCC ? 'Connected via <span class="cc">' + flag(curCC) + ' ' + esc(cname(curCC)) + '</span> – Google Play prices here are checked automatically' : 'Finding your connection’s country…') +
+    $('status').innerHTML = '<button class="btn f" data-act="switched" style="float:right;margin-left:8px">🔄 I’ve switched country</button>' + (whereErr ? '<b>' + whereErr + '</b> · ' : '') + (curCC ? 'Connected via <span class="cc">' + flag(curCC) + ' ' + esc(cname(curCC)) + '</span> – Google Play prices here are checked automatically' : 'Finding your connection’s country…') +
       (SKEY && left != null ? ' · ' + left + ' country lookups left this month' : '') + (busy ? ' · <b>' + esc(busy) + '</b>' : '');
     var h = '';
     if (open) h = filmPage(open);
@@ -250,12 +260,13 @@ window.app = (function () {
     var rs = rows(f), firstConf = rs.filter(function (r) { return r.buyG != null; })[0];
     rs.forEach(function (r) {
       var c = r.s.conf, e = r.s.est;
+      var err = r.s.err && (!c || r.s.err.at > c.at) ? '<br><span class="dim">⚠ ' + esc(r.s.err.msg) + '</span>' : '';
       var buy = c && c.buy && c.buy.length ? c.buy.map(function (x) { return '<span class="ok">' + esc(x.txt) + (x.q ? ' ' + x.q : '') + '</span>'; }).join('<br>') : (c && c.none ? '<span class="dim">Not on Google Play there</span>' : '<span class="dim">–</span>');
       var rent = c && c.rent && c.rent.length ? c.rent.map(function (x) { return esc(x.txt) + (x.q ? ' ' + x.q : ''); }).join('<br>') : '';
       if (e && !e.none) rent += (rent ? '<br>' : '') + '<span class="est">from ' + esc(e.txt) + '</span>';
       else if (e && e.none && !c) rent += '<span class="dim">not found</span>';
       var g = r.buyG != null ? '<span class="ok">' + money(r.buyG) + '</span>' : r.predG != null ? '<span class="pred">≈' + money(r.predG) + '</span>' : (r.estG != null ? '<span class="est">' + money(r.estG) + '*</span>' : '–');
-      h += '<tr class="' + (r === firstConf ? 'cheapest' : '') + '"><td>' + flag(r.cc) + ' ' + esc(cname(r.cc)) + (r.cc === curCC ? ' <span class="dim">(you)</span>' : '') + '</td><td>' + buy + '</td><td>' + (rent || '–') + '</td><td class="gbp">' + g + '</td><td class="dim">' +
+      h += '<tr class="' + (r === firstConf ? 'cheapest' : '') + '"><td>' + flag(r.cc) + ' ' + esc(cname(r.cc)) + (r.cc === curCC ? ' <span class="dim">(you)</span>' : '') + '</td><td>' + buy + err + '</td><td>' + (rent || '–') + '</td><td class="gbp">' + g + '</td><td class="dim">' +
         esc(when(c && c.at) || (e && e.at ? when(e.at) + ' *' : '')) + '</td></tr>';
     });
     h += '</table><div class="note"><span class="pred">≈ purple</span> = predicted buy price, from how that country usually compares in your own checks. * = Google Play’s lowest price there (usually rental), from “Check countries”. All converted to pounds at today’s rate.</div>';
@@ -295,7 +306,7 @@ window.app = (function () {
     if (!curCC) return;
     busy = 'Checking ' + cname(curCC) + '…'; render();
     confirmHere(f, curCC).then(function (c) { busy = ''; if (!quiet) toast(c.none ? 'Not on Google Play in ' + cname(curCC) : 'Saved ' + cname(curCC) + ' prices'); render(); },
-      function () { busy = ''; if (!quiet) toast('Couldn’t reach Google Play'); render(); });
+      function (e) { busy = ''; if (!quiet) toast('Couldn’t read Google Play: ' + (e && e.message || e)); render(); });
   }
   function doSearch(q) { searchQ = q.trim(); if (!searchQ) return; searchFilms(searchQ).then(function (r) { searchRes = r; render(); }, function () { toast('Search failed'); }); }
   function act(a) {
