@@ -223,7 +223,7 @@ public class WebPlayerActivity extends Activity {
                     try { ct = Double.parseDouble(parts[parts.length - 2]); paused = "1".equals(parts[parts.length - 1].trim()); } catch (Exception ignored) { }
                     if (ct > 0 && !userPaused && Math.abs(ct - lastCt) < 0.3) stillSecs++; else stillSecs = 0;
                     if (ct >= 0) lastCt = ct;
-                    if (stillSecs >= 5 && now2 - lastLiveReload > 15000) {
+                    if (stillSecs >= 5 && now2 - lastLiveReload > 15000 && !onSky()) {   // Sky has its own quick restarts below
                         stillSecs = 0; lastLiveReload = now2;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;
@@ -243,20 +243,17 @@ public class WebPlayerActivity extends Activity {
                 // the start-up wait is over (shown or not): from now on watch for buffering, even if it never settled
                 if (onSky() && !skySettled && now2 > skyGateUntil + 1000) { skySettled = true; settledAt = now2; earlyBufs = 0; }
                 if (onSky() && skySettled && watching() && !userPaused) {
-                    // 3 separate buffers within 90 seconds, or one lasting 6 seconds → restart at live
-                    if (bufNow && !wasBuffering) { bufStarts.add(now2); if (now2 - settledAt < 10000) earlyBufs++; }
-                    if (earlyBufs >= 2 && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 5000) {
-                        earlyBufs = 0; lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
-                        if (quickRestart()) return;
-                        applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
-                        return;
-                    }
-                    while (!bufStarts.isEmpty() && now2 - bufStarts.peekFirst() > 90000) bufStarts.pollFirst();
+                    // buffering: quick restarts (jump the same player to live, ~2 s) again and again until it plays smoothly;
+                    // only if 4 quick ones in a minute don't fix it, a full page restart
+                    if (bufNow && !wasBuffering) bufStarts.add(now2);
+                    while (!bufStarts.isEmpty() && now2 - bufStarts.peekFirst() > 12000) bufStarts.pollFirst();
                     stallRun = bufNow ? stallRun + 1 : 0;
-                    if ((bufStarts.size() >= 3 || stallRun >= 6) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 8000) {
+                    if ((bufStarts.size() >= 2 || stallRun >= 3) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 4000) {
                         lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
-                        if (quickRestart()) return;
-                        applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Buffering – restarting " + (tt == null ? "" : tt) + "…");
+                        while (!quickTimes.isEmpty() && now2 - quickTimes.peekFirst() > 60000) quickTimes.pollFirst();
+                        if (quickTimes.size() < 4 || now2 - fullAt < 25000) { quickTimes.add(now2); quickRestart(); return; }
+                        quickTimes.clear(); fullAt = now2;
+                        applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;
                     }
                 }
@@ -679,12 +676,11 @@ public class WebPlayerActivity extends Activity {
     private long settledAt = 0; private int earlyBufs = 0;
     private long quickAt = 0;
     /** Restart without reloading the page: jump the same player to live (about 2 s). Used once; if it buffers again soon, the full restart follows. */
+    private final java.util.ArrayDeque<Long> quickTimes = new java.util.ArrayDeque<>(); private long fullAt = 0; private int quickN = 0;
     private boolean quickRestart() {
-        long t = android.os.SystemClock.uptimeMillis();
-        if (t - quickAt < 30000) return false;   // tried a moment ago and it's still buffering: do the full restart
-        quickAt = t;
-        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{if(v.seekable&&v.seekable.length){v.currentTime=Math.max(0,v.seekable.end(v.seekable.length-1)-4);}v.play();}catch(e){}});})()", null);
-        settledAt = t; earlyBufs = 0;
+        int back = new int[]{4, 8, 3, 12}[quickN++ % 4];   // land a little behind live, at a different point each time
+        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{if(v.seekable&&v.seekable.length){v.currentTime=Math.max(0,v.seekable.end(v.seekable.length-1)-" + back + ");}v.play();}catch(e){}});})()", null);
+        settledAt = android.os.SystemClock.uptimeMillis();
         note("Catching up…");
         return true;
     }
