@@ -1190,6 +1190,7 @@ var app = (function () {
   }
   function sources() {
     if (view === 'popular') return familySources();   // the tab is now Family
+    if (view === 'purchases') return buySources();
     var out = [];
     if (streamCats.length) out.push({ id: 'family', name: 'Genres', cats: familyCats() });
     out.push({ id: 'rec', name: 'Recommended', cats: recCats() }, { id: 'tv', name: 'On TV', cats: [filmsOnTV] });
@@ -1220,6 +1221,81 @@ var app = (function () {
     });
     return famCache;
   }
+  // ---------------------------------------------------------------- My Purchases: Tom's YouTube film library (playlist "All Movies A–Z")
+  var BUY_PL = 'PLayBy19w9yIU';
+  var buy = load('buyFilms') || null, buyAt = +(load('buyAt') || 0), buyBusy = false, buyErr = '', buyQ = '', buyNoPoster = load('buyNoPoster') || {}, buyCats = null;
+  function buyKey() { return window.Native && Native.ytKey ? Native.ytKey() : ''; }
+  function sortTitle(t) { return String(t || '').replace(/^\s*(the|a|an)\s+/i, '').toLowerCase(); }
+  function letterOf(t) { var c = sortTitle(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; }
+  function buyItem(x) {
+    return { src: 'yt', yt: x.id, title: x.t, sub: 'Bought on YouTube', desc: '', kind: 'movie', k: 'yt:' + x.id,
+      img: 'https://i.ytimg.com/vi_webp/' + x.id + '/movieposter_en.webp', still: 'https://i.ytimg.com/vi/' + x.id + '/hqdefault.jpg', big: 'https://i.ytimg.com/vi/' + x.id + '/maxresdefault.jpg' };
+  }
+  /** Fetch every page of the playlist (50 a time), keep real films, sort A–Z ignoring The/A/An. */
+  function buyFetch(force) {
+    if (buyBusy) return Promise.resolve();
+    if (!force && buy && Date.now() - buyAt < 12 * 3600000) return Promise.resolve();
+    var key = buyKey();
+    if (!key) { buyErr = 'This build has no YouTube key (add the YT_API_KEY secret on GitHub, then update).'; return Promise.resolve(); }
+    buyBusy = true; buyErr = ''; if (isOD()) render();
+    var out = [], pages = 0;
+    function page(tok) {
+      return get('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&maxResults=50&playlistId=' + BUY_PL + '&key=' + encodeURIComponent(key) + (tok ? '&pageToken=' + tok : '')).then(function (t) {
+        var j = typeof t === 'string' ? JSON.parse(t) : t; pages++;
+        if (j.error) throw new Error(j.error.message || 'YouTube said no');
+        (j.items || []).forEach(function (it) {
+          var id = it.contentDetails && it.contentDetails.videoId || it.snippet && it.snippet.resourceId && it.snippet.resourceId.videoId, ti = it.snippet && it.snippet.title || '';
+          if (id && !/^(private|deleted) video$/i.test(ti)) out.push({ id: id, t: ti });
+        });
+        if (j.nextPageToken && pages < 200) return page(j.nextPageToken);
+      });
+    }
+    return page('').then(function () {
+      out.sort(function (a, b) { var A = sortTitle(a.t), B = sortTitle(b.t), la = /^[a-z]/.test(A), lb = /^[a-z]/.test(B); return la !== lb ? (la ? 1 : -1) : A < B ? -1 : A > B ? 1 : 0; });
+      buy = out; buyAt = Date.now(); save('buyFilms', buy); save('buyAt', buyAt); buyCats = null;
+      try { console.log('My Purchases: fetched ' + out.length + ' films in ' + pages + ' pages'); } catch (e) {}
+    }, function (e) { buyErr = 'Couldn\'t refresh from YouTube: ' + (e && e.message || 'no connection') + (buy ? ' (showing the saved list)' : ''); })
+      .then(function () { buyBusy = false; if (isOD()) { od = []; buildOD(); render(); } });
+  }
+  /** The side list: All, a search result, #, A–Z (each letter jumps to its films). */
+  function buySources() {
+    if (!buy && !buyBusy) buyFetch(false);
+    if (buy && Date.now() - buyAt > 12 * 3600000 && !buyBusy) buyFetch(false);
+    var all = (buy || []).map(buyItem), cats = [];
+    if (!buy) cats.push({ src: 'msg', name: buyErr || 'Loading your films from YouTube…', items: [] });
+    else {
+      if (buyQ) { var q = buyQ.toLowerCase(); cats.push({ src: 'buy', id: 'buyq', name: '🔍 "' + buyQ + '"', items: all.filter(function (it) { return it.title.toLowerCase().indexOf(q) >= 0; }) }); }
+      cats.push({ src: 'buy', id: 'buyall', name: 'All films', items: all });
+      var by = {}; all.forEach(function (it) { var L = letterOf(it.title); (by[L] = by[L] || []).push(it); });
+      ['#'].concat('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')).forEach(function (L) { if (by[L]) cats.push({ src: 'buy', id: 'buy' + L, name: L, items: by[L] }); });
+    }
+    return [{ id: 'buy', name: 'My Purchases', cats: cats }];
+  }
+  function buyInfo() {
+    if (buyBusy) return 'Refreshing from YouTube…';
+    if (!buy) return buyErr || 'Loading…';
+    var d = new Date(buyAt);
+    return buy.length.toLocaleString('en-GB') + ' films · updated ' + (d.toDateString() === new Date().toDateString() ? 'today ' : d.getDate() + '/' + (d.getMonth() + 1) + ' ') + clock(buyAt / 1000) + (buyErr ? ' · ' + buyErr : '');
+  }
+  function buySearch() {
+    var go = function () { buyQ = ($('popIn').value || '').trim(); od = []; buildOD(); odCat = 0; odRow = 0; odZone = buyQ ? 'grid' : 'cats'; };
+    showPop({ title: 'Search your films (type, or use the mic on the remote)', input: true, inputFocus: true, opts: [
+      { label: '🔍 Search', fn: go },
+      { label: 'Clear search', fn: function () { buyQ = ''; od = []; buildOD(); odCat = 0; odRow = 0; odZone = 'cats'; } }, { label: 'Cancel' }] });
+    $('popIn').value = buyQ; $('popIn').setAttribute('inputmode', 'text'); setTimeout(function () { $('popIn').focus(); }, 30);
+    $('popIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); closePop(); go(); render(); } };
+  }
+  /** Posters: YouTube's portrait film poster; its 120×90 "no poster" stand-in (or none) falls back to the film still with the title on it. */
+  function buyPoster(it, el) {
+    if (buyNoPoster[it.yt] === 1) return;
+    if (buyNoPoster[it.yt] === 2) { el.style.backgroundImage = 'url("' + it.img + '")'; return; }
+    var im = new Image();
+    im.onload = function () { var ok = im.naturalWidth > 130; buyNoPoster[it.yt] = ok ? 2 : 1; buyPosterSave(); if (ok) { var c = el.closest('.card'); if (c) c.classList.remove('still'); var t = el.querySelector('.stt'); if (t) t.remove(); el.style.backgroundImage = 'url("' + it.img + '")'; } };
+    im.onerror = function () { buyNoPoster[it.yt] = 1; buyPosterSave(); };
+    im.src = it.img;
+  }
+  var buySaveT = 0;
+  function buyPosterSave() { clearTimeout(buySaveT); buySaveT = setTimeout(function () { save('buyNoPoster', buyNoPoster); }, 3000); }
   /** The Family tab: family films and TV, on all your apps together, then app by app. */
   var famTab = null, famBySvc = {};
   function famListsFor(prov) {
@@ -1399,6 +1475,7 @@ var app = (function () {
 
   // ---------------------------------------------------------------- opening things
   function openItem(it) {
+    if (it.src === 'yt') { if (window.Native && Native.openYouTube) Native.openYouTube(it.yt); toast('Opening ' + it.title + ' in YouTube…'); return; }
     var now = nowSec();
     if (!(it.src === 'tv' && it.s > now)) logOpen(it);
     if (it.src === 'tv') {
@@ -1622,8 +1699,8 @@ var app = (function () {
   }
 
   // ---------------------------------------------------------------- state and views
-  var VIEWS = ['guide', 'popular', 'ondemand', 'lists', 'search', 'apps'];
-  function isOD() { return view === 'ondemand' || view === 'popular'; }
+  var VIEWS = ['guide', 'popular', 'ondemand', 'purchases', 'lists', 'search', 'apps'];
+  function isOD() { return view === 'ondemand' || view === 'popular' || view === 'purchases'; }
   var odStash = {};
   var view = 'guide', zone = 'main';                 // zone: 'tabs' or 'main'
   var gRow = 0, gT = 0, ws = 0, gZone = 'rows', gDay = 0, SPAN = (TOUCH && innerWidth < innerHeight ? 2 : 3) * 3600;
@@ -1637,7 +1714,7 @@ var app = (function () {
   function status(what, on) { loading[what] = on; renderHelp(); }
 
   function setView(v) {
-    if (v !== view && (v === 'popular' || v === 'ondemand' || isOD())) {
+    if (v !== view && (v === 'popular' || v === 'ondemand' || v === 'purchases' || isOD())) {
       // On Demand and Most Popular share a screen: keep each one's place
       if (isOD()) odStash[view] = { s: odSrc, c: odCat, r: odRow, z: odZone, h: odChip };
       var st = odStash[v] || { s: 0, c: 0, r: 0, z: 'cats', h: 0 };
@@ -1656,7 +1733,8 @@ var app = (function () {
   function render() {
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-v') === view); });
     document.body.classList.toggle('zone-tabs', zone === 'tabs');
-    VIEWS.forEach(function (v) { if (v !== 'popular') $('v-' + v).classList.toggle('show', v === view || (v === 'ondemand' && isOD())); });
+    VIEWS.forEach(function (v) { if (v !== 'popular' && v !== 'purchases') $('v-' + v).classList.toggle('show', v === view || (v === 'ondemand' && isOD())); });
+    document.body.classList.toggle('purchases', view === 'purchases');
     var d = new Date();
     $('clock').textContent = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + '  ·  ' + clock(nowSec());
     if (view === 'guide') renderGuide();
@@ -1902,6 +1980,11 @@ var app = (function () {
     var w = isWatched(it);
     if (w) tags += '<span class="tag w">✓ WATCHED</span>';
     var sub = it.src === 'tv' ? (it.chName + (it.e <= now ? (it.url ? ' · catch up' : ' · was on ' + dayWord(it.s)) : '')) : [itemSvcName(it), it.sub].filter(Boolean).join(' · ');
+    if (it.src === 'yt') {
+      var hasP = buyNoPoster[it.yt] === 2;
+      return '<div class="card poster' + (hasP ? '' : ' still') + (sel ? ' sel' : '') + (w ? ' done' : '') + '" data-i="' + i + '" data-yt="' + it.yt + '"><div class="im" style="background-image:url(&quot;' + esc(hasP ? it.img : it.still) + '&quot;)">' +
+        (hasP ? '' : '<div class="stt">' + esc(it.title) + '</div>') + '<div class="tags">' + tags + '</div></div>' + (sel ? '<div class="tx"><div class="t">' + esc(it.title) + '</div></div>' : '') + '</div>';
+    }
     return '<div class="card' + (sel ? ' sel' : '') + (w ? ' done' : '') + '" data-i="' + i + '"><div class="im"' + (it.img ? ' style="background-image:url(&quot;' + esc(it.img) + '&quot;)"' : '') + '>' +
       (it.img ? '' : '<div class="ph">' + esc(it.title) + '</div>') + '<div class="tags">' + tags + '</div></div>' +
       '<div class="tx"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(sub) + '</div></div></div>';
@@ -1924,6 +2007,7 @@ var app = (function () {
     box.scrollTop = keep;
     if (active) scrollInto(box, box.querySelector('.card.sel'));
     else if (row === 0) box.scrollTop = 0;
+    if (view === 'purchases') [].forEach.call(box.querySelectorAll('.card.poster.still'), function (el) { var it = items[+el.getAttribute('data-i')]; if (it && buyNoPoster[it.yt] == null) buyPoster(it, el.querySelector('.im')); });
   }
   function gridMove(k, row, n, box) {
     var cols = colsOf(box);
@@ -1972,7 +2056,8 @@ var app = (function () {
     if (odChip > 3) odChip = 0;
     var act = zone === 'main';
     var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z'][n] + '">' + esc(txt) + '</div>'; };
-    $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
+    if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search' + (buyQ ? ': ' + buyQ : '')) + chip(1, '⟳ Refresh') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
+    else $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
     $('odCats').innerHTML = cats.map(function (c, i) {
@@ -1999,6 +2084,12 @@ var app = (function () {
     var items = odItems(), cats = curSrc().cats;
     if (odZone === 'src') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
+      if (view === 'purchases') {
+        if (k === 'left') odChip = 0; else if (k === 'right') odChip = 1;
+        else if (k === 'ok') { if (odChip === 0) buySearch(); else { buyFetch(true); toast('Refreshing your films from YouTube…'); } return; }
+        else if (k === 'down') odZone = 'cats';
+        render(); return;
+      }
       // buttons left to right: app (0), genre (1), sort (3), filter & options (2)
       var ORDER = [0, 1, 3, 2], oi = ORDER.indexOf(odChip);
       if (k === 'left') odChip = ORDER[Math.max(0, oi - 1)];
@@ -2014,6 +2105,7 @@ var app = (function () {
       else if (k === 'down') { if (odCat < cats.length - 1) { odCat++; odRow = 0; ensureODItems(); } }
       else if (k === 'pagedown') { odCat = Math.min(cats.length - 1, odCat + 6); odRow = 0; ensureODItems(); }
       else if (k === 'pageup') { odCat = Math.max(0, odCat - 6); odRow = 0; ensureODItems(); }
+      else if (k === 'ok' && view === 'purchases') { if (items.length) { odZone = 'grid'; odRow = 0; } }
       else if (k === 'ok') { var cc = curCat(); if (cc) { catMenu(cc); return; } }
       else if (k === 'right') { if (items.length) odZone = 'grid'; }
       else if (k === 'menu') { optionsMenu(); return; }

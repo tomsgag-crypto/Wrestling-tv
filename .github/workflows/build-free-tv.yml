@@ -38,7 +38,31 @@ jobs:
           KEY: ${{ secrets.APK_KEYSTORE }}
         run: |
           if [ -n "$KEY" ]; then echo "$KEY" | base64 -d > "$RUNNER_TEMP/apps.keystore" && echo "APK_KEYSTORE_FILE=$RUNNER_TEMP/apps.keystore" >> "$GITHUB_ENV" && echo "fixed key in use"; else echo "no APK_KEYSTORE secret: using a throwaway key"; fi
+      - name: Count the films in "All Movies A–Z" (My Purchases check)
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+        run: |
+          if [ -z "$YT_API_KEY" ]; then echo "MY PURCHASES: no YT_API_KEY secret yet"; exit 0; fi
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.parse
+          key = os.environ["YT_API_KEY"]; tok = ""; films = 0; skipped = 0; pages = 0
+          while True:
+              u = "https://www.googleapis.com/youtube/v3/playlistItems?" + urllib.parse.urlencode({"part": "snippet,contentDetails", "maxResults": 50, "playlistId": "PLayBy19w9yIU", "key": key, "pageToken": tok})
+              try: j = json.loads(urllib.request.urlopen(u, timeout=60).read())
+              except Exception as e: print("MY PURCHASES: YouTube error", getattr(e, "code", ""), getattr(e, "read", lambda: b"")()[:300]); break
+              pages += 1
+              for it in j.get("items", []):
+                  t = it["snippet"]["title"]
+                  if t.lower() in ("private video", "deleted video"): skipped += 1
+                  else: films += 1
+              tok = j.get("nextPageToken")
+              if not tok: break
+          print("MY PURCHASES: %d films (%d private/deleted skipped) in %d pages, playlist says %s" % (films, skipped, pages, j.get("pageInfo", {}).get("totalResults")))
+          PY
+
       - name: Build APKs (Free TV and Sky Sports TV)
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
         run: gradle assembleFullRelease assembleSportsRelease --no-daemon
 
       - name: Rename APKs

@@ -7,11 +7,13 @@ android {
     compileSdk 35
 
     defaultConfig {
+        // My Purchases: the YouTube key comes from the GitHub secret YT_API_KEY at build time (never stored in the code)
+        buildConfigField "String", "YT_API_KEY", '"' + (System.getenv("YT_API_KEY") ?: "") + '"'
         applicationId "tv.freetvguide.app"
         minSdk 21
         targetSdk 34
-        versionCode 161
-        versionName "2.35.2"
+        versionCode 162
+        versionName "2.36"
     }
 
     // One fixed key for every build, so new versions install as updates (the key is a GitHub secret, never in the code)

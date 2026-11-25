@@ -452,6 +452,19 @@ public class MainActivity extends Activity {
 
         /** As open(), and if no link works, ask the app itself to search for `query` (the way Google Assistant does). */
         @JavascriptInterface
+        /** My Purchases: the YouTube key from the build (GitHub secret YT_API_KEY), never in the code. */
+        @android.webkit.JavascriptInterface
+        public String ytKey() { return BuildConfig.YT_API_KEY; }
+        /** Open a film in the YouTube app (TV app first, then phone app / anything that opens YouTube links). */
+        @android.webkit.JavascriptInterface
+        public void openYouTube(String id) {
+            Uri u = Uri.parse("https://www.youtube.com/watch?v=" + id);
+            ui.post(() -> {
+                try { startActivity(new Intent(Intent.ACTION_VIEW, u).setPackage("com.google.android.youtube.tv").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return; } catch (Exception ignored) { }
+                try { startActivity(new Intent(Intent.ACTION_VIEW, u).setPackage("com.google.android.youtube").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return; } catch (Exception ignored) { }
+                try { startActivity(new Intent(Intent.ACTION_VIEW, u).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) { }
+            });
+        }
         /** Ask an app to play something by name (what "play USA Network" on the remote does), then its search, then just open it. */
         public String openPlay(String labels, String store, String what) {
             PackageManager pm = getPackageManager();

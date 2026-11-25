@@ -21,6 +21,8 @@
 
     <!-- to see which TV apps are installed and open them -->
     <queries>
+        <package android:name="com.google.android.youtube.tv" />
+        <package android:name="com.google.android.youtube" />
         <package android:name="com.google.android.katniss" />
         <package android:name="com.google.android.apps.tv.launcherx" />
         <package android:name="com.google.android.googlequicksearchbox" />

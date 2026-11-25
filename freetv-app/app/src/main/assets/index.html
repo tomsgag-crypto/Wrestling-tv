@@ -132,6 +132,11 @@
   #q.sel { border-color: var(--focus); }
   #v-search .odBody { top: 8vh; }
   #v-search .grid { padding-left: 2.4vw; grid-template-columns: repeat(5, 1fr); }
+  body.purchases #odGrid { grid-template-columns: repeat(6, 1fr); }
+  .card.poster .im { aspect-ratio: 279 / 402; background-size: cover; }
+  .card.poster.still .im { background-size: cover; background-position: center; }
+  .card.poster.still .im::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 55%, rgba(0,0,0,.75)); }
+  .card.poster.still .im .stt { position: absolute; left: .5vw; right: .5vw; bottom: .8vh; z-index: 1; font-size: 1.6vh; font-weight: 800; color: #fff; text-shadow: 0 1px 3px #000; }
 
   /* ---------------- apps ---------------- */
   #appsGrid { display: flex; flex-wrap: wrap; gap: 1.6vh 1.2vw; padding: 1.6vh 2.4vw 3vh; }
@@ -203,6 +208,7 @@
     <div class="tab" data-v="guide">TV Guide</div>
     <div class="tab" data-v="popular">Family</div>
     <div class="tab" data-v="ondemand">On Demand</div>
+    <div class="tab" data-v="purchases">My Purchases</div>
     <div class="tab" data-v="lists">My Lists</div>
     <div class="tab" data-v="search">Search</div>
     <div class="tab" data-v="apps">Apps</div>
