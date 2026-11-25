@@ -69,5 +69,25 @@ try:
 except Exception as x:
     print("pluto failed", x)
 print("pluto channels", len(pluto))
-json.dump({"at": int(now), "ch": out, "pluto": pluto}, open(sys.argv[1], "w"), separators=(",", ":"))
+# Sling's public channel list: each channel's id, for direct links (watch.sling.com/1/channel/<id>/watch)
+import base64
+sling = {}
+def walk(o):
+    if isinstance(o, dict):
+        g = o.get("channel_guid") or (o.get("guid") if o.get("call_sign") or o.get("network_affiliate_name") else None)
+        nm = o.get("network_affiliate_name") or o.get("title") or o.get("name") or o.get("call_sign")
+        if g and nm and isinstance(nm, str) and len(g) == 32: sling.setdefault(nm.strip(), g)
+        for v in o.values(): walk(v)
+    elif isinstance(o, list):
+        for v in o: walk(v)
+for subs in ["217,658,713", "231,658,713", "217,231,658,713"]:
+    for tz in ["-0500", "-0600"]:
+        url = "https://cbd46b77.cdn.cms.movetv.com/cms/publish3/domain/channels/v4/%s/560/%s/1.json" % (tz, base64.b64encode(subs.encode()).decode())
+        try:
+            walk(json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=60).read()))
+            print("sling list ok", subs, tz, len(sling))
+        except Exception as x:
+            print("sling list failed", subs, tz, x)
+print("sling sample", list(sling.items())[:12])
+json.dump({"at": int(now), "ch": out, "pluto": pluto, "sling": sling}, open(sys.argv[1], "w"), separators=(",", ":"))
 print({k: len(v) for k, v in out.items()})
