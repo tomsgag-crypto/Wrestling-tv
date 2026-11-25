@@ -886,11 +886,45 @@ var app = (function () {
     }).catch(function () { streamCats = []; });
   }
   var tmdbProviders = {};
+  /** IMDb ratings: IMDb's own daily figures (via the daily file on GitHub); each title's IMDb number comes from TMDB. */
+  var imdbR = null, imdbAsk = null, imdbIds = load('imdbIds') || {}, imdbQ = [], imdbBusy = 0;
+  function imdbLoad() {
+    if (!imdbAsk) imdbAsk = get('https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/imdb-ratings/imdb.json')
+      .then(function (t) { imdbR = typeof t === 'string' ? JSON.parse(t) : t; }, function () { imdbR = {}; imdbAsk = null; });
+    return imdbAsk;
+  }
+  function imdbShow(it) {
+    var id = imdbIds[it.tmdb], r = id && imdbR ? imdbR[id] : null;
+    if (r == null || it.imdbDone) return;
+    it.imdbDone = true; it.imdb = r / 10;
+    it.sub = (it.sub ? it.sub + ' · ' : '') + 'IMDb ' + (r / 10).toFixed(1);
+  }
+  function imdbFill(items) {
+    if (!items || !items.length || !tmdbKey) return;
+    imdbLoad().then(function () {
+      items.forEach(function (it) { if (it.src !== 'tmdb' || it.imdbDone) return; if (imdbIds[it.tmdb] !== undefined) imdbShow(it); else imdbQ.push(it); });
+      imdbPump(); if (isOD()) render();
+    });
+  }
+  function imdbPump() {
+    while (imdbBusy < 4 && imdbQ.length) (function (it) {
+      imdbBusy++;
+      tmdb('/' + it.tmdb + '/external_ids').then(function (j) {
+        imdbIds[it.tmdb] = j && j.imdb_id ? String(j.imdb_id).replace(/^tt/, '') : '';
+        imdbShow(it);
+      }, function () {}).then(function () {
+        imdbBusy--;
+        if (!imdbQ.length) { save('imdbIds', imdbIds); if (isOD()) render(); }
+        else if (imdbQ.length % 10 === 0 && isOD()) render();
+        imdbPump();
+      });
+    })(imdbQ.shift());
+  }
   function tmdbItem(x, kind, cat) {
     var title = x.title || x.name, year = (x.release_date || x.first_air_date || '').slice(0, 4);
     var gen = (x.genre_ids || []).slice(0, 2).map(function (g) { return tmdbGenres[g]; }).filter(Boolean).join(', ');
     return { src: 'tmdb', svc: cat && cat.svcKey || '', title: title, tmdb: kind + '/' + x.id, kind: kind,
-      sub: [year, gen, x.vote_average ? '★ ' + x.vote_average.toFixed(1) : ''].filter(Boolean).join(' · '), desc: x.overview || '',
+      sub: [year, gen].filter(Boolean).join(' · '), desc: x.overview || '',   // the IMDb rating is added when it's looked up
       img: x.backdrop_path ? 'https://image.tmdb.org/t/p/w300' + x.backdrop_path : x.poster_path ? 'https://image.tmdb.org/t/p/w185' + x.poster_path : '',
       big: x.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '',
       url: cat && cat.search ? cat.search + encodeURIComponent(title) : '' };
@@ -950,7 +984,7 @@ var app = (function () {
     return tmdb('/discover/' + c.kind, q).then(function (j) {
       var res = j.results.filter(function (x) { if (c.seen && c.seen[x.id]) return false; if (c.seen) c.seen[x.id] = 1; return true; });
       var its = res.map(function (x) { var it = tmdbItem(x, c.kind, c); if (newPhase) it.sub = 'New · ' + it.sub; return it; });
-      c.items = (c.items || []).concat(its);
+      c.items = (c.items || []).concat(its); imdbFill(its);
       if (newPhase) { c.npage = j.page; if (j.page >= Math.min(j.total_pages, 3)) c.phase = 'all'; c.done = false; }
       else { c.page = j.page; c.done = j.page >= Math.min(j.total_pages, 25); }
       c.loading = false;
@@ -1258,14 +1292,14 @@ var app = (function () {
       if (odGenre) c.items = c.items.filter(function (it) { return g[3].test(it.sub + ' ' + it.desc); });
       // only things on your apps
       var mine = {}; myProvIds().forEach(function (id) { mine[id] = 1; });
-      if (!Object.keys(mine).length) return;
+      if (!Object.keys(mine).length) { imdbFill(c.items); return; }
       var list = c.items.slice(0, 60);
       return Promise.all(list.map(function (it) {
         return tmdb('/' + it.tmdb + '/watch/providers').then(function (w) {
           var gb = w.results && w.results.GB || {};
           return [].concat(gb.flatrate || [], gb.free || [], gb.ads || []).some(function (p) { return mine[p.provider_id]; }) ? it : null;
         }, function () { return null; });
-      })).then(function (r) { c.items = r.filter(Boolean); });
+      })).then(function (r) { c.items = r.filter(Boolean); imdbFill(c.items); });
     }, function () { c.items = []; }).then(function () { c.loading = false; });
   }
   var plutoTried = false;
