@@ -6,7 +6,7 @@ def fetch(u, extra=None):
         return r.status, r.read().decode("utf-8", "ignore")
     except urllib.error.HTTPError as e: return e.code, ""
     except Exception as e: return str(e), ""
-ids = {"Inception": ["tYj1FEqIZ8o", "PpdcXmb6f6o", "VDVz53M2kJs"]}
+ids = {"Inception": ["tYj1FEqIZ8o.P", "PpdcXmb6f6o.P"]}
 for vid in ids["Inception"]:
     for gl in ["US", "GB", "IN", "UA", "NO", "BR"]:
         for form in ["https://play.google.com/store/movies/details?id=%s&hl=en&gl=%s", "https://play.google.com/store/movies/details?id=%s&hl=en_%s"]:
