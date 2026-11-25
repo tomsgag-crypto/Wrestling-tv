@@ -1232,7 +1232,7 @@ var app = (function () {
   }
   var BUY_GENRES = [['Action', [28]], ['Adventure', [12]], ['Animation', [16]], ['Comedy', [35]], ['Crime', [80]], ['Documentary', [99]], ['Drama', [18]], ['Family', [10751]],
     ['Fantasy', [14]], ['History', [36]], ['Horror', [27]], ['Music', [10402]], ['Mystery', [9648]], ['Romance', [10749]], ['Sci-Fi', [878]], ['Thriller', [53]], ['War', [10752]], ['Western', [37]]];
-  var BUY_SORTS = [['az', 'A–Z'], ['za', 'Z–A'], ['new', 'Newest films first'], ['old', 'Oldest films first'], ['top', 'Best rated'], ['added', 'Recently added']];
+  var BUY_SORTS = [['az', 'A–Z'], ['za', 'Z–A'], ['new', 'Newest films first'], ['old', 'Oldest films first'], ['top', 'Best rated'], ['added', 'Recently added to playlist']];
   function buyCatSort(id) { var m = settings.buyCatSort || {}; return m[id] || buySort; }
   function buySorted(list, mode) {
     var buySort = mode || buyCatSort('');
@@ -1240,7 +1240,7 @@ var app = (function () {
     if (buySort === 'za') a.reverse();
     else if (buySort === 'new' || buySort === 'old') a.sort(function (x, y) { var d = (+m(y).y || 0) - (+m(x).y || 0); return buySort === 'new' ? d : -d; });
     else if (buySort === 'top') a.sort(function (x, y) { return (m(y).r || 0) - (m(x).r || 0); });
-    else if (buySort === 'added') a.sort(function (x, y) { return (m(y).a != null ? m(y).a : -1) - (m(x).a != null ? m(x).a : -1); });
+    else if (buySort === 'added') a.sort(function (x, y) { var d = String(m(y).d || '').localeCompare(String(m(x).d || '')); return d || ((m(y).a || 0) - (m(x).a || 0)); });   // when it went into the playlist
     return a;
   }
   /** OK on a list at the side (or the Sort button): show it, or choose how this list is sorted. Each list remembers its own order. */
@@ -1254,12 +1254,12 @@ var app = (function () {
     })) });
   }
   function buyKey() { return window.Native && Native.ytKey ? Native.ytKey() : ''; }
-  function sortTitle(t) { return String(t || '').replace(/^\s*(the|a|an)\s+/i, '').toLowerCase(); }
+  function sortTitle(t) { return String(t || '').replace(/^[^A-Za-z0-9]+/, '').replace(/^(the|a|an)\s+/i, '').replace(/^[^A-Za-z0-9]+/, '').toLowerCase(); }   // 'The 'Burbs' → burbs, '[REC]' → rec
   function letterOf(t) { var c = sortTitle(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; }
   function buyItem(x) {
     var md = buyMeta[x.id] || {}, gn = (md.g || []).map(function (g) { return tmdbGenres[g]; }).filter(Boolean).slice(0, 2).join(', ');
-    return { src: 'yt', yt: x.id, title: x.t, sub: [md.y, gn, md.r ? '★ ' + md.r : ''].filter(Boolean).join(' · ') || 'Bought on YouTube', desc: '', kind: 'movie', k: 'yt:' + x.id, tposter: md.p ? 'https://image.tmdb.org/t/p/w342' + md.p : '', meta: md,
-      img: 'https://i.ytimg.com/vi_webp/' + x.id + '/movieposter_en.webp', still: 'https://i.ytimg.com/vi/' + x.id + '/hqdefault.jpg', big: 'https://i.ytimg.com/vi/' + x.id + '/maxresdefault.jpg' };
+    return { src: 'yt', yt: x.id, title: md.f && md.t ? md.t : x.t, orig: x.t, sub: [md.y, gn, md.r ? '★ ' + md.r : ''].filter(Boolean).join(' · ') || 'Bought on YouTube', desc: '', kind: 'movie', k: 'yt:' + x.id, tposter: md.p ? 'https://image.tmdb.org/t/p/w342' + md.p : '', meta: md,
+      img: md.p ? 'https://image.tmdb.org/t/p/w342' + md.p : 'https://i.ytimg.com/vi_webp/' + x.id + '/movieposter_en.webp', still: 'https://i.ytimg.com/vi/' + x.id + '/hqdefault.jpg', big: 'https://i.ytimg.com/vi/' + x.id + '/maxresdefault.jpg' };
   }
   /** Fetch every page of the playlist (50 a time), keep real films, sort A–Z ignoring The/A/An. */
   function buyFetch(force) {
@@ -1293,11 +1293,12 @@ var app = (function () {
     if (!buySources.metaAsked) { buySources.metaAsked = 1; buyMetaLoad(); }
     if (buy && Date.now() - buyAt > 12 * 3600000 && !buyBusy) buyFetch(false);
     var all = (buy || []).map(buyItem), cats = [];
+    all.sort(function (a, b) { var A = letterOf(a.title), B = letterOf(b.title); if (A !== B) return A === '#' ? -1 : B === '#' ? 1 : 0; return sortTitle(a.title).localeCompare(sortTitle(b.title), 'en', { numeric: true }); });
     if (!buy) cats.push({ src: 'msg', name: buyErr || 'Loading your films from YouTube…', items: [] });
     else {
-      if (buyQ) { var q = buyQ.toLowerCase().trim(), gq = BUY_GENRES.filter(function (g) { return g[0].toLowerCase() === q || (q.length > 3 && g[0].toLowerCase().indexOf(q) === 0) || (q === 'animated' && g[0] === 'Animation') || (q === 'scifi' || q === 'sci fi' ? g[0] === 'Sci-Fi' : false); })[0];
+      if (buyQ) { var q = buyQ.toLowerCase().trim().replace(/\s+(films?|movies?)$/, ''), kq = q.replace(/(ies)$/, 'y').replace(/([^s])s$/, '$1'), gq = BUY_GENRES.filter(function (g) { return g[0].toLowerCase() === q || (q.length > 3 && g[0].toLowerCase().indexOf(q) === 0) || (q === 'animated' && g[0] === 'Animation') || (q === 'scifi' || q === 'sci fi' ? g[0] === 'Sci-Fi' : false); })[0];
         cats.push({ src: 'buy', id: 'buyq', name: '🔍 "' + buyQ + '"', items: all.filter(function (it) { var md = buyMeta[it.yt] || {};
-          return it.title.toLowerCase().indexOf(q) >= 0 || (gq && (md.g || []).some(function (x) { return gq[1].indexOf(x) >= 0; })) || (/^(19|20)\d\d$/.test(q) && md.y === q); }) }); }
+          return it.title.toLowerCase().indexOf(q) >= 0 || it.orig.toLowerCase().indexOf(q) >= 0 || (md.t && md.t.toLowerCase().indexOf(q) >= 0) || (kq.length > 2 && (md.k || []).some(function (w) { w = w.toLowerCase(); return w === kq || w === q || w.indexOf(kq + ' ') === 0 || w.indexOf(' ' + kq) >= 0; })) || (gq && (md.g || []).some(function (x) { return gq[1].indexOf(x) >= 0; })) || (/^(19|20)\d\d$/.test(q) && md.y === q); }) }); }
       cats.push({ src: 'buy', id: 'buyall', name: 'All films', items: all });
       if (Object.keys(buyMeta).length) BUY_GENRES.forEach(function (g) {
         var its = all.filter(function (it) { var gg = (buyMeta[it.yt] || {}).g || []; return g[1].some(function (x) { return gg.indexOf(x) >= 0; }); });
@@ -1325,7 +1326,7 @@ var app = (function () {
   }
   /** Posters: YouTube's portrait film poster; its 120×90 "no poster" stand-in (or none) falls back to the film still with the title on it. */
   function buyPoster(it, el) {
-    if (buyNoPoster[it.yt] === 1) return;
+    if (it.tposter || buyNoPoster[it.yt] === 1) return;
     if (buyNoPoster[it.yt] === 2) { el.style.backgroundImage = 'url("' + it.img + '")'; return; }
     var im = new Image();
     im.onload = function () { var ok = im.naturalWidth > 130; buyNoPoster[it.yt] = ok ? 2 : 1; buyPosterSave(); if (!ok) buyTmdbPoster(it, el); if (ok) { var c = el.closest('.card'); if (c) c.classList.remove('still'); var t = el.querySelector('.stt'); if (t) t.remove(); el.style.backgroundImage = 'url("' + it.img + '")'; } };
@@ -2020,8 +2021,7 @@ var app = (function () {
     if (w) tags += '<span class="tag w">✓ WATCHED</span>';
     var sub = it.src === 'tv' ? (it.chName + (it.e <= now ? (it.url ? ' · catch up' : ' · was on ' + dayWord(it.s)) : '')) : [itemSvcName(it), it.sub].filter(Boolean).join(' · ');
     if (it.src === 'yt') {
-      var hasP = buyNoPoster[it.yt] === 2 || (buyNoPoster[it.yt] === 1 && it.tposter);
-      if (buyNoPoster[it.yt] === 1 && it.tposter) it = Object.assign({}, it, { img: it.tposter });
+      var hasP = !!it.tposter || buyNoPoster[it.yt] === 2;   // the film database's English poster first, YouTube's if there isn't one
       return '<div class="card poster' + (hasP ? '' : ' still') + (sel ? ' sel' : '') + (w ? ' done' : '') + '" data-i="' + i + '" data-yt="' + it.yt + '"><div class="im" style="background-image:url(&quot;' + esc(hasP ? it.img : it.still) + '&quot;)">' +
         (hasP ? '' : '<div class="stt">' + esc(it.title) + '</div>') + '<div class="tags">' + tags + '</div></div>' + (sel ? '<div class="tx"><div class="t">' + esc(it.title) + '</div></div>' : '') + '</div>';
     }
