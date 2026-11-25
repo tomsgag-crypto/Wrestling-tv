@@ -35,7 +35,7 @@ for i in range(0, len(films), 50):
 CUR = {"mins": 0, "up": "", "desc": ""}
 
 import difflib, unicodedata
-VER = 9   # bump to recheck every film once
+VER = 10   # bump to recheck every film once
 
 def norm(t):
     t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
@@ -44,7 +44,7 @@ def norm(t):
     return re.sub(r"^(the|a|an) ", "", t.strip())
 
 ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
-PREFIX = r"^(DCU|DC Universe|Illumination Presents|Disney'?s|Disney Pixar|Pixar'?s|Saban'?s|Marvel Studios'?|Tim Burton'?s|Dr\.? Seuss'?)\s*:?\s*"
+PREFIX = r"^(Star Wars|DCU|DC Universe|Illumination Presents|Disney'?s|Disney Pixar|Pixar'?s|Saban'?s|Marvel Studios'?|Tim Burton'?s|Dr\.? Seuss'?)\s*:?\s*"
 SUFFIX = r"\b(4K|UHD|HD|SD|Extended|Director'?s (Definitive )?(Cut|Edition)|Theatrical|Unrated|Bonus Edition|Special Edition|Remastered|The Original Extended Version|The Complete First Season|Ultimate Edition)\b.*$"
 
 def clean(t):
@@ -67,7 +67,9 @@ def score(q, b, yr):
     elif len(a.split()) >= 2 and any(x and x.startswith(a + " ") for x in (c, o)):     # "Gremlins 2" = "Gremlins 2: The New Batch" (never the other way round)
         x = c if c.startswith(a + " ") else o; sc = max(sc, 0.8 + 0.15 * len(a) / len(x))
     tail = norm(re.split(r":\s|\s[-–]\s", q, maxsplit=1)[1]) if re.search(r":\s|\s[-–]\s", q) else ""
-    if tail and len(tail.split()) >= 2 and tail in (c, o): sc = max(sc, 1.0)            # "Star Wars: The Empire Strikes Back" = "The Empire Strikes Back"
+    head = norm(re.split(r":\s|\s[-–]\s", q, maxsplit=1)[0]) if tail else ""
+    if head and head in (c, o): sc = max(sc, 0.9)                                       # "Kursk: The Last Mission" = "Kursk", "Mad Max 2: The Road Warrior" = "Mad Max 2"
+    if tail and len(tail.split()) >= 2 and tail in (c, o): sc = max(sc, 0.85)           # the subtitle on its own, a little less likely
     if yr and by: sc += 0.15 if by == yr else (0.05 if abs(int(by) - int(yr)) <= 1 else -0.15)
     return sc
 
@@ -139,7 +141,8 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807, "psycho 1960": ("Psycho", "1960"), "хеллбой: кровь и металл": ("Hellboy Animated: Blood and Iron", "2007"), "хеллбой: меч громов": ("Hellboy Animated: Sword of Storms", "2006"),
+FIXED = {"seven": 807, "texas chainsaw massacre: the next generation": ("The Return of the Texas Chainsaw Massacre", "1995"),
+         "the hobbit: the battle of five armies": ("The Hobbit: The Battle of the Five Armies", "2014"), "psycho 1960": ("Psycho", "1960"), "хеллбой: кровь и металл": ("Hellboy Animated: Blood and Iron", "2007"), "хеллбой: меч громов": ("Hellboy Animated: Sword of Storms", "2006"),
          "ничего себе поездочка 3": ("Joy Ride 3", "2014"), "куб": ("Cube", "1997"), "stephen king's, it!": ("It", "1990"), "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
          "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": ("F", "2010"), "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
          "saw - the final chapter": ("Saw 3D", "2010"), "saw: the final chapter": ("Saw 3D", "2010"), "el bufón": ("The Jester", "2023"), "the hulk": ("Hulk", "2003"), "holmes and watson": ("Holmes & Watson", "2018"), "girl house": ("Girl House", "2014"), "ju-on 2": ("Ju-on: The Curse 2", "2000")}
