@@ -65,10 +65,11 @@ window.app = (function () {
   S.countries = S.countries || DEFAULT_CC.slice();
   S.cache = S.cache || {};         // TMDB lists
   function persist() { save('state', S); }
+  Object.keys(S.prices).forEach(function (k) { Object.keys(S.prices[k]).forEach(function (cc) { var c = S.prices[k][cc].conf; if (c && c.none && !c.v) delete S.prices[k][cc].conf; }); });
 
   // ---------------------------------------------------------------- films (TMDB)
   var TM = 'https://api.themoviedb.org/3', KEY = window.TMDB_KEY || '';
-  function film(x) { return { k: 'tm:' + x.id, id: x.id, title: x.title, year: (x.release_date || '').slice(0, 4), date: x.release_date || '', poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '', pop: x.popularity || 0, votes: x.vote_count || 0 }; }
+  function film(x) { return { k: 'tm:' + x.id, id: x.id, title: x.title, year: (x.release_date || '').slice(0, 4), date: x.release_date || '', poster: x.poster_path ? 'https://image.tmdb.org/t/p/w342' + x.poster_path : '', pop: x.popularity || 0, votes: x.vote_count || 0, ov: x.overview || '' }; }
   function day(off) { var d = new Date(Date.now() + off * 864e5); return d.toISOString().slice(0, 10); }
   function tmList(name, path) {
     var c = S.cache[name];
@@ -89,30 +90,51 @@ window.app = (function () {
   // ---------------------------------------------------------------- Google Play from this connection (exact prices)
   var CONSENT = '#h=' + encodeURIComponent('Cookie: SOCS=CAESEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg; CONSENT=YES+');
   function norm(t) { return String(t || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').replace(/^(the|a|an) /, '').trim(); }
+  var STOP = ' the a an and of to in on at for with from by is are was his her their they he she it its this that who when into after while as be has have will one two new life world must';
+  function words(t) { var st = STOP.split(' '), o = {}; norm(t).split(' ').forEach(function (w) { if (w.length > 2 && st.indexOf(w) < 0) o[w] = 1; }); return o; }
+  function overlap(a, b) { var A = words(a), B = words(b), n = 0, na = Object.keys(A).length, nb = Object.keys(B).length; Object.keys(A).forEach(function (w) { if (B[w]) n++; }); return na && nb ? n / Math.min(na, nb) : 0; }
+  function ensureOv(f) {
+    if (f.ov || !KEY || !f.id) return Promise.resolve();
+    return getJSON(TM + '/movie/' + f.id + '?api_key=' + KEY + '&language=en-GB').then(function (j) { f.ov = j.overview || ''; if (S.tracked[f.k]) S.tracked[f.k].ov = f.ov; persist(); }, function () { });
+  }
+  function parsePlay(h, id) {
+    var amounts = {}, m, re1 = /\[\[(\d+),"([A-Z]{3})","([^"]+)"\]\],null,\["(Buy|Rent)"/g;
+    while ((m = re1.exec(h))) amounts[m[3].replace(/\\u00a0/g, ' ') + '|' + m[4]] = { amt: +m[1] / 1e6, cur: m[2] };
+    var out = { buy: [], rent: [] }, seen = {}, re2 = /aria-label="([^"]+?) (Buy|Rent)(?: (SD|HD|4K|UHD))?"/g;
+    while ((m = re2.exec(h))) {
+      var txt = m[1].replace(/&nbsp;| /g, ' '), kind = m[2], q = m[3] || '', key = txt + '|' + kind + '|' + q;
+      if (seen[key]) continue; seen[key] = 1;
+      var a = amounts[txt + '|' + kind] || { amt: numOf(txt), cur: null };
+      out[kind.toLowerCase()].push({ txt: txt, q: q, amt: a.amt, cur: a.cur });
+    }
+    var tm = h.match(/<title[^>]*>([^<]+)<\/title>/); out.title = tm ? tm[1].replace(/ - Movies on Google Play.*$/i, '').replace(/&amp;/g, '&') : '';
+    var dm = h.match(/<meta name="description" content="([^"]*)"/) || h.match(/<meta property="og:description" content="([^"]*)"/); out.desc = dm ? dm[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"') : '';
+    out.id = id;
+    return out;
+  }
+  function playPage(id) { return get('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en' + CONSENT).then(function (h) { return parsePlay(h, id); }); }
+  /** find the film on Google Play from this connection; when several share the name, the one whose description matches the film's summary */
   function playFind(f) {
-    return get('https://play.google.com/store/search?q=' + encodeURIComponent(f.title + (f.year ? ' ' + f.year : '')) + '&c=movies&hl=en' + CONSENT).then(function (h) {
-      var re = /\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g, m, seen = {}, list = [];
+    return Promise.all([ensureOv(f), get('https://play.google.com/store/search?q=' + encodeURIComponent(f.title) + '&c=movies&hl=en' + CONSENT)]).then(function (r) {
+      var h = r[1], re = /\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g, m, seen = {}, list = [];
       while ((m = re.exec(h))) { if (seen[m[2]]) continue; seen[m[2]] = 1; list.push({ slug: decodeURIComponent(m[1]).replace(/_/g, ' '), id: m[2] }); }
-      var want = norm(f.title);
-      return (list.filter(function (x) { return norm(x.slug) === want; })[0] || list.filter(function (x) { return norm(x.slug).indexOf(want) === 0; })[0] || {}).id || null;
+      var want = norm(f.title), cand = list.filter(function (x) { return norm(x.slug) === want; });
+      if (!cand.length) cand = list.filter(function (x) { var n = norm(x.slug); return n.indexOf(want) === 0 && n.length - want.length < 25; });
+      cand = cand.slice(0, 4);
+      if (!cand.length) return null;
+      if (cand.length === 1 && !f.ov) return playPage(cand[0].id);
+      return Promise.all(cand.map(function (c) { return playPage(c.id).catch(function () { return null; }); })).then(function (pages) {
+        var best = null, bs = -1;
+        pages.forEach(function (pg, k) {
+          if (!pg) return;
+          var sc = (f.ov ? overlap(f.ov, pg.desc) : 0) + (pg.buy.length || pg.rent.length ? 0.15 : 0) + (/\.P$/.test(cand[k].id) ? 0.05 : 0) - k * 0.01;
+          if (sc > bs) { bs = sc; best = pg; }
+        });
+        return best;
+      });
     });
   }
-  function playOffers(id) {
-    return get('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en' + CONSENT).then(function (h) {
-      var amounts = {}, m, re1 = /\[\[(\d+),"([A-Z]{3})","([^"]+)"\]\],null,\["(Buy|Rent)"/g;
-      while ((m = re1.exec(h))) amounts[m[3].replace(/\\u00a0/g, ' ') + '|' + m[4]] = { amt: +m[1] / 1e6, cur: m[2] };
-      var out = { buy: [], rent: [] }, seen = {}, re2 = /aria-label="([^"]+?) (Buy|Rent)(?: (SD|HD|4K|UHD))?"/g;
-      while ((m = re2.exec(h))) {
-        var txt = m[1].replace(/&nbsp;| /g, ' '), kind = m[2], q = m[3] || '', key = txt + '|' + kind + '|' + q;
-        if (seen[key]) continue; seen[key] = 1;
-        var a = amounts[txt + '|' + kind] || { amt: numOf(txt), cur: null };
-        out[kind.toLowerCase()].push({ txt: txt, q: q, amt: a.amt, cur: a.cur });
-      }
-      var tm = h.match(/<title[^>]*>([^<]+)<\/title>/); out.title = tm ? tm[1].replace(/ - Movies on Google Play.*$/i, '').replace(/&amp;/g, '&') : '';
-      out.id = id;
-      return out;
-    });
-  }
+  function playOffers(id) { return playPage(id); }
   /** this connection's country */
   var curCC = load('lastcc') || '';
   var whereErr = '';
@@ -130,18 +152,16 @@ window.app = (function () {
   }
   function confirmHere2(f, cc, p, slot) {
     var known = slot.conf && slot.conf.id || (slot.est && slot.est.id);
-    var pick = known ? Promise.resolve(known) : playFind(f);
-    return pick.then(function (id) {
-      if (!id) { if (cc !== curCC) return { none: true, stale: true }; slot.conf = { none: true, at: Date.now(), why: 'Not found on Google Play there' }; persist(); return slot.conf; }
-      return playOffers(id).then(function (o) {
-        if (!o.buy.length && !o.rent.length && known && !slot.conf) return playFind(f).then(function (id2) { return id2 && id2 !== id ? playOffers(id2) : o; });
-        return o;
-      }).then(function (o) {
-        if (cc !== curCC) return slot.conf || { none: true, stale: true };   // the VPN moved while checking: don't file it under the old country
-        o.buy.concat(o.rent).forEach(function (x) { if (!x.cur) x.cur = curOf(x.txt, cc); });
-        slot.conf = (o.buy.length || o.rent.length) ? { buy: o.buy, rent: o.rent, at: Date.now(), title: o.title, id: o.id } : { none: true, at: Date.now(), id: o.id };
-        persist(); return slot.conf;
-      });
+    // a saved Google Play page is reused only if it's still for sale and its description matches this film
+    var pick = known ? ensureOv(f).then(function () { return playPage(known); }).then(function (o) {
+      return (o.buy.length || o.rent.length) && (!f.ov || !o.desc || overlap(f.ov, o.desc) >= 0.12) ? o : playFind(f);
+    }, function () { return playFind(f); }) : playFind(f);
+    return pick.then(function (o) {
+      if (cc !== curCC) return slot.conf || { none: true, stale: true };   // the VPN moved while checking: don't file it under the old country
+      if (!o) { slot.conf = { none: true, at: Date.now(), v: 2, why: 'Not found on Google Play there' }; persist(); return slot.conf; }
+      o.buy.concat(o.rent).forEach(function (x) { if (!x.cur) x.cur = curOf(x.txt, cc); });
+      slot.conf = (o.buy.length || o.rent.length) ? { buy: o.buy, rent: o.rent, at: Date.now(), title: o.title, id: o.id, v: 2 } : { none: true, at: Date.now(), id: o.id, v: 2, why: 'On Google Play there, but not for sale' };
+      persist(); return slot.conf;
     });
   }
 
@@ -152,11 +172,15 @@ window.app = (function () {
     return getJSON('https://serpapi.com/account.json?api_key=' + SKEY).then(function (j) { left = j.plan_searches_left; save('left', left); return left; }, function () { return left; });
   }
   function estimate(f, cc) {
+    return ensureOv(f).then(function () { return estimate2(f, cc); });
+  }
+  function estimate2(f, cc) {
     var u = 'https://serpapi.com/search.json?engine=google_play_movies&hl=en&gl=' + cc.toLowerCase() + '&q=' + encodeURIComponent(f.title) + '&api_key=' + SKEY;
     return getJSON(u).then(function (j) {
       var items = [];
       (j.organic_results || []).forEach(function (s) { (s.items || [s]).forEach(function (it) { if (it && it.title) items.push(it); }); });
-      var want = norm(f.title), it = items.filter(function (x) { return norm(x.title) === want; })[0];
+      var want = norm(f.title), same = items.filter(function (x) { return norm(x.title) === want; }), it = same[0];
+      if (same.length > 1 && f.ov) same.forEach(function (x) { if (overlap(f.ov, x.description || '') > overlap(f.ov, it.description || '')) it = x; });
       var slot = (S.prices[f.k] = S.prices[f.k] || {})[cc] = (S.prices[f.k] || {})[cc] || {};
       slot.est = it && it.price ? { txt: it.price, amt: it.extracted_price != null ? it.extracted_price : numOf(it.price), cur: curOf(it.price, cc), id: it.product_id, at: Date.now() } : { none: true, at: Date.now() };
       if (left != null) left--;
@@ -261,7 +285,7 @@ window.app = (function () {
     rs.forEach(function (r) {
       var c = r.s.conf, e = r.s.est;
       var err = r.s.err && (!c || r.s.err.at > c.at) ? '<br><span class="dim">⚠ ' + esc(r.s.err.msg) + '</span>' : '';
-      var buy = c && c.buy && c.buy.length ? c.buy.map(function (x) { return '<span class="ok">' + esc(x.txt) + (x.q ? ' ' + x.q : '') + '</span>'; }).join('<br>') : (c && c.none ? '<span class="dim">Not on Google Play there</span>' : '<span class="dim">–</span>');
+      var buy = c && c.buy && c.buy.length ? c.buy.map(function (x) { return '<span class="ok">' + esc(x.txt) + (x.q ? ' ' + x.q : '') + '</span>'; }).join('<br>') : (c && c.none ? '<span class="dim">' + esc(c.why || 'Not on Google Play there') + '</span>' : '<span class="dim">–</span>');
       var rent = c && c.rent && c.rent.length ? c.rent.map(function (x) { return esc(x.txt) + (x.q ? ' ' + x.q : ''); }).join('<br>') : '';
       if (e && !e.none) rent += (rent ? '<br>' : '') + '<span class="est">from ' + esc(e.txt) + '</span>';
       else if (e && e.none && !c) rent += '<span class="dim">not found</span>';
