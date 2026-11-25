@@ -33,11 +33,12 @@ for i in range(0, len(films), 50):
 CUR = {"mins": 0, "up": ""}
 
 import difflib, unicodedata
-VER = 5   # bump to recheck every film once
+VER = 6   # bump to recheck every film once
 
 def norm(t):
     t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
     t = re.sub(r"&", " and ", t); t = re.sub(r"[^a-z0-9]+", " ", t)
+    t = re.sub(r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\b", lambda m: str("one two three four five six seven eight nine ten".split().index(m.group(1)) + 1), t)   # "Ocean's Eight" = "Ocean's 8"
     return re.sub(r"^(the|a|an) ", "", t.strip())
 
 ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
@@ -49,7 +50,7 @@ def clean(t):
     yr = re.search(r"(19|20)\d\d", y.group(0)).group(0) if y else ""
     t = t.translate({ord(c): " " + str(i) + " " for i, c in enumerate("⁰¹²³⁴⁵⁶⁷⁸⁹")})
     t2 = re.sub(r"\((?:[^)]*)\)", " ", t)                              # (2019), (Unrated), (с субтитрами)
-    t2 = re.sub(r"\[([^]]*)\]", lambda m: " " if re.search(r"(?i)\b(4k|uhd|hd|sd|sub|cc|extended|dub)", m.group(1)) else m.group(1), t2)   # keep "[REC]"
+    t2 = re.sub(r"\[([^]]*)\]", lambda m: " " if re.search(r"(?i)\b(4k|uhd|hd|sd|sub|cc|extended|dub|ur|unrated|version|cut)", m.group(1)) else m.group(1), t2)   # keep "[REC]"
     if not t2.strip(): t2 = re.sub(r"[\[\]()]", "", t)
     t2 = re.sub(r"\s+(aka|a\.k\.a\.)\s.*$", "", t2, flags=re.I)
     t2 = re.sub(SUFFIX, "", t2, flags=re.I)
@@ -123,7 +124,7 @@ def variants(q):
     if q.isupper(): q = q.title()
     q = re.sub(r"^(.*), THE(:|$)", r"The \1\2", q, flags=re.I)
     v = [q, re.sub(PREFIX, "", re.sub(PREFIX, "", q, flags=re.I), flags=re.I)]
-    v.append(re.sub(POSS, "", v[-1]))
+    r0 = re.sub(POSS, "", v[-1]); v.append(r0 if len(r0.split()) >= 2 else v[-1])
     v.append(re.sub(r"\b(ii|iii|iv|vi|vii|viii|ix)\b", lambda m: ROMAN[m.group(1).lower()], v[-1], flags=re.I))
     v.append(re.sub(r"(?<=\w )([2-9])\b", lambda m: {b: a.upper() for a, b in ROMAN.items()}[m.group(1)], v[2]))
     v.append(v[2].replace(":", " "))
@@ -133,15 +134,19 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807, "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
+FIXED = {"seven": 807, "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
+         "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": None, "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
          "saw - the final chapter": ("Saw 3D", "2010"), "saw: the final chapter": ("Saw 3D", "2010"), "el bufón": ("The Jester", "2023"), "the hulk": ("Hulk", "2003"), "holmes and watson": ("Holmes & Watson", "2018"), "girl house": ("Girl House", "2014"), "ju-on 2": ("Ju-on: The Curse 2", "2000")}
 SKIP = r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film|Box ?Set)\b"    # bundles/clips: leave without genres
 
 def fixed(title):
-    i = FIXED.get(clean(title)[0].lower())
+    i = FIXED.get(clean(title)[0].lower(), 0)
+    if i is None: return "none"
     if not i: return None
     if isinstance(i, tuple):
-        r = get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode({"api_key": TM, "query": i[0], "year": i[1]})).get("results", [])
+        ps = {"api_key": TM, "query": i[0]}
+        if i[1]: ps["year"] = i[1]
+        r = get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode(ps)).get("results", [])
         return r[0] if r else None
     d = get("https://api.themoviedb.org/3/movie/%d?api_key=%s" % (i, TM))
     return dict(d, genre_ids=[g["id"] for g in d.get("genres", [])])
@@ -150,6 +155,7 @@ def match(title):
     q, yr = clean(title)
     if re.search(SKIP, q, re.I): return None, ""
     b = fixed(title)
+    if b == "none": return None, ""
     if b: return b, "fixed"
     vs = variants(q)
     for alt in re.findall(r"\(([^)]*[A-Za-z][^)]*)\)", title):
