@@ -11,8 +11,9 @@ var app = (function () {
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function toast(m) { if (window.Native) Native.toast(m); else console.log('TOAST', m); }
   function nowSec() { return Date.now() / 1000; }
-  function save(name, v) { try { if (window.Native) Native.save(name, JSON.stringify(v)); else localStorage.setItem(name, JSON.stringify(v)); } catch (e) {} }
-  function load(name) { try { var t = window.Native ? Native.load(name) : localStorage.getItem(name); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+  // the app's storage only takes lower-case names, so names like 'buyFilms' are stored as 'buyfilms'
+  function save(name, v) { name = String(name).toLowerCase(); try { if (window.Native) Native.save(name, JSON.stringify(v)); else localStorage.setItem(name, JSON.stringify(v)); } catch (e) {} }
+  function load(name) { name = String(name).toLowerCase(); try { var t = window.Native ? Native.load(name) : localStorage.getItem(name); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
 
   // ---------------------------------------------------------------- the services and their apps
   // app: pattern for the app's name on the device · store: Play Store id (or "q:" search) · live: web links per channel
@@ -1258,7 +1259,7 @@ var app = (function () {
   function letterOf(t) { var c = sortTitle(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; }
   function buyItem(x) {
     var md = buyMeta[x.id] || {}, gn = (md.g || []).map(function (g) { return tmdbGenres[g]; }).filter(Boolean).slice(0, 2).join(', ');
-    return { src: 'yt', yt: x.id, title: md.f && md.t ? md.t : x.t, orig: x.t, sub: [md.y, gn, md.r ? '★ ' + md.r : ''].filter(Boolean).join(' · ') || 'Bought on YouTube', desc: '', kind: 'movie', k: 'yt:' + x.id, tposter: md.p ? 'https://image.tmdb.org/t/p/w342' + md.p : '', meta: md,
+    return { src: 'yt', yt: x.id, title: md.t && (md.f || !/[A-Za-z]/.test(x.t)) ? md.t : x.t, orig: x.t, sub: [md.y, gn, md.r ? '★ ' + md.r : ''].filter(Boolean).join(' · ') || 'Bought on YouTube', desc: '', kind: 'movie', k: 'yt:' + x.id, tposter: md.p ? 'https://image.tmdb.org/t/p/w342' + md.p : '', meta: md,
       img: md.p ? 'https://image.tmdb.org/t/p/w342' + md.p : 'https://i.ytimg.com/vi_webp/' + x.id + '/movieposter_en.webp', still: 'https://i.ytimg.com/vi/' + x.id + '/hqdefault.jpg', big: 'https://i.ytimg.com/vi/' + x.id + '/maxresdefault.jpg' };
   }
   /** Fetch every page of the playlist (50 a time), keep real films, sort A–Z ignoring The/A/An. */
@@ -1290,7 +1291,7 @@ var app = (function () {
   /** The side list: All, a search result, #, A–Z (each letter jumps to its films). */
   function buySources() {
     if (!buy && !buyBusy) buyFetch(false);
-    if (!buySources.metaAsked) { buySources.metaAsked = 1; buyMetaLoad(); }
+    if (Date.now() - (buySources.metaAt || 0) > 3600000) { buySources.metaAt = Date.now(); buyMetaLoad(); }
     if (buy && Date.now() - buyAt > 12 * 3600000 && !buyBusy) buyFetch(false);
     var all = (buy || []).map(buyItem), cats = [];
     all.sort(function (a, b) { var A = letterOf(a.title), B = letterOf(b.title); if (A !== B) return A === '#' ? -1 : B === '#' ? 1 : 0; return sortTitle(a.title).localeCompare(sortTitle(b.title), 'en', { numeric: true }); });
