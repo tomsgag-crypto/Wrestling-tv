@@ -141,7 +141,8 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807, "alice: subservience": ("Subservience", "2024"), "kursk: the last mission": ("Kursk", "2018"), "супер 8": ("Super 8", "2011"), "texas chainsaw massacre: the next generation": ("The Return of the Texas Chainsaw Massacre", "1995"),
+FIXED = {"seven": 807, "teenage mutant ninja turtles": [("Teenage Mutant Ninja Turtles", "1990", 93), ("Teenage Mutant Ninja Turtles", "2014", 101)],
+         "cube": [("Cube", "1997", 90), ("Cube", "2021", 108)], "alice: subservience": ("Subservience", "2024"), "kursk: the last mission": ("Kursk", "2018"), "супер 8": ("Super 8", "2011"), "texas chainsaw massacre: the next generation": ("The Return of the Texas Chainsaw Massacre", "1995"),
          "the hobbit: the battle of five armies": ("The Hobbit: The Battle of the Five Armies", "2014"), "psycho 1960": ("Psycho", "1960"), "хеллбой: кровь и металл": ("Hellboy Animated: Blood and Iron", "2007"), "хеллбой: меч громов": ("Hellboy Animated: Sword of Storms", "2006"),
          "ничего себе поездочка 3": ("Joy Ride 3", "2014"), "куб": ("Cube", "1997"), "stephen king's, it!": ("It", "1990"), "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
          "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": ("F", "2010"), "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
