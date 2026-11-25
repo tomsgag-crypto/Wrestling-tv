@@ -2782,6 +2782,7 @@ var app = (function () {
     else if (view === 'apps') appsKey(k);
     return true;
   }
+  var backFromFull = false;   // set when Back sent the corner channel full screen; any other key clears it
   function back() {
     if (pop) { closePop(); return true; }
     if (view === 'search' && document.activeElement === $('q')) { $('q').blur(); zone = 'tabs'; render(); return true; }
@@ -2789,8 +2790,10 @@ var app = (function () {
     if (zone === 'main' && isOD() && odZone === 'cats') { odZone = 'src'; odChip = 0; render(); return true; }
     // a channel playing in the guide's box: Back on its row puts it full screen; on any other row Back works as normal (up to the top menu)
     var onPlaying = zone === 'main' && view === 'guide' && gZone === 'rows' && chans[gRow];
-    if (onPlaying && window.Native && Native.pipActive && Native.pipActive() && chans[gRow].name === Native.pipName()) { Native.pipFull(); return true; }
-    if (onPlaying && mini && chans[gRow].id === mini.gid) { Native.miniFull(); return true; }   // Back: the channel playing in the corner goes full screen (stop it from ☰ Filter & options)
+    // ...but straight after coming back from full screen, Back goes up to the top menu (no flicking between the two)
+    if (onPlaying && backFromFull) { backFromFull = false; zone = 'tabs'; render(); return true; }
+    if (onPlaying && window.Native && Native.pipActive && Native.pipActive() && chans[gRow].name === Native.pipName()) { backFromFull = true; Native.pipFull(); return true; }
+    if (onPlaying && mini && chans[gRow].id === mini.gid) { backFromFull = true; Native.miniFull(); return true; }   // Back: the channel playing in the corner goes full screen (stop it from ☰ Filter & options)
     if (zone === 'main' && view === 'guide' && gZone === 'rows') { gZone = 'days'; gDay = 0; render(); return true; }
     if (zone === 'main' && view === 'lists' && lsSide === 'right') { lsSide = 'left'; render(); return true; }
     if (zone === 'main') { zone = 'tabs'; render(); return true; }
@@ -2810,6 +2813,7 @@ var app = (function () {
       return;
     }
     e.preventDefault();
+    backFromFull = false;
     if (k === 'ok') {
       if (okTimer || okHeld) return;
       okTimer = setTimeout(function () { okTimer = null; okHeld = true; key('hold'); }, 900);
