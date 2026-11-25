@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Film Prices</title>
+<style>
+  :root { --bg: #0e1117; --panel: #171c26; --line: #263042; --text: #e9edf5; --dim: #93a0b8; --focus: #ffcc4d; --good: #4cd38a; --est: #8fb3ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.35 system-ui, Roboto, sans-serif; }
+  body.tv { font-size: 2.1vh; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 12px 6px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 0 6px; font-size: 1.25em; letter-spacing: .02em; }
+  h1 b { color: var(--focus); }
+  #status { color: var(--dim); font-size: .85em; margin-bottom: 6px; }
+  #status .cc { color: var(--text); font-weight: 600; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab, .btn { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  .tab.on { background: #2a3550; border-color: #3d4c70; }
+  .btn.main { background: #2c4a2f; border-color: #3f6b43; }
+  .f.foc, .f:focus { outline: 3px solid var(--focus); outline-offset: 2px; }
+  main { padding: 10px 12px 40px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+  body.tv .grid { grid-template-columns: repeat(7, 1fr); }
+  .card { background: var(--panel); border-radius: 10px; overflow: hidden; cursor: pointer; position: relative; }
+  .card .im { aspect-ratio: 2/3; background: #222 center/cover; }
+  .card .t { padding: 5px 7px 2px; font-size: .85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .s { padding: 0 7px 6px; font-size: .75em; color: var(--dim); }
+  .card .tag { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.75); border-radius: 6px; padding: 2px 6px; font-size: .72em; }
+  .card .best { position: absolute; top: 6px; right: 6px; background: #1f5f3a; border-radius: 6px; padding: 2px 6px; font-size: .72em; }
+  .note { color: var(--dim); font-size: .85em; margin: 8px 0 12px; }
+  .film { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  .film .pp { width: 140px; aspect-ratio: 2/3; border-radius: 10px; background: #222 center/cover; flex: none; }
+  .film .info { flex: 1; min-width: 220px; }
+  .film h2 { margin: 0 0 4px; }
+  .acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .92em; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; font-size: .85em; }
+  td.gbp { font-weight: 600; white-space: nowrap; }
+  .ok { color: var(--good); } .est { color: var(--est); } .dim { color: var(--dim); }
+  tr.cheapest td { background: rgba(76,211,138,.08); }
+  input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; }
+  #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #26314a; padding: 9px 16px; border-radius: 10px; display: none; z-index: 9; max-width: 90%; }
+  .ctry { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chipc { border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+  .chipc.on { background: #2a3550; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FILM <b>PRICES</b></h1>
+  <div id="status">Checking your connection…</div>
+  <div class="tabs" id="tabs"></div>
+</header>
+<main id="main"></main>
+<div id="toast"></div>
+<script src="config.js"></script>
+<script src="flavor.js"></script>
+<script src="prices.js"></script>
+</body>
+</html>

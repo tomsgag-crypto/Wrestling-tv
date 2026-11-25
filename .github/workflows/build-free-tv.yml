@@ -31,7 +31,10 @@ jobs:
       - name: Add the TMDB key (stored as a repository secret, never in the code)
         env:
           TMDB_KEY: ${{ secrets.TMDB_KEY }}
-        run: echo "window.TMDB_KEY = '${TMDB_KEY}';" > app/src/main/assets/config.js
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+        run: |
+          echo "window.TMDB_KEY = '${TMDB_KEY}';" > app/src/main/assets/config.js
+          echo "window.SERPAPI_KEY = '${SERPAPI_KEY}';" >> app/src/main/assets/config.js
 
       - name: Use the fixed signing key (so new versions install as updates)
         env:
@@ -63,13 +66,14 @@ jobs:
       - name: Build APKs (Free TV and Sky Sports TV)
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
-        run: gradle assembleFullRelease assembleSportsRelease assemblePurchasesRelease --no-daemon
+        run: gradle assembleFullRelease assembleSportsRelease assemblePurchasesRelease assemblePricesRelease --no-daemon
 
       - name: Rename APKs
         run: |
           cp app/build/outputs/apk/full/release/app-full-release.apk ../FreeTV.apk
           cp app/build/outputs/apk/sports/release/app-sports-release.apk ../SkySportsTV.apk
           cp app/build/outputs/apk/purchases/release/app-purchases-release.apk ../MyPurchases.apk
+          cp app/build/outputs/apk/prices/release/app-prices-release.apk ../FilmPrices.apk
 
       - name: Publish the three apps
         working-directory: .
@@ -85,3 +89,4 @@ jobs:
           up free-tv "Free TV (latest build)" FreeTV.apk
           up sky-sports-tv "Sky Sports TV (latest build)" SkySportsTV.apk
           up my-purchases "My Purchases (latest build)" MyPurchases.apk
+          up film-prices "Film Prices (latest build)" FilmPrices.apk

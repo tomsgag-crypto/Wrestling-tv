@@ -453,6 +453,11 @@ public class MainActivity extends Activity {
         /** My Purchases: the YouTube key from the build (GitHub secret YT_API_KEY), never in the code. */
         @android.webkit.JavascriptInterface
         public String ytKey() { return BuildConfig.YT_API_KEY; }
+        /** Open a web link in whichever app handles it (YouTube links open the YouTube app). */
+        @android.webkit.JavascriptInterface
+        public void openLink(String url) {
+            ui.post(() -> { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) { } });
+        }
         /** Open a film in the YouTube app (TV app first, then phone app / anything that opens YouTube links). */
         @android.webkit.JavascriptInterface
         public void openYouTube(String id) {
