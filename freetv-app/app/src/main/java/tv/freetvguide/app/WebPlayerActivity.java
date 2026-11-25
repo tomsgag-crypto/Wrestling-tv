@@ -241,13 +241,18 @@ public class WebPlayerActivity extends Activity {
                 if (sct >= 0) stallCt = sct;
                 stallFr = fr;
                 // the start-up wait is over (shown or not): from now on watch for buffering, even if it never settled
-                if (onSky() && !skySettled && now2 > skyGateUntil + 1000) skySettled = true;
+                if (onSky() && !skySettled && now2 > skyGateUntil + 1000) { skySettled = true; settledAt = now2; earlyBufs = 0; }
                 if (onSky() && skySettled && watching() && !userPaused) {
                     // 3 separate buffers within 90 seconds, or one lasting 6 seconds → restart at live
-                    if (bufNow && !wasBuffering) { bufStarts.add(now2); }
+                    if (bufNow && !wasBuffering) { bufStarts.add(now2); if (now2 - settledAt < 10000) earlyBufs++; }
+                    if (earlyBufs >= 2 && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 5000) {
+                        earlyBufs = 0; lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
+                        applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
+                        return;
+                    }
                     while (!bufStarts.isEmpty() && now2 - bufStarts.peekFirst() > 90000) bufStarts.pollFirst();
                     stallRun = bufNow ? stallRun + 1 : 0;
-                    if ((bufStarts.size() >= 3 || stallRun >= 6) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 15000) {
+                    if ((bufStarts.size() >= 3 || stallRun >= 6) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 8000) {
                         lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Buffering – restarting " + (tt == null ? "" : tt) + "…");
                         return;
@@ -266,13 +271,13 @@ public class WebPlayerActivity extends Activity {
                     settleTicks = moving ? settleTicks + 1 : 0;
                     // Sky's first start often lands on old video and buffers; a second start (what a settings change does) is smooth – so do it once, behind the loading screen
                     boolean fresh = prefs().getBoolean("skyFresh", true) && startReloads == 0;
-                    boolean slow = android.os.SystemClock.uptimeMillis() > skyGateUntil - 8000;   // 12 s and still not moving
-                    if (fresh && (settleTicks >= 2 || slow)) {
+                    boolean slow = android.os.SystemClock.uptimeMillis() > skyGateUntil - 14000;   // 6 s and still nothing
+                    if (fresh && (ct2 > 0 || slow)) {   // the page has its video: restart straight away
                         startReloads = 1; settleTicks = 0; settleCt = -1;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;
                     }
-                    if (settleTicks >= 2) { skySettled = true; reveal.run(); }
+                    if (settleTicks >= 1) { skySettled = true; settledAt = now2; earlyBufs = 0; reveal.run(); }
                     return;
                 }
                 // Sky says it's behind live after buffering (and you didn't pause it): restart the channel at live, like a quality change does
@@ -666,6 +671,7 @@ public class WebPlayerActivity extends Activity {
     private long autoFilledAt = 0;
     private volatile boolean itvPage = false;   // only ITVX's advert requests are refused; Prime / Disney+ wait on theirs, so those are sped through instead
     private boolean wasBuffering = false;
+    private long settledAt = 0; private int earlyBufs = 0;
     private final java.util.ArrayDeque<Long> bufStarts = new java.util.ArrayDeque<>();
     private double stallCt = -1; private int stallRun = 0; private long stallFr = -2;
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
@@ -1281,6 +1287,6 @@ public class WebPlayerActivity extends Activity {
     @Override protected void onStop() { super.onStop(); if (zapping) finish(); else if (pip == this && !cornered && !isInPictureInPictureMode()) { pip = null; finish(); } }   // corner window closed
     @Override protected void onPause() { super.onPause(); if (cornered || (android.os.Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode())) return;   // keep playing in the corner
         ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); if (web != null) web.onPause(); CookieManager.getInstance().flush(); }
-    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 8000); ui.removeCallbacks(hush); ui.post(hush); }
+    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); ui.removeCallbacks(keepPlaying); ui.postDelayed(keepPlaying, 2000); ui.removeCallbacks(hush); ui.post(hush); }
     @Override protected void onDestroy() { if (pip == this) pip = null; ui.removeCallbacks(cursorWatch); ui.removeCallbacks(fill); netPool.shutdownNow(); ui.removeCallbacks(step); ui.removeCallbacks(autoplay); ui.removeCallbacks(ownedSync); ui.removeCallbacks(spaFallback); ui.removeCallbacks(keepPlaying); ui.removeCallbacks(hush); ui.removeCallbacks(qualityWatch); if (web != null) { web.loadUrl("about:blank"); web.destroy(); web = null; } super.onDestroy(); }
 }
