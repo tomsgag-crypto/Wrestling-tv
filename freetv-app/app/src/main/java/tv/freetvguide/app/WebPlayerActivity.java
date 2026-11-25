@@ -247,6 +247,7 @@ public class WebPlayerActivity extends Activity {
                     if (bufNow && !wasBuffering) { bufStarts.add(now2); if (now2 - settledAt < 10000) earlyBufs++; }
                     if (earlyBufs >= 2 && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 5000) {
                         earlyBufs = 0; lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
+                        if (quickRestart()) return;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;
                     }
@@ -254,6 +255,7 @@ public class WebPlayerActivity extends Activity {
                     stallRun = bufNow ? stallRun + 1 : 0;
                     if ((bufStarts.size() >= 3 || stallRun >= 6) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 8000) {
                         lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
+                        if (quickRestart()) return;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Buffering – restarting " + (tt == null ? "" : tt) + "…");
                         return;
                     }
@@ -675,6 +677,17 @@ public class WebPlayerActivity extends Activity {
     private volatile boolean itvPage = false;   // only ITVX's advert requests are refused; Prime / Disney+ wait on theirs, so those are sped through instead
     private boolean wasBuffering = false;
     private long settledAt = 0; private int earlyBufs = 0;
+    private long quickAt = 0;
+    /** Restart without reloading the page: jump the same player to live (about 2 s). Used once; if it buffers again soon, the full restart follows. */
+    private boolean quickRestart() {
+        long t = android.os.SystemClock.uptimeMillis();
+        if (t - quickAt < 30000) return false;   // tried a moment ago and it's still buffering: do the full restart
+        quickAt = t;
+        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{if(v.seekable&&v.seekable.length){v.currentTime=Math.max(0,v.seekable.end(v.seekable.length-1)-4);}v.play();}catch(e){}});})()", null);
+        settledAt = t; earlyBufs = 0;
+        note("Catching up…");
+        return true;
+    }
     private final java.util.ArrayDeque<Long> bufStarts = new java.util.ArrayDeque<>();
     private double stallCt = -1; private int stallRun = 0; private long stallFr = -2;
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
