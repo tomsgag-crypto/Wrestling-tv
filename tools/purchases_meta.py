@@ -21,9 +21,19 @@ while YT:
     tok = j.get("nextPageToken")
     if not tok: break
 print("playlist films", len(films))
+INFO = {}   # videoId -> (minutes, upload year)
+for i in range(0, len(films), 50):
+    try:
+        ids = ",".join(f[0] for f in films[i:i + 50])
+        for v in get("https://www.googleapis.com/youtube/v3/videos?" + urllib.parse.urlencode({"part": "contentDetails,snippet", "id": ids, "key": YT})).get("items", []):
+            d = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?", v["contentDetails"].get("duration", "")) or None
+            mins = (int(d.group(1) or 0) * 60 + int(d.group(2) or 0)) if d else 0
+            INFO[v["id"]] = (mins, (v["snippet"].get("publishedAt") or "")[:4])
+    except Exception as e: print("youtube info fail", e)
+CUR = {"mins": 0, "up": ""}
 
 import difflib, unicodedata
-VER = 3   # bump to recheck every film once
+VER = 4   # bump to recheck every film once
 
 def norm(t):
     t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
@@ -37,8 +47,10 @@ SUFFIX = r"\b(4K|UHD|HD|SD|Extended|Director'?s (Definitive )?(Cut|Edition)|Thea
 def clean(t):
     y = re.search(r"\((19|20)\d\d\)", t) or re.search(r"\s((19|20)\d\d)\s*$", t)
     yr = re.search(r"(19|20)\d\d", y.group(0)).group(0) if y else ""
-    t2 = re.sub(r"\((?:[^)]*)\)|\[(?:[^]]*)\]", " ", t)
-    if not t2.strip(): t2 = re.sub(r"[\[\]()]", "", t)          # "[REC]" is the whole title
+    t = t.translate({ord(c): " " + str(i) + " " for i, c in enumerate("⁰¹²³⁴⁵⁶⁷⁸⁹")})
+    t2 = re.sub(r"\((?:[^)]*)\)", " ", t)                              # (2019), (Unrated), (с субтитрами)
+    t2 = re.sub(r"\[([^]]*)\]", lambda m: " " if re.search(r"(?i)\b(4k|uhd|hd|sd|sub|cc|extended|dub)", m.group(1)) else m.group(1), t2)   # keep "[REC]"
+    if not t2.strip(): t2 = re.sub(r"[\[\]()]", "", t)
     t2 = re.sub(r"\s+(aka|a\.k\.a\.)\s.*$", "", t2, flags=re.I)
     t2 = re.sub(SUFFIX, "", t2, flags=re.I)
     if yr: t2 = re.sub(r"\s%s\s*$" % yr, "", t2)
@@ -63,7 +75,27 @@ def tm_search(term, yr="", need=0.0, cmp=None, lang=None):
             sc = score(cmp or term, b, yr) + (0.12 if k == 0 else 0) + min(0.08, (b.get("popularity") or 0) / 400)
             if sc > bs: best, bs = b, sc
         if bs >= 0.95: break
+    if best is not None and bs >= need: best = same_title(best, term, yr)
     return best if bs >= need else None
+
+RUNTIME = {}
+def runtime(i):
+    if i not in RUNTIME:
+        try: RUNTIME[i] = get("https://api.themoviedb.org/3/movie/%d?api_key=%s" % (i, TM)).get("runtime") or 0
+        except Exception: RUNTIME[i] = 0
+    return RUNTIME[i]
+
+def same_title(best, term, yr):
+    """Several films with the same name (Anaconda 1997 / 2025): pick the one whose running time fits the YouTube video."""
+    if yr or not CUR["mins"]: return best
+    r = get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode({"api_key": TM, "query": best.get("title") or term})).get("results", [])
+    same = [b for b in r[:10] if norm(b.get("title")) == norm(best.get("title")) and (b.get("release_date") or "")[:4]]
+    if CUR["up"]: same = [b for b in same if (b.get("release_date") or "9")[:4] <= CUR["up"]]
+    if len(same) < 2: return best
+    same = [b for b in same if (b.get("vote_count") or 0) >= 20] or same
+    pick = min(same, key=lambda b: abs((runtime(b["id"]) or 999) - CUR["mins"]))
+    if pick.get("id") != best.get("id"): print("same name:", best.get("title"), "->", (pick.get("release_date") or "")[:4], "by running time", CUR["mins"], "min")
+    return pick
 
 def collection(q):
     base = re.sub(r"\b(\d+-?Film |The )?(Collection|Trilogy|Quadrilogy|Anthology|Box ?Set)\b.*$", "", q, flags=re.I).strip(" -:")
@@ -138,13 +170,24 @@ def match(title):
 out, looked, missing = {}, 0, []
 for vid, title, p, added in films:
     m = old.get(vid)
+    CUR["mins"], CUR["up"] = INFO.get(vid, (0, ""))
     if (m is None or m.get("v") != VER or not m.get("tm") or re.search(SKIP, title, re.I) or clean(title)[0].lower() in FIXED) and TM:
         try:
             b, used = match(title); looked += 1
             m = {"v": VER}
             if b:
                 m.update({"g": b.get("genre_ids", []), "y": (b.get("release_date") or "")[:4], "r": round(b.get("vote_average") or 0, 1), "p": b.get("poster_path") or "", "tm": b.get("id")})
-                if used != clean(title)[0]: print("matched via", used, ":", title, "=", b.get("title"), m["y"])
+                try:   # the English (UK) title and poster
+                    d = get("https://api.themoviedb.org/3/movie/%d?api_key=%s&language=en-GB" % (b["id"], TM))
+                    m["t"] = d.get("title") or b.get("title") or ""
+                    if d.get("poster_path"): m["p"] = d["poster_path"]
+                except Exception: m["t"] = b.get("title") or ""
+                q0 = clean(title)[0]
+                en, lang = to_english(q0) if re.search(r"[^\x00-\x7f]", q0) or used.endswith(")") or norm(m["t"]) != norm(q0) else ("", "en")
+                if re.search(r"[^\x00-\u024f\s\d\W]", q0) or (lang and lang != "en" and norm(en) != norm(q0)): m["f"] = 1   # foreign title: show the English one
+                if not m.get("f") and difflib.SequenceMatcher(None, norm(q0), norm(m["t"])).ratio() < 0.6 and used != "fixed":
+                    print("CHECK:", title, "=>", m["t"], m["y"], "| via", used)
+                elif m.get("f"): print("ENGLISH:", title, "=>", m["t"], m["y"])
         except Exception as e:
             print("tmdb fail", title, e); m = old.get(vid)
     if m is not None and not m.get("tm") and not re.search(SKIP, title, re.I): missing.append(title)
