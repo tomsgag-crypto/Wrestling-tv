@@ -1,6 +1,6 @@
 """My Purchases extras: match each film in the YouTube playlist "All Movies A-Z" to TMDB
 (genres, year, rating, poster, when added). Keeps earlier matches so only new films are looked up."""
-import json, os, re, sys, urllib.request, urllib.parse
+import json, math, os, re, sys, urllib.request, urllib.parse
 
 YT = os.environ.get("YT_API_KEY", ""); TM = os.environ.get("TMDB_KEY", "")
 PL = "PLayBy19w9yIU"
@@ -35,7 +35,7 @@ for i in range(0, len(films), 50):
 CUR = {"mins": 0, "up": "", "desc": ""}
 
 import difflib, unicodedata
-VER = 8   # bump to recheck every film once
+VER = 9   # bump to recheck every film once
 
 def norm(t):
     t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
@@ -48,7 +48,7 @@ PREFIX = r"^(DCU|DC Universe|Illumination Presents|Disney'?s|Disney Pixar|Pixar'
 SUFFIX = r"\b(4K|UHD|HD|SD|Extended|Director'?s (Definitive )?(Cut|Edition)|Theatrical|Unrated|Bonus Edition|Special Edition|Remastered|The Original Extended Version|The Complete First Season|Ultimate Edition)\b.*$"
 
 def clean(t):
-    y = re.search(r"\((19|20)\d\d\)", t) or re.search(r"\s((19|20)\d\d)\s*$", t)
+    y = re.search(r"\((19|20)\d\d\)", t)
     yr = re.search(r"(19|20)\d\d", y.group(0)).group(0) if y else ""
     t = t.translate({ord(c): " " + str(i) + " " for i, c in enumerate("⁰¹²³⁴⁵⁶⁷⁸⁹")})
     t2 = re.sub(r"\((?:[^)]*)\)", " ", t)                              # (2019), (Unrated), (с субтитрами)
@@ -64,7 +64,10 @@ def score(q, b, yr):
     by = (b.get("release_date") or "")[:4]
     a, c = norm(q), norm(b.get("title")); o = norm(b.get("original_title"))
     if a and a in (c, o): sc = 1.3                                                     # exact title always wins
-    elif len(a.split()) >= 2 and any(x and (x.startswith(a + " ") or a.startswith(x + " ")) for x in (c, o)): sc = max(sc, 0.84)   # "Gremlins 2" = "Gremlins 2: The New Batch"
+    elif len(a.split()) >= 2 and any(x and x.startswith(a + " ") for x in (c, o)):     # "Gremlins 2" = "Gremlins 2: The New Batch" (never the other way round)
+        x = c if c.startswith(a + " ") else o; sc = max(sc, 0.8 + 0.15 * len(a) / len(x))
+    tail = norm(re.split(r":\s|\s[-–]\s", q, maxsplit=1)[1]) if re.search(r":\s|\s[-–]\s", q) else ""
+    if tail and len(tail.split()) >= 2 and tail in (c, o): sc = max(sc, 1.0)            # "Star Wars: The Empire Strikes Back" = "The Empire Strikes Back"
     if yr and by: sc += 0.15 if by == yr else (0.05 if abs(int(by) - int(yr)) <= 1 else -0.15)
     return sc
 
@@ -136,7 +139,7 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807, "хеллбой: кровь и металл": ("Hellboy Animated: Blood and Iron", "2007"), "хеллбой: меч громов": ("Hellboy Animated: Sword of Storms", "2006"),
+FIXED = {"seven": 807, "psycho 1960": ("Psycho", "1960"), "хеллбой: кровь и металл": ("Hellboy Animated: Blood and Iron", "2007"), "хеллбой: меч громов": ("Hellboy Animated: Sword of Storms", "2006"),
          "ничего себе поездочка 3": ("Joy Ride 3", "2014"), "куб": ("Cube", "1997"), "stephen king's, it!": ("It", "1990"), "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
          "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": ("F", "2010"), "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
          "saw - the final chapter": ("Saw 3D", "2010"), "saw: the final chapter": ("Saw 3D", "2010"), "el bufón": ("The Jester", "2023"), "the hulk": ("Hulk", "2003"), "holmes and watson": ("Holmes & Watson", "2018"), "girl house": ("Girl House", "2014"), "ju-on 2": ("Ju-on: The Curse 2", "2000")}
@@ -211,7 +214,7 @@ def match(title):
         ry = (b.get("release_date") or "")[:4]
         if not ry or (up and ry > str(int(up) + 1)) or ry > "2026": continue      # not out yet / newer than the YouTube upload
         d, r = desc_fit(b), run_fit(b)
-        tot = b["_t"] + d + r + min(0.05, (b.get("popularity") or 0) / 800)
+        tot = b["_t"] + d + r + 0.3 * min(1.0, math.log10((b.get("vote_count") or 0) + 1) / 4)
         if yr and abs(int(ry) - int(yr)) > 1: tot -= 0.8                      # your title says the year
         b["_s"] = (round(b["_t"], 2), round(d, 2), round(r, 2))
         if tot > bs: best, bs = b, tot
