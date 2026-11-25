@@ -572,13 +572,24 @@ var app = (function () {
   var SKY_SLUGS = [[/main ?event/i, 'sky-sports-main-event'], [/\bpl\b|premier/i, 'sky-sports-premier-league'], [/football/i, 'sky-sports-football'], [/cricket/i, 'sky-sports-cricket'],
     [/golf/i, 'sky-sports-golf'], [/f1/i, 'sky-sports-f1'], [/tennis/i, 'sky-sports-tennis'], [/nfl/i, 'sky-sports-nfl'], [/racing/i, 'sky-sports-racing'], [/news/i, 'sky-sports-news'], [/mix/i, 'sky-sports-mix'], [/\+|plus/i, 'sky-sports-plus']];
   function skySlug(n) { for (var i = 0; i < SKY_SLUGS.length; i++) if (SKY_SLUGS[i][0].test(n)) return SKY_SLUGS[i][1]; return ''; }
-  var usEpg = load('usEpg') || {}, usPluto = [];
+  var usEpg = load('usEpg') || {}, usPluto = [], slingIds = load('slingIds') || {};
+  /** A channel's own Sling address (the Sling app opens straight on it), from Sling's public channel list. */
+  function slingLink(name) {
+    var n = function (x) { return String(x).toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, ''); };
+    var ALIAS = { usanetwork: 'usa', fs1: 'foxsports1', nflnetwork: 'nflnetwork', discovery: 'discoverychannel', natgeo: 'nationalgeographic', nationalgeographic: 'nationalgeographic', e: 'e', bbcamerica: 'bbcamerica', cartoonnetwork: 'cartoonnetwork', foxnews: 'foxnewschannel', bloombergtv: 'bloombergtelevision', mgmdrivein: 'mgmdrivein', axstv: 'axstv' };
+    var want = ALIAS[n(name)] || n(name), keys = Object.keys(slingIds), hit = null;
+    keys.forEach(function (k) { if (!hit && n(k) === want) hit = k; });
+    if (!hit) keys.forEach(function (k) { if (!hit && n(k).indexOf(want) === 0 && !/4k/i.test(k)) hit = k; });
+    if (!hit && want.length > 3) keys.forEach(function (k) { if (!hit && want.indexOf(n(k)) === 0 && n(k).length > 2 && !/4k/i.test(k)) hit = k; });
+    return hit ? 'https://watch.sling.com/1/channel/' + slingIds[hit] + '/watch' : '';
+  }
   function loadUSEpg() {
     return get('https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/us-epg/us-epg.json').then(function (t) {
       var j = typeof t === 'string' ? JSON.parse(t) : t, out = {};
       Object.keys(j.ch || {}).forEach(function (k) { out[k] = j.ch[k].map(function (x) { return { s: x[0], e: x[1], t: x[2], sub: x[3], desc: x[4], img: '' }; }); });
       if (Object.keys(out).length) { usEpg = out; save('usEpg', out); }
       if (j.pluto && j.pluto.length) usPluto = j.pluto;
+      if (j.sling && Object.keys(j.sling).length) { slingIds = j.sling; save('slingIds', slingIds); }
     }).catch(function () {});
   }
   var usSports = load('usSports') || {};
@@ -1821,8 +1832,9 @@ var app = (function () {
       if (c && (!fp || fp.s <= now)) setZap();
       if (c && c.primeLive) { if (fp && fp.s > now) { addMenu(progItem(c, fp)); return; } var m = fp || c.events[0]; toast('Opening Prime Video – ' + (m ? m.t : 'Champions League')); openIn('prime', '', '"' + (m ? m.t : 'Champions League') + '"'); return; }
       // Paramount+ rows: the Paramount+ app (its live TV page when the app accepts the link)
-      // Sling: Google TV's own search knows Sling's live channels ("Watch on Sling" goes straight to the channel); else ask the Sling app
-      if (c && c.appK === 'sling' && window.Native && Native.search && Native.search(c.name.replace(/ \((Sling|US)\)$/, '') + ' live on Sling TV')) { toast('Choose "Watch on Sling" for ' + c.name.replace(/ \((Sling|US)\)$/, '')); return; }
+      // Sling: the channel's own link opens the Sling app straight on it
+      if (c && c.appK === 'sling') { var sln = c.name.replace(/ \((Sling|US)\)$/, ''), lk = slingLink(sln);
+        if (lk && window.Native && Native.open2) { var r2 = Native.open2(SVC.sling.app, lk, SVC.sling.store, ''); if (r2 === 'link') { toast('Opening ' + sln + ' on Sling…'); return; } } }
       if (c && c.appK === 'sling' && window.Native && Native.openPlay) { var nm = c.name.replace(/ \((Sling|US)\)$/, ''); var rr = Native.openPlay(SVC.sling.app, SVC.sling.store, nm);
         toast(rr === 'play' ? 'Asking Sling to play ' + nm + '…' : rr === 'search' ? 'Searching Sling for ' + nm : rr === 'app' ? 'Opened Sling – choose ' + nm : 'Sling TV isn\'t installed'); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
