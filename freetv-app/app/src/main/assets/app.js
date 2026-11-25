@@ -1233,7 +1233,9 @@ var app = (function () {
   var BUY_GENRES = [['Action', [28]], ['Adventure', [12]], ['Animation', [16]], ['Comedy', [35]], ['Crime', [80]], ['Documentary', [99]], ['Drama', [18]], ['Family', [10751]],
     ['Fantasy', [14]], ['History', [36]], ['Horror', [27]], ['Music', [10402]], ['Mystery', [9648]], ['Romance', [10749]], ['Sci-Fi', [878]], ['Thriller', [53]], ['War', [10752]], ['Western', [37]]];
   var BUY_SORTS = [['az', 'A–Z'], ['za', 'Z–A'], ['new', 'Newest films first'], ['old', 'Oldest films first'], ['top', 'Best rated'], ['added', 'Recently added']];
-  function buySorted(list) {
+  function buyCatSort(id) { var m = settings.buyCatSort || {}; return m[id] || buySort; }
+  function buySorted(list, mode) {
+    var buySort = mode || buyCatSort('');
     var m = function (it) { return buyMeta[it.yt] || {}; }, a = list.slice();
     if (buySort === 'za') a.reverse();
     else if (buySort === 'new' || buySort === 'old') a.sort(function (x, y) { var d = (+m(y).y || 0) - (+m(x).y || 0); return buySort === 'new' ? d : -d; });
@@ -1241,7 +1243,16 @@ var app = (function () {
     else if (buySort === 'added') a.sort(function (x, y) { return (m(y).a != null ? m(y).a : -1) - (m(x).a != null ? m(x).a : -1); });
     return a;
   }
-  function buySortMenu() { showPop({ title: 'Sort your films', opts: BUY_SORTS.map(function (x) { return { label: x[1], tick: x[0] === buySort, fn: function () { buySort = x[0]; settings.buySort = x[0]; saveSettings(); od = []; buildOD(); odRow = 0; } }; }) }); }
+  /** OK on a list at the side (or the Sort button): show it, or choose how this list is sorted. Each list remembers its own order. */
+  function buySortMenu(c) {
+    c = c || curCat(); if (!c) return;
+    var cur = buyCatSort(c.id);
+    showPop({ title: c.name, opts: [{ label: '▶ Show ' + c.name, fn: function () { if (c.items && c.items.length) { odZone = 'grid'; odRow = 0; } } }].concat(BUY_SORTS.map(function (x) {
+      return { label: 'Sort: ' + x[1], tick: x[0] === cur, fn: function () {
+        settings.buyCatSort = settings.buyCatSort || {}; settings.buyCatSort[c.id] = x[0]; saveSettings();
+        c.items = buySorted(c.items, x[0]); odRow = 0; odZone = 'grid'; render(); } };
+    })) });
+  }
   function buyKey() { return window.Native && Native.ytKey ? Native.ytKey() : ''; }
   function sortTitle(t) { return String(t || '').replace(/^\s*(the|a|an)\s+/i, '').toLowerCase(); }
   function letterOf(t) { var c = sortTitle(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; }
@@ -1285,9 +1296,8 @@ var app = (function () {
     if (!buy) cats.push({ src: 'msg', name: buyErr || 'Loading your films from YouTube…', items: [] });
     else {
       if (buyQ) { var q = buyQ.toLowerCase().trim(), gq = BUY_GENRES.filter(function (g) { return g[0].toLowerCase() === q || (q.length > 3 && g[0].toLowerCase().indexOf(q) === 0) || (q === 'animated' && g[0] === 'Animation') || (q === 'scifi' || q === 'sci fi' ? g[0] === 'Sci-Fi' : false); })[0];
-        cats.push({ src: 'buy', id: 'buyq', name: '🔍 "' + buyQ + '"', items: buySorted(all.filter(function (it) { var md = buyMeta[it.yt] || {};
-          return it.title.toLowerCase().indexOf(q) >= 0 || (gq && (md.g || []).some(function (x) { return gq[1].indexOf(x) >= 0; })) || (/^(19|20)\d\d$/.test(q) && md.y === q); })) }); }
-      all = buySorted(all);
+        cats.push({ src: 'buy', id: 'buyq', name: '🔍 "' + buyQ + '"', items: all.filter(function (it) { var md = buyMeta[it.yt] || {};
+          return it.title.toLowerCase().indexOf(q) >= 0 || (gq && (md.g || []).some(function (x) { return gq[1].indexOf(x) >= 0; })) || (/^(19|20)\d\d$/.test(q) && md.y === q); }) }); }
       cats.push({ src: 'buy', id: 'buyall', name: 'All films', items: all });
       if (Object.keys(buyMeta).length) BUY_GENRES.forEach(function (g) {
         var its = all.filter(function (it) { var gg = (buyMeta[it.yt] || {}).g || []; return g[1].some(function (x) { return gg.indexOf(x) >= 0; }); });
@@ -1295,6 +1305,7 @@ var app = (function () {
       });
       var by = {}; all.forEach(function (it) { var L = letterOf(it.title); (by[L] = by[L] || []).push(it); });
       ['#'].concat('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')).forEach(function (L) { if (by[L]) cats.push({ src: 'buy', id: 'buy' + L, name: 'Starts with ' + L, items: by[L] }); });
+      cats.forEach(function (c) { var m = buyCatSort(c.id); if (m !== 'az') c.items = buySorted(c.items, m); });   // each list in its own saved order
     }
     return [{ id: 'buy', name: 'My Purchases', cats: cats }];
   }
@@ -2085,7 +2096,7 @@ var app = (function () {
     if (odChip > 3) odChip = 0;
     var act = zone === 'main';
     var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z'][n] + '">' + esc(txt) + '</div>'; };
-    if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search my films' + (buyQ ? ': ' + buyQ : '')) + chip(3, '⇅ Sort: ' + (BUY_SORTS.filter(function (x) { return x[0] === buySort; })[0] || BUY_SORTS[0])[1]) + chip(1, '⟳ Refresh') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
+    if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search my films' + (buyQ ? ': ' + buyQ : '')) + chip(3, '⇅ Sort: ' + (BUY_SORTS.filter(function (x) { return x[0] === buyCatSort(curCat() ? curCat().id : ''); })[0] || BUY_SORTS[0])[1]) + chip(1, '⟳ Refresh') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
     else $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
@@ -2116,7 +2127,7 @@ var app = (function () {
       if (view === 'purchases') {
         var BO = [0, 3, 1], bi = Math.max(0, BO.indexOf(odChip));
         if (k === 'left') odChip = BO[Math.max(0, bi - 1)]; else if (k === 'right') odChip = BO[Math.min(2, bi + 1)];
-        else if (k === 'ok') { if (odChip === 0) buySearch(); else if (odChip === 3) buySortMenu(); else { buyFetch(true); buyMetaLoad(); toast('Refreshing your films from YouTube…'); } return; }
+        else if (k === 'ok') { if (odChip === 0) buySearch(); else if (odChip === 3) buySortMenu(curCat()); else { buyFetch(true); buyMetaLoad(); toast('Refreshing your films from YouTube…'); } return; }
         else if (k === 'down') odZone = 'cats';
         render(); return;
       }
@@ -2135,7 +2146,7 @@ var app = (function () {
       else if (k === 'down') { if (odCat < cats.length - 1) { odCat++; odRow = 0; ensureODItems(); } }
       else if (k === 'pagedown') { odCat = Math.min(cats.length - 1, odCat + 6); odRow = 0; ensureODItems(); }
       else if (k === 'pageup') { odCat = Math.max(0, odCat - 6); odRow = 0; ensureODItems(); }
-      else if (k === 'ok' && view === 'purchases') { if (items.length) { odZone = 'grid'; odRow = 0; } }
+      else if (k === 'ok' && view === 'purchases') { var bc = curCat(); if (bc && bc.src === 'buy') { buySortMenu(bc); return; } }
       else if (k === 'ok') { var cc = curCat(); if (cc) { catMenu(cc); return; } }
       else if (k === 'right') { if (items.length) odZone = 'grid'; }
       else if (k === 'menu') { optionsMenu(); return; }

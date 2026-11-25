@@ -95,11 +95,21 @@ def variants(q):
 def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
+# Tom's corrections: playlist title (lower case) -> TMDB film id
+FIXED = {"seven": 807}
+SKIP = r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film|Box ?Set)\b"    # bundles/clips: leave without genres
+
+def fixed(title):
+    i = FIXED.get(clean(title)[0].lower())
+    if not i: return None
+    d = get("https://api.themoviedb.org/3/movie/%d?api_key=%s" % (i, TM))
+    return dict(d, genre_ids=[g["id"] for g in d.get("genres", [])])
+
 def match(title):
     q, yr = clean(title)
-    if re.search(r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film)\b", q, re.I):
-        b = collection(re.sub(PREFIX, "", q, flags=re.I))
-        if b: return b, "collection"
+    if re.search(SKIP, q, re.I): return None, ""
+    b = fixed(title)
+    if b: return b, "fixed"
     vs = variants(q)
     for t in vs:                                         # the whole title (cleaned up)
         b = tm_search(t, yr, 0.8)
@@ -120,7 +130,7 @@ def match(title):
 out, looked, missing = {}, 0, []
 for vid, title, p, added in films:
     m = old.get(vid)
-    if (m is None or m.get("v") != VER) and TM:
+    if (m is None or m.get("v") != VER or re.search(SKIP, title, re.I) or clean(title)[0].lower() in FIXED) and TM:
         try:
             b, used = match(title); looked += 1
             m = {"v": VER}
@@ -129,7 +139,7 @@ for vid, title, p, added in films:
                 if used != clean(title)[0]: print("matched via", used, ":", title, "=", b.get("title"), m["y"])
         except Exception as e:
             print("tmdb fail", title, e); m = old.get(vid)
-    if m is not None and not m.get("tm"): missing.append(title)
+    if m is not None and not m.get("tm") and not re.search(SKIP, title, re.I): missing.append(title)
     if m is not None: out[vid] = dict(m, a=p)
 for t in missing: print("STILL NO MATCH:", t)
 print("matched", sum(1 for v in out.values() if v.get("tm")), "of", len(films), "lookups", looked)
