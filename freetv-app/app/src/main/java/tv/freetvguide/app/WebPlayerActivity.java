@@ -967,9 +967,12 @@ public class WebPlayerActivity extends Activity {
     private int quality() { return getSharedPreferences("player", MODE_PRIVATE).getInt("skyq", 0); }
     // test: ask for the Chromecast's hardware copy protection (what apps use for HD); if the device says no, the normal kind is used
     private static final String HWDRM = "(function(){var o=navigator.requestMediaKeySystemAccess&&navigator.requestMediaKeySystemAccess.bind(navigator);if(!o)return;" +
-        "navigator.requestMediaKeySystemAccess=function(ks,cfgs){if(!/widevine/i.test(ks))return o(ks,cfgs);var up;try{up=JSON.parse(JSON.stringify(cfgs));up.forEach(function(c){(c.videoCapabilities||[]).forEach(function(v){v.robustness='HW_SECURE_ALL';});" +
-        "(c.audioCapabilities||[]).forEach(function(a){a.robustness=a.robustness||'SW_SECURE_CRYPTO';});});}catch(e){return o(ks,cfgs);}" +
-        "return o(ks,up).then(function(a){window.__ftvDRM='hardware protection';return a;},function(){window.__ftvDRM='normal protection (hardware refused)';return o(ks,cfgs);});};})();";
+        "var LV=[['HW_SECURE_ALL','hardware protection (full)'],['HW_SECURE_DECODE','hardware protection (decode)'],['HW_SECURE_CRYPTO','hardware protection (keys)']];" +
+        "navigator.requestMediaKeySystemAccess=function(ks,cfgs){if(!/widevine/i.test(ks))return o(ks,cfgs);" +
+        "function tryLv(i){if(i>=LV.length){window.__ftvDRM='normal protection (all hardware levels refused)';return o(ks,cfgs);}var up;" +
+        "try{up=JSON.parse(JSON.stringify(cfgs));up.forEach(function(c){(c.videoCapabilities||[]).forEach(function(v){v.robustness=LV[i][0];});(c.audioCapabilities||[]).forEach(function(a){a.robustness=a.robustness||'SW_SECURE_CRYPTO';});});}catch(e){return o(ks,cfgs);}" +
+        "return o(ks,up).then(function(a){window.__ftvDRM=LV[i][1];return a;},function(){return tryLv(i+1);});}" +
+        "return tryLv(0);};})();";
     private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", false) ? 8000 : 0) + ",") + (prefs().getBoolean("skyHD", false) ? HWDRM : ""); }
     private Object startScript;   // the script handle, so a new quality can replace it
     private void looksLikeDesktop(WebSettings s) {
