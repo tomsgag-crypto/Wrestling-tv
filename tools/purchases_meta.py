@@ -47,6 +47,8 @@ def clean(t):
 def score(q, b, yr):
     n = norm(q); sc = max(difflib.SequenceMatcher(None, n, norm(b.get("title"))).ratio(), difflib.SequenceMatcher(None, n, norm(b.get("original_title"))).ratio())
     by = (b.get("release_date") or "")[:4]
+    a, c = norm(q), norm(b.get("title")); o = norm(b.get("original_title"))
+    if a and any(x and (x.startswith(a + " ") or a.startswith(x + " ") or x == a) for x in (c, o)): sc = max(sc, 0.9)   # "Gremlins 2" = "Gremlins 2: The New Batch"
     if yr and by: sc += 0.15 if by == yr else (0.05 if abs(int(by) - int(yr)) <= 1 else -0.15)
     return sc
 
@@ -130,7 +132,7 @@ def match(title):
 out, looked, missing = {}, 0, []
 for vid, title, p, added in films:
     m = old.get(vid)
-    if (m is None or m.get("v") != VER or re.search(SKIP, title, re.I) or clean(title)[0].lower() in FIXED) and TM:
+    if (m is None or m.get("v") != VER or not m.get("tm") or re.search(SKIP, title, re.I) or clean(title)[0].lower() in FIXED) and TM:
         try:
             b, used = match(title); looked += 1
             m = {"v": VER}
@@ -141,6 +143,10 @@ for vid, title, p, added in films:
             print("tmdb fail", title, e); m = old.get(vid)
     if m is not None and not m.get("tm") and not re.search(SKIP, title, re.I): missing.append(title)
     if m is not None: out[vid] = dict(m, a=p)
-for t in missing: print("STILL NO MATCH:", t)
+for t in missing:
+    try:
+        r = get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode({"api_key": TM, "query": clean(t)[0]})).get("results", [])[:3]
+        print("STILL NO MATCH:", t, "| tmdb says:", "; ".join("%s %s %.2f" % (b.get("title"), (b.get("release_date") or "")[:4], score(clean(t)[0], b, clean(t)[1])) for b in r))
+    except Exception as e: print("STILL NO MATCH:", t, e)
 print("matched", sum(1 for v in out.values() if v.get("tm")), "of", len(films), "lookups", looked)
 json.dump({"n": len(films), "m": out}, open(sys.argv[1], "w"), separators=(",", ":"))
