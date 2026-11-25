@@ -20,4 +20,7 @@ for c in CC:
         p = o["package"]; pk[p["technicalName"]] = p["clearName"] + " " + str(p["packageId"]) + " " + p["shortName"]
         if p["technicalName"] in ("play", "youtube", "googleplay", "google-play-movies") or "oogle" in p["clearName"] or "YouTube" in p["clearName"]:
             print("OFF", c, p["clearName"], o["monetizationType"], o["presentationType"], o["retailPrice"], o["retailPriceValue"], o["currency"])
-print("PACKAGES", sorted(pk.items())[:80])
+print("NPACK", len(pk))
+for k, v in sorted(pk.items()):
+    if any(w in (k + v).lower() for w in ("goog", "youtube", "ply", "yot", "play mov", "google tv")): print("PK", k, v)
+for c in CC: print("CNT", c, len(d.get("o" + c) or []), sorted(set(o["package"]["clearName"] for o in d.get("o" + c) or [] if o["monetizationType"] in ("BUY", "RENT")))[:12])
