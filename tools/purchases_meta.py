@@ -135,7 +135,7 @@ def parts(q):
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
 FIXED = {"seven": 807, "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
-         "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": None, "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
+         "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": ("F", "2010"), "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
          "saw - the final chapter": ("Saw 3D", "2010"), "saw: the final chapter": ("Saw 3D", "2010"), "el bufón": ("The Jester", "2023"), "the hulk": ("Hulk", "2003"), "holmes and watson": ("Holmes & Watson", "2018"), "girl house": ("Girl House", "2014"), "ju-on 2": ("Ju-on: The Curse 2", "2000")}
 SKIP = r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film|Box ?Set)\b"    # bundles/clips: leave without genres
 
@@ -202,6 +202,7 @@ for vid, title, p, added in films:
                 if not m.get("f") and difflib.SequenceMatcher(None, norm(q0), norm(m["t"])).ratio() < 0.6 and used != "fixed":
                     print("CHECK:", title, "=>", m["t"], m["y"], "| via", used)
                 elif m.get("f"): print("ENGLISH:", title, "=>", m["t"], m["y"])
+                if q0.lower() in ("the expelled",): m["f"] = 1   # show the film's real name ("F")
         except Exception as e:
             print("tmdb fail", title, e); m = old.get(vid)
     if m is not None and not m.get("tm") and not re.search(SKIP, title, re.I): missing.append(title)
