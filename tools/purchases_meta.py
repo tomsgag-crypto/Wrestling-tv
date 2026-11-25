@@ -35,7 +35,7 @@ for i in range(0, len(films), 50):
 CUR = {"mins": 0, "up": "", "desc": ""}
 
 import difflib, unicodedata
-VER = 7   # bump to recheck every film once
+VER = 8   # bump to recheck every film once
 
 def norm(t):
     t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
@@ -136,7 +136,8 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807, "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
+FIXED = {"seven": 807, "хеллбой: кровь и металл": ("Hellboy Animated: Blood and Iron", "2007"), "хеллбой: меч громов": ("Hellboy Animated: Sword of Storms", "2006"),
+         "ничего себе поездочка 3": ("Joy Ride 3", "2014"), "куб": ("Cube", "1997"), "stephen king's, it!": ("It", "1990"), "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
          "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": ("F", "2010"), "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
          "saw - the final chapter": ("Saw 3D", "2010"), "saw: the final chapter": ("Saw 3D", "2010"), "el bufón": ("The Jester", "2023"), "the hulk": ("Hulk", "2003"), "holmes and watson": ("Holmes & Watson", "2018"), "girl house": ("Girl House", "2014"), "ju-on 2": ("Ju-on: The Curse 2", "2000")}
 SKIP = r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film|Box ?Set)\b"    # bundles/clips: leave without genres
@@ -169,14 +170,16 @@ def run_fit(b):
     rt = runtime(b["id"])
     if not rt: return -0.1
     d = abs(rt - CUR["mins"])
-    return 0.5 if d <= 3 else 0.3 if d <= 7 else 0.05 if d <= 14 else -0.25 if d <= 25 else -0.6
+    if CUR.get("cut"): return 0.0          # extended / director's / unrated cuts run longer: running time proves nothing
+    return 0.3 if d <= 3 else 0.2 if d <= 7 else 0.0 if d <= 14 else -0.15 if d <= 25 else -0.35
 
 def candidates(q, yr, title):
     """Everything the film database offers for the title and its variants (and an English translation of a foreign title)."""
     terms = variants(q)
     for alt in re.findall(r"\(([^)]*[A-Za-z][^)]*)\)", title):
         if not re.search(r"(?i)unrated|extended|cut|version|4k|hd|subtit|edition|dub", alt) and not re.search(r"[^\x00-\x7f]", alt): terms.insert(1, alt.strip())
-    en, lang = to_english(q)
+    foreign = bool(re.search(r"[^\x00-\x7f]", q)) or bool(re.search(r"(?i)\b(el|la|los|las|del|dos|das|o|os|um|uma|und|der|die|das|le|les|du|des|une|il|di|och)\b", q))
+    en, lang = to_english(q) if foreign else ("", "en")
     if lang and lang != "en" and en and norm(en) != norm(q): terms += [en] + variants(en)
     for t in list(terms)[:3]:
         terms += [x for x in parts(t) if x != t]
@@ -201,7 +204,7 @@ def match(title):
     def tscore(b):
         names = [q] + ([en] if en else []) + variants(q)[1:3]
         return max(score(n, b, yr) for n in names)
-    for b in cands: b["_t"] = tscore(b)
+    for b in cands: b["_t"] = tscore(b) * 1.5
     cands.sort(key=lambda b: -b["_t"])
     best, bs = None, -9
     for b in cands[:6]:
@@ -209,6 +212,7 @@ def match(title):
         if not ry or (up and ry > str(int(up) + 1)) or ry > "2026": continue      # not out yet / newer than the YouTube upload
         d, r = desc_fit(b), run_fit(b)
         tot = b["_t"] + d + r + min(0.05, (b.get("popularity") or 0) / 800)
+        if yr and abs(int(ry) - int(yr)) > 1: tot -= 0.8                      # your title says the year
         b["_s"] = (round(b["_t"], 2), round(d, 2), round(r, 2))
         if tot > bs: best, bs = b, tot
     if best is None: return None, en
@@ -220,6 +224,7 @@ out, looked, missing = {}, 0, []
 for vid, title, p, added in films:
     m = old.get(vid)
     CUR["mins"], CUR["up"], CUR["desc"] = INFO.get(vid, (0, "", ""))
+    CUR["cut"] = bool(re.search(r"(?i)extended|director|unrated|ultimate|final cut|uncut|definitive|special edition|\bUR\b", title))
     if (m is None or m.get("v") != VER or not m.get("tm") or re.search(SKIP, title, re.I) or clean(title)[0].lower() in FIXED) and TM:
         try:
             was = (m or {}); b, used = match(title); looked += 1
