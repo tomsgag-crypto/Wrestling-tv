@@ -23,7 +23,7 @@ while YT:
 print("playlist films", len(films))
 
 import difflib, unicodedata
-VER = 2   # bump to recheck every film once
+VER = 3   # bump to recheck every film once
 
 def norm(t):
     t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
@@ -47,23 +47,26 @@ def clean(t):
 def score(q, b, yr):
     n = norm(q); sc = max(difflib.SequenceMatcher(None, n, norm(b.get("title"))).ratio(), difflib.SequenceMatcher(None, n, norm(b.get("original_title"))).ratio())
     by = (b.get("release_date") or "")[:4]
-    if yr and by: sc += 0.15 if by == yr else (0.05 if abs(int(by) - int(yr)) <= 1 else -0.1)
+    if yr and by: sc += 0.15 if by == yr else (0.05 if abs(int(by) - int(yr)) <= 1 else -0.15)
     return sc
 
-def tm_search(q, yr="", need=0.0):
+def tm_search(term, yr="", need=0.0, cmp=None, lang=None):
+    """Search TMDB for `term`; rate each result against `cmp` (default the term). TMDB's own top hit gets a nudge."""
     best, bs = None, -1
     for y in ([yr] if yr else []) + [""]:
-        ps = {"api_key": TM, "query": q, "include_adult": "false"}
+        ps = {"api_key": TM, "query": term, "include_adult": "false"}
         if y: ps["year"] = y
-        for b in get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode(ps)).get("results", [])[:8]:
-            sc = score(q, b, yr)
+        if lang: ps["language"] = lang
+        for k, b in enumerate(get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode(ps)).get("results", [])[:8]):
+            sc = score(cmp or term, b, yr) + (0.12 if k == 0 else 0) + min(0.08, (b.get("popularity") or 0) / 400)
             if sc > bs: best, bs = b, sc
-        if bs >= 0.85: break
+        if bs >= 0.95: break
     return best if bs >= need else None
 
 def collection(q):
     base = re.sub(r"\b(\d+-?Film |The )?(Collection|Trilogy|Quadrilogy|Anthology|Box ?Set)\b.*$", "", q, flags=re.I).strip(" -:")
     r = get("https://api.themoviedb.org/3/search/collection?" + urllib.parse.urlencode({"api_key": TM, "query": base})).get("results", [])
+    r = [c for c in r if norm(re.sub(r"\s*(Collection|Trilogy).*$", "", c.get("name") or "", flags=re.I)) == norm(base)]
     if not r: return None
     c = get("https://api.themoviedb.org/3/collection/%d?api_key=%s" % (r[0]["id"], TM)); parts = sorted(c.get("parts", []), key=lambda x: x.get("release_date") or "9")
     if not parts: return None
@@ -77,32 +80,43 @@ def to_english(t):
         return "".join(x[0] for x in j[0] if x and x[0]).strip(), j[2]
     except Exception: return "", ""
 
+POSS = r"^(?:[\w.]+(?: [\w.]+)?'s,?|[\w .']+ Presents:?)\s+"     # "Blumhouse's", "Wes Craven Presents:"
 def variants(q):
-    v = [q, re.sub(PREFIX, "", q, flags=re.I), q.replace(":", " ")]
-    v.append(" ".join(ROMAN.get(w.lower(), w) for w in v[1].split()))
-    return [x for i, x in enumerate(v) if x and x not in v[:i]]
+    q = q.replace("®", "").replace("™", "")
+    if q.isupper(): q = q.title()
+    q = re.sub(r"^(.*), THE(:|$)", r"The \1\2", q, flags=re.I)
+    v = [q, re.sub(PREFIX, "", q, flags=re.I)]
+    v.append(re.sub(POSS, "", v[-1]))
+    v.append(re.sub(r"\b(ii|iii|iv|vi|vii|viii|ix)\b", lambda m: ROMAN[m.group(1).lower()], v[-1], flags=re.I))
+    v.append(re.sub(r"(?<=\w )([2-9])\b", lambda m: {b: a.upper() for a, b in ROMAN.items()}[m.group(1)], v[2]))
+    v.append(v[2].replace(":", " "))
+    return [x.strip() for i, x in enumerate(v) if x.strip() and x not in v[:i]]
+
+def parts(q):
+    return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 def match(title):
     q, yr = clean(title)
     if re.search(r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film)\b", q, re.I):
         b = collection(re.sub(PREFIX, "", q, flags=re.I))
         if b: return b, "collection"
-    for t in variants(q):                       # whole title first, strict
-        b = tm_search(t, yr, 0.72)
+    vs = variants(q)
+    for t in vs:                                         # the whole title (cleaned up)
+        b = tm_search(t, yr, 0.8)
         if b: return b, t
-    en, lang = to_english(q)                    # foreign title: translate, then search
-    if en and norm(en) != norm(q):
+    en, lang = to_english(q)
+    if lang and lang != "en" and norm(en) != norm(q):     # foreign title: search it in its language, then in English
+        b = tm_search(q, yr, 0.8, lang=lang)
+        if b: return b, q + " (" + lang + ")"
         for t in variants(en):
-            b = tm_search(t, yr, 0.72)
-            if b: return b, en + " (" + str(lang) + ")"
-    # last resort: main title before a colon / dash, only if it clearly matches and the year agrees
-    head = re.split(r":\s|\s[-–|]\s", re.sub(PREFIX, "", q, flags=re.I))[0].strip()
-    if head and head != q:
-        b = tm_search(head, yr, 0.9 if yr else 1.0)
-        if b: return b, head
-    b = tm_search(q, yr, 0.55)                  # loose, whole title only
-    return (b, q + " (loose)") if b else (None, en)
-
+            b = tm_search(t, yr, 0.75)
+            if b: return b, en + " (" + lang + ")"
+    for t in vs[1:3] + [q]:                              # one half of "Title: Subtitle", rated against the whole title
+        for part in parts(t):
+            if part == t: continue
+            b = tm_search(part, yr, 0.82, cmp=t)
+            if b: return b, part + " (part)"
+    return None, en
 out, looked, missing = {}, 0, []
 for vid, title, p, added in films:
     m = old.get(vid)
