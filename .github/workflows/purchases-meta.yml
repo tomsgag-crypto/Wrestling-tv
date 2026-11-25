@@ -14,7 +14,6 @@ jobs:
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
           TMDB_KEY: ${{ secrets.TMDB_KEY }}
-          DEBUG_TITLES: "^(teenage mutant|the bay|borderline)"
         run: |
           if [ -z "$YT_API_KEY" ]; then echo "No YT_API_KEY secret yet"; exit 0; fi
           python3 tools/purchases_meta.py purchases.json

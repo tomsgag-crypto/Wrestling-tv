@@ -30,12 +30,12 @@ for i in range(0, len(films), 50):
                 print("YTDEBUG", json.dumps({"t": v["snippet"]["title"], "pub": v["snippet"].get("publishedAt"), "desc": v["snippet"].get("description", "")[:400], "tags": v["snippet"].get("tags"), "cat": v["snippet"].get("categoryId"), "cd": v["contentDetails"], "topics": v.get("topicDetails")}, ensure_ascii=False))
             d = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?", v["contentDetails"].get("duration", "")) or None
             mins = (int(d.group(1) or 0) * 60 + int(d.group(2) or 0)) if d else 0
-            INFO[v["id"]] = (mins, (v["snippet"].get("publishedAt") or "")[:4])
+            INFO[v["id"]] = (mins, (v["snippet"].get("publishedAt") or "")[:4], v["snippet"].get("description") or "")
     except Exception as e: print("youtube info fail", e)
-CUR = {"mins": 0, "up": ""}
+CUR = {"mins": 0, "up": "", "desc": ""}
 
 import difflib, unicodedata
-VER = 6   # bump to recheck every film once
+VER = 7   # bump to recheck every film once
 
 def norm(t):
     t = unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()
@@ -154,41 +154,77 @@ def fixed(title):
     d = get("https://api.themoviedb.org/3/movie/%d?api_key=%s" % (i, TM))
     return dict(d, genre_ids=[g["id"] for g in d.get("genres", [])])
 
+STOP = set("""a an the and or but of to in on at for with from by as is are was were be been being this that these those it its his her their they them he she we you your our who whom which what when where why how than then there here into onto over under after before about against between through during without within while once only just also more most very can will would could should must may might not no nor all any both each few other some such own same so too out up down off again further new one two three four five back must must find finds found life world year years man men woman women young old take takes make makes get gets set sets help helps when soon must becomes become""".split())
+def words(t):
+    return set(w for w in re.findall(r"[a-z][a-z'\-]{2,}", unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower()) if w not in STOP)
+
+def desc_fit(b):
+    """How well the film database's summary matches YouTube's own description (shared names and words)."""
+    a, o = words(CUR["desc"]), words(b.get("overview"))
+    if len(a) < 5 or len(o) < 5: return 0.0
+    n = len(a & o); return min(0.9, n / min(len(a), len(o)) * 2.2)
+
+def run_fit(b):
+    if not CUR["mins"]: return 0.0
+    rt = runtime(b["id"])
+    if not rt: return -0.1
+    d = abs(rt - CUR["mins"])
+    return 0.5 if d <= 3 else 0.3 if d <= 7 else 0.05 if d <= 14 else -0.25 if d <= 25 else -0.6
+
+def candidates(q, yr, title):
+    """Everything the film database offers for the title and its variants (and an English translation of a foreign title)."""
+    terms = variants(q)
+    for alt in re.findall(r"\(([^)]*[A-Za-z][^)]*)\)", title):
+        if not re.search(r"(?i)unrated|extended|cut|version|4k|hd|subtit|edition|dub", alt) and not re.search(r"[^\x00-\x7f]", alt): terms.insert(1, alt.strip())
+    en, lang = to_english(q)
+    if lang and lang != "en" and en and norm(en) != norm(q): terms += [en] + variants(en)
+    for t in list(terms)[:3]:
+        terms += [x for x in parts(t) if x != t]
+    seen, out = set(), []
+    for t in terms[:9]:
+        for extra in ([{"language": lang}] if lang and lang != "en" and t == q else [{}]):
+            ps = dict({"api_key": TM, "query": t, "include_adult": "false"}, **extra)
+            for b in get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode(ps)).get("results", [])[:8]:
+                if b["id"] in seen: continue
+                seen.add(b["id"]); b["_q"] = t; out.append(b)
+    return out, en, lang
+
 def match(title):
     q, yr = clean(title)
     if re.search(SKIP, q, re.I): return None, ""
     b = fixed(title)
     if b == "none": return None, ""
     if b: return b, "fixed"
-    vs = variants(q)
-    for alt in re.findall(r"\(([^)]*[A-Za-z][^)]*)\)", title):
-        if not re.search(r"(?i)unrated|extended|cut|version|4k|hd|subtit|субтит|edition|dub", alt) and not re.search(r"[^\x00-\x7f]", alt): vs.insert(1, alt.strip())
-    for t in vs:                                         # the whole title (cleaned up)
-        b = tm_search(t, yr, 0.8)
-        if b: return b, t
-    en, lang = to_english(q)
-    if lang and lang != "en" and norm(en) != norm(q):     # foreign title: search it in its language, then in English
-        b = tm_search(q, yr, 0.8, lang=lang)
-        if b: return b, q + " (" + lang + ")"
-        for t in variants(en):
-            b = tm_search(t, yr, 0.75)
-            if b: return b, en + " (" + lang + ")"
-    for t in vs[1:3] + [q]:                              # one half of "Title: Subtitle", rated against the whole title
-        for part in parts(t):
-            if part == t: continue
-            b = tm_search(part, yr, 0.82, cmp=t)
-            if b: return b, part + " (part)"
-    for t in vs[:1] + ([en] if en and lang and lang != "en" else []):   # last resort: TMDB's own first hit (it knows UK/alternative titles)
-        r = get("https://api.themoviedb.org/3/search/movie?" + urllib.parse.urlencode({"api_key": TM, "query": t, "include_adult": "false"})).get("results", [])
-        if r: return r[0], t + " (tmdb first hit)"
-    return None, en
+    cands, en, lang = candidates(q, yr, title)
+    if not cands: return None, en
+    up = CUR["up"]
+    def tscore(b):
+        names = [q] + ([en] if en else []) + variants(q)[1:3]
+        return max(score(n, b, yr) for n in names)
+    for b in cands: b["_t"] = tscore(b)
+    cands.sort(key=lambda b: -b["_t"])
+    best, bs = None, -9
+    for b in cands[:6]:
+        ry = (b.get("release_date") or "")[:4]
+        if not ry or (up and ry > str(int(up) + 1)) or ry > "2026": continue      # not out yet / newer than the YouTube upload
+        d, r = desc_fit(b), run_fit(b)
+        tot = b["_t"] + d + r + min(0.05, (b.get("popularity") or 0) / 800)
+        b["_s"] = (round(b["_t"], 2), round(d, 2), round(r, 2))
+        if tot > bs: best, bs = b, tot
+    if best is None: return None, en
+    t_, d_, r_ = best["_s"]
+    if t_ < 0.45 and d_ < 0.35: return None, en                                   # neither the name nor the story fits
+    if t_ < 0.75 and d_ < 0.2 and r_ < 0.3: return None, en
+    return best, "%s [name %.2f story %.2f time %.2f]" % (best.get("_q"), t_, d_, r_)
 out, looked, missing = {}, 0, []
 for vid, title, p, added in films:
     m = old.get(vid)
-    CUR["mins"], CUR["up"] = INFO.get(vid, (0, ""))
+    CUR["mins"], CUR["up"], CUR["desc"] = INFO.get(vid, (0, "", ""))
     if (m is None or m.get("v") != VER or not m.get("tm") or re.search(SKIP, title, re.I) or clean(title)[0].lower() in FIXED) and TM:
         try:
-            b, used = match(title); looked += 1
+            was = (m or {}); b, used = match(title); looked += 1
+            if b and was.get("tm") and was.get("tm") != b.get("id"): print("CHANGED:", title, ":", was.get("t"), was.get("y"), "->", b.get("title"), (b.get("release_date") or "")[:4], used)
+            if not b and was.get("tm"): print("DROPPED:", title, ":", was.get("t"), was.get("y"))
             m = {"v": VER}
             if b:
                 m.update({"g": b.get("genre_ids", []), "y": (b.get("release_date") or "")[:4], "r": round(b.get("vote_average") or 0, 1), "p": b.get("poster_path") or "", "tm": b.get("id")})
