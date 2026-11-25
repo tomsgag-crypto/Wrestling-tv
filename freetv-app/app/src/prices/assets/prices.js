@@ -127,6 +127,7 @@ window.app = (function () {
         if (!o.buy.length && !o.rent.length && known && !slot.conf) return playFind(f).then(function (id2) { return id2 && id2 !== id ? playOffers(id2) : o; });
         return o;
       }).then(function (o) {
+        if (cc !== curCC) return slot.conf || { none: true, stale: true };   // the VPN moved while checking: don't file it under the old country
         o.buy.concat(o.rent).forEach(function (x) { if (!x.cur) x.cur = curOf(x.txt, cc); });
         slot.conf = (o.buy.length || o.rent.length) ? { buy: o.buy, rent: o.rent, at: Date.now(), title: o.title, id: o.id } : { none: true, at: Date.now(), id: o.id };
         persist(); return slot.conf;
@@ -152,8 +153,8 @@ window.app = (function () {
       persist();
     });
   }
-  function estimateAll(f) {
-    var list = S.countries.slice(), i = 0;
+  function estimateAll(f, only) {
+    var list = (only || S.countries).slice(), i = 0;
     busy = 'Checking ' + list.length + ' countries…'; render();
     function next() {
       if (i >= list.length) { busy = ''; lookupsLeft().then(render); toast('Checked ' + list.length + ' countries'); render(); return; }
@@ -171,10 +172,29 @@ window.app = (function () {
   function rows(f) {
     var p = S.prices[f.k] || {}, ccs = S.countries.slice();
     Object.keys(p).forEach(function (cc) { if (ccs.indexOf(cc) < 0) ccs.push(cc); });
+    var R = ratios();
     return ccs.map(function (cc) {
-      var s = p[cc] || {}, bb = bestBuy(s.conf), eg = s.est && !s.est.none ? gbp(s.est.amt, s.est.cur) : null;
-      return { cc: cc, s: s, buyG: bb ? bb.g : null, estG: eg, sortG: bb ? bb.g : (eg != null ? eg + 1000 : 1e9) };
+      var s = p[cc] || {}, bb = bestBuy(s.conf), eg = s.est && !s.est.none ? gbp(s.est.amt, s.est.cur) : null, pr = bb ? null : predict(f, cc, R);
+      return { cc: cc, s: s, buyG: bb ? bb.g : null, estG: eg, predG: pr, sortG: bb ? bb.g : pr != null ? pr + 500 : (eg != null ? eg + 1000 : 1e9) };
     }).sort(function (a, b) { return a.sortG - b.sortG; });
+  }
+  /** How each country's buy price compares with the UK, learned from films with exact prices in both (median of the ratios). */
+  function ratios() {
+    var per = {};
+    Object.keys(S.prices).forEach(function (k) {
+      var p = S.prices[k], base = bestBuy((p.GB || {}).conf);
+      if (!base) return;
+      Object.keys(p).forEach(function (cc) { if (cc === 'GB') return; var b = bestBuy(p[cc].conf); if (b) (per[cc] = per[cc] || []).push(b.g / base.g); });
+    });
+    var out = { GB: { r: 1, n: 99 } };
+    Object.keys(per).forEach(function (cc) { var a = per[cc].sort(function (x, y) { return x - y; }); out[cc] = { r: a[Math.floor(a.length / 2)], n: a.length }; });
+    return out;
+  }
+  /** a predicted buy price (£) from learned ratios and any exact price you have for this film */
+  function predict(f, cc, R) {
+    var p = S.prices[f.k] || {}, ref = null;
+    Object.keys(p).some(function (c) { var b = bestBuy(p[c].conf); if (b && R[c]) { ref = b.g / R[c].r; return true; } return false; });
+    return ref != null && R[cc] ? ref * R[cc].r : null;
   }
   function cheapestFor(f) { var r = rows(f)[0]; return r && r.buyG != null ? r : null; }
   function when(t) { if (!t) return ''; var d = (Date.now() - t) / 864e5; return d < 1 ? 'today' : d < 2 ? 'yesterday' : Math.floor(d) + ' days ago'; }
@@ -198,7 +218,7 @@ window.app = (function () {
   function grid(items, empty) { shown = items; return items.length ? '<div class="grid">' + items.map(card).join('') + '</div>' : '<div class="note">' + empty + '</div>'; }
   function render() {
     $('tabs').innerHTML = TABS.map(function (t) { return '<button class="tab f' + (t[0] === view && !open ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
-    $('status').innerHTML = (curCC ? 'Connected via <span class="cc">' + flag(curCC) + ' ' + esc(cname(curCC)) + '</span> – Google Play prices here are checked automatically' : 'Finding your connection’s country…') +
+    $('status').innerHTML = '<button class="btn f" data-act="switched" style="float:right;margin-left:8px">🔄 I’ve switched country</button>' + (curCC ? 'Connected via <span class="cc">' + flag(curCC) + ' ' + esc(cname(curCC)) + '</span> – Google Play prices here are checked automatically' : 'Finding your connection’s country…') +
       (SKEY && left != null ? ' · ' + left + ' country lookups left this month' : '') + (busy ? ' · <b>' + esc(busy) + '</b>' : '');
     var h = '';
     if (open) h = filmPage(open);
@@ -223,9 +243,9 @@ window.app = (function () {
       '<div class="acts">' +
       '<button class="btn f' + (tracked ? '' : ' main') + '" data-act="track">' + (tracked ? '✓ Tracking (press to stop)' : '★ Track this film') + '</button>' +
       (curCC ? '<button class="btn f main" data-act="here">Check ' + flag(curCC) + ' ' + esc(cname(curCC)) + ' now</button>' : '') +
-      (SKEY ? '<button class="btn f" data-act="all">Check all ' + S.countries.length + ' countries' + (left != null ? ' (' + left + ' lookups left)' : '') + '</button>' : '') +
+      (SKEY ? '<button class="btn f" data-act="pick">Check countries…' + (left != null ? ' (' + left + ' lookups left)' : '') + '</button>' : '') +
       '<button class="btn f" data-act="yt">Open on YouTube</button>' +
-      '</div><div class="note">✓ green = exact price, checked through your connection in that country. Blue = Google Play’s lowest price there (often the rental), from “Check all countries”. To get a country’s exact buy price, set your VPN to it and open this app.</div></div></div>';
+      '</div>' + (picking ? pickPanel(f) : '') + '<div class="note">✓ green = exact price, checked through your connection in that country. Blue = Google Play’s lowest price there (often the rental), from “Check all countries”. To get a country’s exact buy price, set your VPN to it and open this app.</div></div></div>';
     h += '<table><tr><th>Country</th><th>Buy</th><th>Rent</th><th>Cheapest</th><th>Checked</th></tr>';
     var rs = rows(f), firstConf = rs.filter(function (r) { return r.buyG != null; })[0];
     rs.forEach(function (r) {
@@ -234,23 +254,43 @@ window.app = (function () {
       var rent = c && c.rent && c.rent.length ? c.rent.map(function (x) { return esc(x.txt) + (x.q ? ' ' + x.q : ''); }).join('<br>') : '';
       if (e && !e.none) rent += (rent ? '<br>' : '') + '<span class="est">from ' + esc(e.txt) + '</span>';
       else if (e && e.none && !c) rent += '<span class="dim">not found</span>';
-      var g = r.buyG != null ? '<span class="ok">' + money(r.buyG) + '</span>' : (r.estG != null ? '<span class="est">' + money(r.estG) + '*</span>' : '–');
+      var g = r.buyG != null ? '<span class="ok">' + money(r.buyG) + '</span>' : r.predG != null ? '<span class="pred">≈' + money(r.predG) + '</span>' : (r.estG != null ? '<span class="est">' + money(r.estG) + '*</span>' : '–');
       h += '<tr class="' + (r === firstConf ? 'cheapest' : '') + '"><td>' + flag(r.cc) + ' ' + esc(cname(r.cc)) + (r.cc === curCC ? ' <span class="dim">(you)</span>' : '') + '</td><td>' + buy + '</td><td>' + (rent || '–') + '</td><td class="gbp">' + g + '</td><td class="dim">' +
         esc(when(c && c.at) || (e && e.at ? when(e.at) + ' *' : '')) + '</td></tr>';
     });
-    h += '</table><div class="note">* lowest price (usually rental), converted to pounds at today’s rate.</div>';
+    h += '</table><div class="note"><span class="pred">≈ purple</span> = predicted buy price, from how that country usually compares in your own checks. * = Google Play’s lowest price there (usually rental), from “Check countries”. All converted to pounds at today’s rate.</div>';
     return h;
+  }
+  function usuallyCheapest() {
+    var R = ratios(), list = Object.keys(R).filter(function (cc) { return cc !== 'GB' && R[cc].n >= 1; }).sort(function (a, b) { return R[a].r - R[b].r; });
+    if (!list.length) return '<div class="note">Once you’ve checked a few films in the UK and through your VPN, this shows which countries are usually cheapest.</div>';
+    return '<div class="note"><b>Usually cheapest (compared with the UK, from your own checks):</b><br>' + list.map(function (cc) {
+      return flag(cc) + ' ' + esc(cname(cc)) + ' ' + Math.round(R[cc].r * 100) + '% <span class="dim">(' + R[cc].n + ' film' + (R[cc].n > 1 ? 's' : '') + ')</span>'; }).join(' · ') + '</div>';
+  }
+  var picking = false, pickSel = [];
+  function pickDefault(f) {   // countries without exact prices for this film, cheapest-looking first; the top 4 ticked
+    var R = ratios(), p = S.prices[f.k] || {};
+    var cand = S.countries.filter(function (cc) { return cc !== curCC && !bestBuy((p[cc] || {}).conf) && !((p[cc] || {}).est && Date.now() - p[cc].est.at < 14 * 864e5); });
+    cand.sort(function (a, b) { return (R[a] ? R[a].r : 1) - (R[b] ? R[b].r : 1); });
+    return { cand: cand, sel: Object.keys(R).length > 2 ? cand.slice(0, 4) : cand.slice() };
+  }
+  function pickPanel(f) {
+    var d = pickDefault(f);
+    if (!d.cand.length) return '<div class="note">Every country already has a price for this film (or was looked up in the last two weeks).</div>';
+    return '<div class="note">Look up Google Play’s lowest price in these countries (one lookup each). Countries with exact prices, and the one you’re connected through, are left out.</div><div class="ctry">' +
+      d.cand.map(function (cc) { return '<span class="chipc f' + (pickSel.indexOf(cc) >= 0 ? ' on' : '') + '" data-pick="' + cc + '">' + flag(cc) + ' ' + esc(cname(cc)) + '</span>'; }).join('') + '</div>' +
+      '<div class="acts"><button class="btn f main" data-act="go">Look up ' + pickSel.length + ' countr' + (pickSel.length === 1 ? 'y' : 'ies') + '</button><button class="btn f" data-act="cancelpick">Cancel</button></div>';
   }
   function settingsPage() {
     var all = Object.keys(NAMES);
     return '<div class="note">The countries you buy from. “Check all countries” uses one lookup per country (the free SerpApi plan allows about 250 a month). Exact prices are free: they come from your own connection.</div>' +
-      '<div class="ctry">' + all.map(function (cc) { return '<span class="chipc f' + (S.countries.indexOf(cc) >= 0 ? ' on' : '') + '" data-cc="' + cc + '">' + flag(cc) + ' ' + esc(cname(cc)) + '</span>'; }).join('') + '</div>' +
+      usuallyCheapest() + '<div class="ctry">' + all.map(function (cc) { return '<span class="chipc f' + (S.countries.indexOf(cc) >= 0 ? ' on' : '') + '" data-cc="' + cc + '">' + flag(cc) + ' ' + esc(cname(cc)) + '</span>'; }).join('') + '</div>' +
       '<div class="acts"><button class="btn f" data-act="reset">Back to my 11 countries</button>' + (window.Native && Native.updateSelf ? '<button class="btn f" data-act="update">⬆ Update app' + (Native.version ? ' (v' + esc(Native.version()) + ')' : '') + '</button>' : '') + '</div>' +
       (SKEY ? '' : '<div class="note">This build has no SerpApi key, so “Check all countries” is off.</div>');
   }
 
   // ---------------------------------------------------------------- actions
-  function openFilm(f) { open = f; render(); if (curCC && !((S.prices[f.k] || {})[curCC] || {}).conf) checkHere(f, true); }
+  function openFilm(f) { open = f; picking = false; render(); if (curCC && !((S.prices[f.k] || {})[curCC] || {}).conf) checkHere(f, true); }
   function checkHere(f, quiet) {
     if (!curCC) return;
     busy = 'Checking ' + cname(curCC) + '…'; render();
@@ -262,13 +302,21 @@ window.app = (function () {
     var f = open;
     if (a === 'track' && f) { if (S.tracked[f.k]) delete S.tracked[f.k]; else S.tracked[f.k] = f; persist(); render(); return; }
     if (a === 'here' && f) { checkHere(f); return; }
-    if (a === 'all' && f) { if (left != null && left < S.countries.length) { toast('Not enough lookups left this month'); return; } estimateAll(f); if (!S.tracked[f.k]) { S.tracked[f.k] = f; persist(); } return; }
+    if (a === 'pick' && f) { picking = !picking; pickSel = picking ? pickDefault(f).sel : []; render(); return; }
+    if (a === 'cancelpick') { picking = false; render(); return; }
+    if (a === 'go' && f) {
+      if (!pickSel.length) { toast('Tick at least one country'); return; }
+      if (left != null && left < pickSel.length) { toast('Only ' + left + ' lookups left this month'); return; }
+      var only = pickSel.slice(); picking = false; estimateAll(f, only); if (!S.tracked[f.k]) { S.tracked[f.k] = f; persist(); } return;
+    }
+    if (a === 'switched') { lastNet = 0; watchCountry(true); toast('Checking your connection…'); return; }
     if (a === 'yt' && f) { var u = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(f.title + ' ' + f.year + ' full movie'); if (window.Native && Native.openLink) Native.openLink(u); else window.open(u); return; }
     if (a === 'reset') { S.countries = DEFAULT_CC.slice(); persist(); render(); return; }
     if (a === 'update' && window.Native && Native.updateSelf) { var r = Native.updateSelf(); toast(r === 'allow' ? 'Allow installs from this app first, then try again' : 'Downloading the update…'); }
   }
   document.addEventListener('click', function (e) {
-    var el = e.target.closest('[data-tab],[data-i],[data-act],[data-cc]'); if (!el) return;
+    var el = e.target.closest('[data-tab],[data-i],[data-act],[data-cc],[data-pick]'); if (!el) return;
+    if (el.dataset.pick) { var pc = el.dataset.pick, pi = pickSel.indexOf(pc); if (pi >= 0) pickSel.splice(pi, 1); else pickSel.push(pc); render(); return; }
     if (el.dataset.tab) { setView(el.dataset.tab); return; }
     if (el.dataset.act) { act(el.dataset.act); return; }
     if (el.dataset.cc) { var cc = el.dataset.cc, i = S.countries.indexOf(cc); if (i >= 0) S.countries.splice(i, 1); else S.countries.push(cc); persist(); render(); return; }
@@ -276,22 +324,28 @@ window.app = (function () {
   });
 
   // ---------------------------------------------------------------- the connection's country: check tracked films when it changes
-  var checking = false;
-  function watchCountry() {
+  var checking = false, lastNet = 0, netT = 0;
+  function watchCountry(force) {
     whereAmI().then(function (cc) {
       if (!cc) return;
-      var changed = cc !== curCC; curCC = cc; save('lastcc', cc); render();
+      var changed = cc !== curCC || !!force; curCC = cc; save('lastcc', cc); render();
       var todo = Object.keys(S.tracked).map(function (k) { return S.tracked[k]; }).filter(function (f) {
         var c = ((S.prices[f.k] || {})[cc] || {}).conf; return !c || Date.now() - c.at > (changed ? 0 : 12 * 3600e3);
       });
       if (open && todo.indexOf(open) < 0 && !(((S.prices[open.k] || {})[cc] || {}).conf)) todo.unshift(open);
       if (!todo.length || checking) return;
-      checking = true; var i = 0, got = 0;
-      (function next() {
-        if (i >= todo.length) { checking = false; busy = ''; if (got) toast(flag(cc) + ' Saved ' + cname(cc) + ' prices for ' + got + ' film' + (got > 1 ? 's' : '')); render(); return; }
-        var f = todo[i++]; busy = 'Checking ' + cname(cc) + ': ' + f.title + ' (' + i + ' of ' + todo.length + ')'; render();
-        confirmHere(f, cc).then(function (c) { if (!c.none) got++; next(); }, next);
-      })();
+      checking = true; var i = 0, got = 0, done = 0, running = 0;
+      busy = 'Checking ' + cname(cc) + ' prices for ' + todo.length + ' film' + (todo.length > 1 ? 's' : '') + '…'; render();
+      function pump() {
+        while (running < 3 && i < todo.length) {
+          var f = todo[i++]; running++;
+          confirmHere(f, cc).then(function (c) { if (c && !c.none) got++; }, function () { }).then(function () {
+            running--; done++; busy = 'Checking ' + cname(cc) + ': ' + done + ' of ' + todo.length; render();
+            if (done >= todo.length) { checking = false; busy = ''; toast(flag(cc) + ' Saved ' + cname(cc) + ' prices for ' + got + ' film' + (got === 1 ? '' : 's')); render(); } else pump();
+          });
+        }
+      }
+      pump();
     });
   }
 
@@ -324,6 +378,7 @@ window.app = (function () {
   });
   function key(k) {
     if (k === 'resume') { watchCountry(); lookupsLeft().then(render); return; }
+    if (k === 'net') { clearTimeout(netT); netT = setTimeout(function () { watchCountry(); }, 2500); return; }   // the VPN settles, then check
     if (k === 'ok' && foc) { if (foc.tagName === 'INPUT') doSearch(foc.value); else foc.click(); }
   }
   function back() { if (open) { open = null; render(); return true; } if (view !== 'new') { setView('new'); return true; } return false; }
@@ -333,6 +388,6 @@ window.app = (function () {
   lookupsLeft().then(render);
   render(); loadView();
   watchCountry();
-  setInterval(function () { if (!document.hidden) watchCountry(); }, 90000);
+  setInterval(function () { if (!document.hidden && !checking) watchCountry(); }, 15000);   // spot a VPN switch within seconds
   return { _cb: _cb, key: key, back: back, updateMsg: function (m) { toast(m); } };
 })();

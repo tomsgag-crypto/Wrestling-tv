@@ -84,6 +84,15 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient());
         web.setWebChromeClient(new WebChromeClient());
         web.addJavascriptInterface(bridge = new Bridge(), "Native");
+        // tell the page when the connection changes (a VPN switching country) so it can check prices straight away
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (cm != null && android.os.Build.VERSION.SDK_INT >= 24 && "prices".equals(BuildConfig.FLAVOR)) cm.registerDefaultNetworkCallback(new android.net.ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(android.net.Network n) { ui.post(() -> { if (web != null) js("window.app && app.key('net')"); }); }
+                @Override public void onCapabilitiesChanged(android.net.Network n, android.net.NetworkCapabilities c) { ui.post(() -> { if (web != null) js("window.app && app.key('net')"); }); }
+                @Override public void onLinkPropertiesChanged(android.net.Network n, android.net.LinkProperties l) { ui.post(() -> { if (web != null) js("window.app && app.key('net')"); }); }
+            });
+        } catch (Exception ignored) { }
         web.loadUrl("file:///android_asset/index.html");
         web.requestFocus();
         SyncService.start(this);
