@@ -1,0 +1,18 @@
+name: IMDb ratings (Free TV)
+on:
+  schedule:
+    - cron: '41 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  ratings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/imdb_ratings.py imdb.json && ls -la imdb.json
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view imdb-ratings >/dev/null 2>&1 || gh release create imdb-ratings --title "IMDb ratings" --notes "IMDb ratings for Free TV's On Demand, refreshed daily (from IMDb's public datasets)."
+          gh release upload imdb-ratings imdb.json --clobber
