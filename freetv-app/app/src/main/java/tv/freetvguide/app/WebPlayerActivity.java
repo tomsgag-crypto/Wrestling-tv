@@ -180,7 +180,7 @@ public class WebPlayerActivity extends Activity {
             "vs.sort(function(a,b){var sa=(a.paused?0:2)+(isFinite(a.duration)&&a.duration>240?1:0),sb2=(b.paused?0:2)+(isFinite(b.duration)&&b.duration>240?1:0);return sb2-sa||((isFinite(b.duration)?b.duration:0)-(isFinite(a.duration)?a.duration:0));});if(vs[0])v=vs[0];}" +
             // watch the picture: restart it the moment the site pauses it, and note buffering, so we can tell which is happening
             "if(!v.__ftvW){v.__ftvW=1;window.__ftvLog=window.__ftvLog||[];v.addEventListener('pause',function(){if(window.__ftvUserPaused||v.ended||!/bbc\\.co\\.uk/.test(location.host))return;window.__ftvLog.push('paused');setTimeout(function(){if(v.paused&&!window.__ftvUserPaused)v.play();},150);});" +
-            "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');if(!v.__ftvWait)v.__ftvWait=Date.now();});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});v.addEventListener('playing',function(){v.__ftvWait=0;});}" +
+            "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');if(!v.__ftvWait)v.__ftvWait=Date.now();});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});v.addEventListener('playing',function(){v.__ftvWait=0;});v.addEventListener('pause',function(){if(!window.__ftvUserPaused&&/skysports/.test(location.host))window.__ftvLog.push('buffering');});}" +
             // Sky: waiting although the video is already here (a tiny hole in it, or the decoder stuck) → jump over the hole or nudge it on, instead of sitting on "Buffering"
             "var tfr=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality().totalVideoFrames:-1;if(v.paused||tfr!==v.__ftvF){if(!v.paused&&v.__ftvF>=0&&tfr>v.__ftvF)v.__ftvWait=0;v.__ftvF=tfr;v.__ftvFs=0;}else if(!v.__ftvFs){v.__ftvFs=Date.now();}" +
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvFs&&Date.now()-v.__ftvFs>1500&&!v.__ftvWait)v.__ftvWait=v.__ftvFs;" +
@@ -237,7 +237,8 @@ public class WebPlayerActivity extends Activity {
                 long fr = -1;
                 try { java.util.regex.Matcher fm = java.util.regex.Pattern.compile("(?:^|,)F(\\d+)").matcher(r); if (fm.find()) fr = Long.parseLong(fm.group(1)); } catch (Exception ignored) { }
                 // stopped = the clock isn't moving, or the picture isn't (Sky can keep the clock and sound going on a frozen picture)
-                boolean bufNow = !userPaused && (r.contains("skybuf") || (sct > 0 && !spz && ((stallCt >= 0 && Math.abs(sct - stallCt) < 0.3) || (fr >= 0 && fr == stallFr))));
+                boolean bufNow = !userPaused && (r.contains("skybuf") || (sct > 0 && spz) || (sct > 0 && !spz && ((stallCt >= 0 && Math.abs(sct - stallCt) < 0.3) || (fr >= 0 && fr == stallFr))));
+                int pageBufs = 0; { int ix = 0; while ((ix = r.indexOf("buffering", ix)) >= 0 && ix < r.indexOf('|') ) { pageBufs++; ix += 9; } }
                 if (sct >= 0) stallCt = sct;
                 stallFr = fr;
                 // the start-up wait is over (shown or not): from now on watch for buffering, even if it never settled
@@ -245,7 +246,10 @@ public class WebPlayerActivity extends Activity {
                 if (onSky() && skySettled && watching() && !userPaused) {
                     // buffering: quick restarts (jump the same player to live, ~2 s) again and again until it plays smoothly;
                     // only if 4 quick ones in a minute don't fix it, a full page restart
-                    if (bufNow && !wasBuffering) bufStarts.add(now2);
+                    if (now2 - lastLiveReload > 3000) {   // (a restart's own short wait doesn't count)
+                        if (bufNow && !wasBuffering) bufStarts.add(now2);
+                        for (int b = (bufNow && !wasBuffering) ? 1 : 0; b < pageBufs; b++) bufStarts.add(now2);   // short stutters between checks
+                    }
                     while (!bufStarts.isEmpty() && now2 - bufStarts.peekFirst() > 12000) bufStarts.pollFirst();
                     stallRun = bufNow ? stallRun + 1 : 0;
                     if ((bufStarts.size() >= 2 || stallRun >= 3) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 4000) {
