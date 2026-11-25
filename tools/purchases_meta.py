@@ -134,7 +134,7 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807, "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
+FIXED = {"seven": 807, "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
          "rebirth: home sweet home": ("Home Sweet Home: Rebirth", ""), "lake placid vs. anaconda": ("Lake Placid vs. Anaconda", "2015"), "the expelled": None, "ringu": ("Ring", "1998"), "recess: taking the 5th grade": ("Recess: Taking the Fifth Grade", "2003"),
          "saw - the final chapter": ("Saw 3D", "2010"), "saw: the final chapter": ("Saw 3D", "2010"), "el bufón": ("The Jester", "2023"), "the hulk": ("Hulk", "2003"), "holmes and watson": ("Holmes & Watson", "2018"), "girl house": ("Girl House", "2014"), "ju-on 2": ("Ju-on: The Curse 2", "2000")}
 SKIP = r"\b(Collection|Trilogy|Quadrilogy|\d+-?Film|Box ?Set)\b"    # bundles/clips: leave without genres
@@ -143,6 +143,7 @@ def fixed(title):
     i = FIXED.get(clean(title)[0].lower(), 0)
     if i is None: return "none"
     if not i: return None
+    if isinstance(i, list): i = min(i, key=lambda x: abs(x[2] - CUR["mins"]))[:2]   # same name: closest running time
     if isinstance(i, tuple):
         ps = {"api_key": TM, "query": i[0]}
         if i[1]: ps["year"] = i[1]
