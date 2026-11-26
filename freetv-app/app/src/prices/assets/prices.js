@@ -137,7 +137,24 @@ window.app = (function () {
       Native.webGet(u, id);
     });
   }
-  function playGet(u) { return webGet(u).then(function (h) { var b = blocked(h); if (b) throw new Error(b); return h; }); }
+  function unavailable(h) { return h.length < 60000 && /Unavailable in your country|not available in your country/i.test(h); }
+  /** Google sometimes answers "Unavailable in your country" unless the country is spelled out: try the page plainly, then with the country */
+  function playGet(u) {
+    var cc = curCC || '', tries = [u];
+    if (cc) tries.push(u.replace(/([?&])hl=en\b/, '$1hl=en-' + cc) + '&gl=' + cc, u + '&gl=' + cc, u.replace(/([?&])hl=en\b/, '$1hl=en_' + cc));
+    function go(i, last) {
+      if (i >= tries.length) return Promise.resolve(last);
+      return webGet(tries[i]).then(function (h) {
+        var b = blocked(h); if (b) throw new Error(b);
+        if (unavailable(h) && i + 1 < tries.length) return go(i + 1, h);
+        if (i > 0 && !unavailable(h)) { S.playVariant = S.playVariant || {}; S.playVariant[cc] = i; }
+        return h;
+      });
+    }
+    var first = S.playVariant && S.playVariant[cc];
+    if (first) { var t = tries.splice(first, 1)[0]; tries.unshift(t); }   // remember what worked for this country
+    return go(0, '');
+  }
   function playPage(id, f) { return playGet('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en').then(function (h) { return parsePlay(h, id, f && f.people); }); }
   /** find the film on Google Play from this connection; when several share the name, the one whose description matches the film's summary */
   function playFind(f) {
@@ -191,7 +208,7 @@ window.app = (function () {
       if (cc !== curCC) return slot.conf || { none: true, stale: true };   // the VPN moved while checking: don't file it under the old country
       if (!o) { slot.conf = { none: true, at: Date.now(), v: 3, why: 'Not found on Google Play there' }; persist(); return slot.conf; }
       o.buy.concat(o.rent).forEach(function (x) { if (!x.cur) x.cur = curOf(x.txt, cc); });
-      slot.conf = (o.buy.length || o.rent.length) ? { buy: o.buy, rent: o.rent, at: Date.now(), title: o.title, id: o.id, v: 3 } : { none: true, at: Date.now(), id: o.id, title: o.title, len: o.len, v: 3, why: 'On Google Play there, but not for sale' };
+      slot.conf = (o.buy.length || o.rent.length) ? { buy: o.buy, rent: o.rent, at: Date.now(), title: o.title, id: o.id, v: 3 } : { none: true, at: Date.now(), id: o.id, title: o.title, len: o.len, v: 3, why: /unavailable in your country/i.test(o.title || '') ? 'Google Play’s website won’t show films to this connection (“Unavailable in your country”)' : 'On Google Play there, but not for sale' };
       persist(); return slot.conf;
     });
   }
@@ -283,7 +300,8 @@ window.app = (function () {
   function grid(items, empty) { shown = items; return items.length ? '<div class="grid">' + items.map(card).join('') + '</div>' : '<div class="note">' + empty + '</div>'; }
   function render() {
     $('tabs').innerHTML = TABS.map(function (t) { return '<button class="tab f' + (t[0] === view && !open ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
-    $('status').innerHTML = '<button class="btn f" data-act="switched" style="float:right;margin-left:8px">🔄 I’ve switched country</button>' + (whereErr ? '<b>' + whereErr + '</b> · ' : '') + (curCC ? 'Connected via <span class="cc">' + flag(curCC) + ' ' + esc(cname(curCC)) + '</span> – Google Play prices here are checked automatically' : 'Finding your connection’s country…') +
+    $('status').innerHTML = '<span style="float:right;margin-left:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn f" data-act="switched">🔄 I’ve switched country</button>' +
+      (window.Native && Native.updateSelf ? '<button class="btn f" data-act="update">⬆ Update app</button>' : '') + '</span>' + (whereErr ? '<b>' + whereErr + '</b> · ' : '') + (curCC ? 'Connected via <span class="cc">' + flag(curCC) + ' ' + esc(cname(curCC)) + '</span> – Google Play prices here are checked automatically' : 'Finding your connection’s country…') +
       (SKEY && left != null ? ' · ' + left + ' country lookups left this month' : '') + (window.Native && Native.version ? ' · v' + esc(Native.version()) : '') + (busy ? ' · <b>' + esc(busy) + '</b>' : '');
     var h = '';
     if (open) h = filmPage(open);

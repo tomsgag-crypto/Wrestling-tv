@@ -10,7 +10,7 @@ function getJSON(u) { return get(u).then(JSON.parse); }
 function webGet(u) { return get(u); }
 function estimate() { return Promise.reject(new Error('no serpapi in test')); }
 var STOP = ' the a an and of to in on at for with from by is are was his her their they he she it its this that who when into after while as be has have will one two new life world must';
-eval(['numOf', 'curOf', 'norm', 'words', 'overlap', 'ensurePeople', 'ensureOv', 'parsePlay', 'blocked', 'playGet', 'playPage', 'playFind', 'confirmHere', 'confirmHere2'].map(grab).join('\n'));
+eval(['numOf', 'curOf', 'norm', 'words', 'overlap', 'ensurePeople', 'ensureOv', 'parsePlay', 'blocked', 'unavailable', 'playGet', 'playPage', 'playFind', 'confirmHere', 'confirmHere2'].map(grab).join('\n'));
 (async () => {
   for (const q of ['Heart of the Beast', 'The Odyssey', 'Inception', 'Gladiator', 'Dune']) {
     const t = (await getJSON(TM + '/search/movie?api_key=' + KEY + '&query=' + encodeURIComponent(q))).results.sort((a, b) => b.popularity - a.popularity)[0];
