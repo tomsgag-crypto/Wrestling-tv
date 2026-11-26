@@ -24,3 +24,11 @@ eval(['numOf', 'curOf', 'norm', 'words', 'overlap', 'ensureOv', 'parsePlay', 'bl
   }
 })();
 (async () => { const s = await get('https://play.google.com/store/search?q=The%20Odyssey&c=movies&hl=en'); console.log('ODYSSEY-LINKS', [...s.matchAll(/\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g)].map(m => m[1] + ' ' + m[2]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 12)); })();
+(async () => {
+  const t = (await getJSON(TM + '/search/movie?api_key=' + KEY + '&query=The%20Odyssey')).results.sort((a, b) => b.popularity - a.popularity)[0];
+  for (const id of ['Dx6po9kxhnE', '699AFDE3287C11FBMV', 'gpA7o9OwuiM.P', 'msis_R3JrkE.P']) {
+    try { const pg = await playPage(id); console.log('CAND', id, JSON.stringify({ title: pg.title, buy: pg.buy.map(x => x.txt + ' ' + x.q), rent: pg.rent.map(x => x.txt), ov: overlap(t.overview, pg.desc).toFixed(2), len: pg.len, desc: (pg.desc || '').slice(0, 90) })); }
+    catch (e) { console.log('CAND', id, 'ERR', e.message); }
+  }
+  console.log('TMDB-OV', t.title, t.release_date, t.overview.slice(0, 160));
+})();
