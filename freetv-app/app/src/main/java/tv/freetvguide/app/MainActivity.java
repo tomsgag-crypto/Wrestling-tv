@@ -463,6 +463,37 @@ public class MainActivity extends Activity {
         /** My Purchases: the YouTube key from the build (GitHub secret YT_API_KEY), never in the code. */
         @android.webkit.JavascriptInterface
         public String ytKey() { return BuildConfig.YT_API_KEY; }
+        /** Load a page in a hidden real browser and hand its HTML back (Film Prices: Google Play refuses plain requests from some connections). */
+        @android.webkit.JavascriptInterface
+        public void webGet(final String url, final String cbId) {
+            ui.post(() -> {
+                final boolean[] done = { false };
+                final android.webkit.WebView w = new android.webkit.WebView(MainActivity.this);
+                try {
+                    android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+                    cm.setAcceptCookie(true);
+                    cm.setCookie("https://play.google.com", "SOCS=CAESEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg; Domain=.google.com; Path=/");
+                    cm.setCookie("https://play.google.com", "CONSENT=YES+; Domain=.google.com; Path=/");
+                } catch (Exception ignored) { }
+                w.getSettings().setJavaScriptEnabled(true);
+                w.getSettings().setDomStorageEnabled(true);
+                w.getSettings().setBlockNetworkImage(true);
+                w.layout(0, 0, 1280, 2000);
+                final Runnable finish = () -> {
+                    if (done[0]) return; done[0] = true;
+                    w.evaluateJavascript("document.documentElement.outerHTML", html -> {
+                        js("app._cb(" + JSONObject.quote(cbId) + "," + (html == null || "null".equals(html) ? "\"\"" : html) + ",null)");
+                        try { w.stopLoading(); w.destroy(); } catch (Exception ignored) { }
+                    });
+                };
+                w.setWebViewClient(new android.webkit.WebViewClient() {
+                    @Override public void onPageFinished(android.webkit.WebView v, String u) { ui.postDelayed(finish, 1200); }
+                });
+                ui.postDelayed(() -> { if (!done[0]) finish.run(); }, 25000);
+                w.loadUrl(url);
+            });
+        }
+
         /** Open a web link in whichever app handles it (YouTube links open the YouTube app). */
         @android.webkit.JavascriptInterface
         public void openLink(String url) {

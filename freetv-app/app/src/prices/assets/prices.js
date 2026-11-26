@@ -101,6 +101,7 @@ window.app = (function () {
     var amounts = {}, m, re1 = /\[\[(\d+),"([A-Z]{3})","([^"]+)"\]\],null,\["(Buy|Rent)"/g;
     while ((m = re1.exec(h))) amounts[m[3].replace(/\\u00a0/g, ' ') + '|' + m[4]] = { amt: +m[1] / 1e6, cur: m[2] };
     var out = { buy: [], rent: [] }, seen = {}, re2 = /aria-label="([^"]+?) (Buy|Rent)(?: (SD|HD|4K|UHD))?"/g;
+    h = h.replace(/&quot;/g, '"');
     while ((m = re2.exec(h))) {
       var txt = m[1].replace(/&nbsp;| /g, ' '), kind = m[2], q = m[3] || '', key = txt + '|' + kind + '|' + q;
       if (seen[key]) continue; seen[key] = 1;
@@ -117,7 +118,16 @@ window.app = (function () {
     if (/unusual traffic|\/sorry\/index|recaptcha/i.test(h) && !/\/store\/movies\/details/.test(h)) return 'Google asked for a robot check (common on VPNs)';
     return '';
   }
-  function playGet(u) { return get(u + CONSENT).then(function (h) { var b = blocked(h); if (b) throw new Error(b); return h; }); }
+  /** Google Play pages are loaded in a hidden real browser (plain requests get "HTTP 403" from some connections) */
+  function webGet(u) {
+    if (!(window.Native && Native.webGet)) return get(u + CONSENT);
+    return new Promise(function (res, rej) {
+      var id = 'w' + (++cbN);
+      cbs[id] = function (body, err) { if (err) rej(new Error(err)); else if (!body) rej(new Error('Google Play didn’t load')); else res(body); };
+      Native.webGet(u, id);
+    });
+  }
+  function playGet(u) { return webGet(u).then(function (h) { var b = blocked(h); if (b) throw new Error(b); return h; }); }
   function playPage(id) { return playGet('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en').then(function (h) { return parsePlay(h, id); }); }
   /** find the film on Google Play from this connection; when several share the name, the one whose description matches the film's summary */
   function playFind(f) {
@@ -294,15 +304,17 @@ window.app = (function () {
     rs.forEach(function (r) {
       var c = r.s.conf, e = r.s.est;
       var err = r.s.err && (!c || r.s.err.at > c.at) ? '<br><span class="dim">⚠ ' + esc(r.s.err.msg) + '</span>' : '';
-      var buy = c && c.buy && c.buy.length ? c.buy.map(function (x) { return '<span class="ok">' + esc(x.txt) + (x.q ? ' ' + x.q : '') + '</span>'; }).join('<br>') : (c && c.none ? '<span class="dim">' + esc(c.why || 'Not on Google Play there') + '</span>' : '<span class="dim">–</span>');
+      var hasConf = c && c.buy && c.buy.length;
+      var buy = hasConf ? c.buy.map(function (x) { return '<span class="ok">' + esc(x.txt) + (x.q ? ' ' + x.q : '') + '</span>'; }).join('<br>') : (c && c.none ? '<span class="dim">' + esc(c.why || 'Not on Google Play there') + '</span>' : '');
+      if (!hasConf && e && !e.none) buy += (buy ? '<br>' : '') + '<span class="est">lowest ' + esc(e.txt) + '*</span>';
+      else if (!hasConf && e && e.none && !c) buy += '<span class="dim">not found</span>';
+      if (!buy) buy = '<span class="dim">–</span>';
       var rent = c && c.rent && c.rent.length ? c.rent.map(function (x) { return esc(x.txt) + (x.q ? ' ' + x.q : ''); }).join('<br>') : '';
-      if (e && !e.none) rent += (rent ? '<br>' : '') + '<span class="est">from ' + esc(e.txt) + '</span>';
-      else if (e && e.none && !c) rent += '<span class="dim">not found</span>';
       var g = r.buyG != null ? '<span class="ok">' + money(r.buyG) + '</span>' : r.predG != null ? '<span class="pred">≈' + money(r.predG) + '</span>' : (r.estG != null ? '<span class="est">' + money(r.estG) + '*</span>' : '–');
       h += '<tr class="' + (r === firstConf ? 'cheapest' : '') + '"><td>' + flag(r.cc) + ' ' + esc(cname(r.cc)) + (r.cc === curCC ? ' <span class="dim">(you)</span>' : '') + '</td><td>' + buy + err + '</td><td>' + (rent || '–') + '</td><td class="gbp">' + g + '</td><td class="dim">' +
         esc(when(c && c.at) || (e && e.at ? when(e.at) + ' *' : '')) + '</td></tr>';
     });
-    h += '</table><div class="note"><span class="pred">≈ purple</span> = predicted buy price, from how that country usually compares in your own checks. * = Google Play’s lowest price there (usually rental), from “Check countries”. All converted to pounds at today’s rate.</div>';
+    h += '</table><div class="note"><span class="pred">≈ purple</span> = predicted buy price, from how that country usually compares in your own checks. * = Google Play’s lowest price there, from “Check countries”: the buy price for new releases, usually the rental price for older films. All converted to pounds at today’s rate.</div>';
     return h;
   }
   function usuallyCheapest() {
