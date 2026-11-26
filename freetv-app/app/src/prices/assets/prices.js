@@ -93,11 +93,20 @@ window.app = (function () {
   var STOP = ' the a an and of to in on at for with from by is are was his her their they he she it its this that who when into after while as be has have will one two new life world must';
   function words(t) { var st = STOP.split(' '), o = {}; norm(t).split(' ').forEach(function (w) { if (w.length > 2 && st.indexOf(w) < 0) o[w] = 1; }); return o; }
   function overlap(a, b) { var A = words(a), B = words(b), n = 0, na = Object.keys(A).length, nb = Object.keys(B).length; Object.keys(A).forEach(function (w) { if (B[w]) n++; }); return na && nb ? n / Math.min(na, nb) : 0; }
+  /** director and main cast (from TMDB), the surest way to tell same-named films apart on Google Play */
+  function ensurePeople(f) {
+    if (f.people || !KEY || !f.id) return Promise.resolve();
+    return getJSON(TM + '/movie/' + f.id + '/credits?api_key=' + KEY).then(function (j) {
+      var d = (j.crew || []).filter(function (x) { return x.job === 'Director'; }).map(function (x) { return x.name; });
+      f.people = d.concat((j.cast || []).slice(0, 6).map(function (x) { return x.name; })).filter(Boolean).slice(0, 8);
+      if (S.tracked[f.k]) S.tracked[f.k].people = f.people; persist();
+    }, function () { f.people = []; });
+  }
   function ensureOv(f) {
     if (f.ov || !KEY || !f.id) return Promise.resolve();
     return getJSON(TM + '/movie/' + f.id + '?api_key=' + KEY + '&language=en-GB').then(function (j) { f.ov = j.overview || ''; if (S.tracked[f.k]) S.tracked[f.k].ov = f.ov; persist(); }, function () { });
   }
-  function parsePlay(h, id) {
+  function parsePlay(h, id, people) {
     var amounts = {}, m, re1 = /\[\[(\d+),"([A-Z]{3})","([^"]+)"\]\],null,\["(Buy|Rent)"/g;
     while ((m = re1.exec(h))) amounts[m[3].replace(/\\u00a0/g, ' ') + '|' + m[4]] = { amt: +m[1] / 1e6, cur: m[2] };
     var out = { buy: [], rent: [] }, seen = {}, re2 = /aria-label="([^"]+?) (Buy|Rent)(?: (SD|HD|4K|UHD))?"/g;
@@ -128,23 +137,23 @@ window.app = (function () {
     });
   }
   function playGet(u) { return webGet(u).then(function (h) { var b = blocked(h); if (b) throw new Error(b); return h; }); }
-  function playPage(id) { return playGet('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en').then(function (h) { return parsePlay(h, id); }); }
+  function playPage(id, f) { return playGet('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en').then(function (h) { return parsePlay(h, id, f && f.people); }); }
   /** find the film on Google Play from this connection; when several share the name, the one whose description matches the film's summary */
   function playFind(f) {
-    return Promise.all([ensureOv(f), playGet('https://play.google.com/store/search?q=' + encodeURIComponent(f.title) + '&c=movies&hl=en')]).then(function (r) {
-      var h = r[1], re = /\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g, m, seen = {}, list = [];
+    return Promise.all([ensureOv(f), ensurePeople(f), playGet('https://play.google.com/store/search?q=' + encodeURIComponent(f.title) + '&c=movies&hl=en')]).then(function (r) {
+      var h = r[2], re = /\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g, m, seen = {}, list = [];
       while ((m = re.exec(h))) { if (seen[m[2]]) continue; seen[m[2]] = 1; list.push({ slug: decodeURIComponent(m[1]).replace(/_/g, ' '), id: m[2] }); }
       // the exact title, plus the same title with a year or a short extra on the end ("The Odyssey 2026")
       var want = norm(f.title), cand = list.filter(function (x) { var n = norm(x.slug); return n === want || (n.indexOf(want + ' ') === 0 && /^(19|20)\d\d$|^\S+( \S+)?$/.test(n.slice(want.length + 1))); });
       cand.sort(function (a, b) { var ya = f.year && norm(a.slug).indexOf(f.year) >= 0 ? 0 : 1, yb = f.year && norm(b.slug).indexOf(f.year) >= 0 ? 0 : 1; return ya - yb; });
       cand = cand.slice(0, 5);
       if (!cand.length) return null;
-      if (cand.length === 1 && !f.ov) return playPage(cand[0].id);
-      return Promise.all(cand.map(function (c) { return playPage(c.id).catch(function () { return null; }); })).then(function (pages) {
+      if (cand.length === 1 && !f.ov && !(f.people && f.people.length)) return playPage(cand[0].id, f);
+      return Promise.all(cand.map(function (c) { return playPage(c.id, f).catch(function () { return null; }); })).then(function (pages) {
         var best = null, bs = -1;
         pages.forEach(function (pg, k) {
           if (!pg) return;
-          var sc = (f.ov ? overlap(f.ov, pg.desc) : 0) + (pg.buy.length || pg.rent.length ? 0.15 : 0) + (/\.P$/.test(cand[k].id) ? 0.05 : 0) + (f.year && norm(cand[k].slug).indexOf(f.year) >= 0 ? 0.3 : 0) - k * 0.01;
+          var sc = (pg.who || 0) * 2 + (f.ov ? overlap(f.ov, pg.desc) : 0) + (pg.buy.length || pg.rent.length ? 0.15 : 0) + (/\.P$/.test(cand[k].id) ? 0.05 : 0) + (f.year && norm(cand[k].slug).indexOf(f.year) >= 0 ? 0.3 : 0) - k * 0.01;
           if (sc > bs) { bs = sc; best = pg; }
         });
         return best;
@@ -170,8 +179,9 @@ window.app = (function () {
   function confirmHere2(f, cc, p, slot) {
     var known = slot.conf && slot.conf.id || (slot.est && slot.est.id);
     // a saved Google Play page is reused only if it's still for sale and its description matches this film
-    var pick = known ? ensureOv(f).then(function () { return playPage(known); }).then(function (o) {
-      return (o.buy.length || o.rent.length) && (!f.ov || !o.desc || overlap(f.ov, o.desc) >= 0.12) ? o : playFind(f);
+    var pick = known ? Promise.all([ensureOv(f), ensurePeople(f)]).then(function () { return playPage(known, f); }).then(function (o) {
+      var castOk = f.people && f.people.length ? (o.who || 0) >= 0.25 : (!f.ov || !o.desc || overlap(f.ov, o.desc) >= 0.12);
+      return (o.buy.length || o.rent.length) && castOk ? o : playFind(f);
     }, function () { return playFind(f); }) : playFind(f);
     return pick.then(function (o) {
       if (o || !SKEY || (left != null && left < 1)) return o;
