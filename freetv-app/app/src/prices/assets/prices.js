@@ -119,7 +119,8 @@ window.app = (function () {
     }
     var tm = h.match(/<title[^>]*>([^<]+)<\/title>/); out.title = tm ? tm[1].replace(/ - Movies on Google Play.*$/i, '').replace(/&amp;/g, '&') : '';
     var dm = h.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/) || h.match(/<meta[^>]*itemprop="description"[^>]*content="([^"]*)"/) || h.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*)"/); out.desc = dm ? dm[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"') : '';
-    out.id = id;
+    out.id = id; out.len = h.length;
+    if (people && people.length) { var low = h.toLowerCase(); out.who = people.filter(function (n) { return low.indexOf(n.toLowerCase()) >= 0; }).length / people.length; }
     return out;
   }
   function blocked(h) {
