@@ -361,13 +361,14 @@ window.app = (function () {
     var R = ratios(), p = S.prices[f.k] || {};
     var cand = S.countries.filter(function (cc) { return cc !== curCC && !bestBuy((p[cc] || {}).conf) && !((p[cc] || {}).est && Date.now() - p[cc].est.at < 14 * 864e5); });
     cand.sort(function (a, b) { return (R[a] ? R[a].r : 1) - (R[b] ? R[b].r : 1); });
-    return { cand: cand, sel: Object.keys(R).length > 2 ? cand.slice(0, 4) : cand.slice() };
+    var last = (S.pickLast || []).filter(function (cc) { return cand.indexOf(cc) >= 0; });
+    return { cand: cand, sel: S.pickLast ? last : (Object.keys(R).length > 2 ? cand.slice(0, 4) : cand.slice(0, 3)) };
   }
   function pickPanel(f) {
     var d = pickDefault(f);
     if (!d.cand.length) return '<div class="note">Every country already has a price for this film (or was looked up in the last two weeks).</div>';
-    return '<div class="note">Look up Google Play’s lowest price in these countries (one lookup each). Countries with exact prices, and the one you’re connected through, are left out.</div><div class="ctry">' +
-      d.cand.map(function (cc) { return '<span class="chipc f' + (pickSel.indexOf(cc) >= 0 ? ' on' : '') + '" data-pick="' + cc + '">' + flag(cc) + ' ' + esc(cname(cc)) + '</span>'; }).join('') + '</div>' +
+    return '<div class="note">Tick the countries to look up – each one uses one lookup (' + (left != null ? left + ' left this month' : 'about 250 a month') + '). Your ticks are remembered for next time. Countries that already have a price for this film are left out.</div><div class="ctry">' +
+      d.cand.map(function (cc) { var on = pickSel.indexOf(cc) >= 0; return '<span class="chipc f' + (on ? ' on' : '') + '" data-pick="' + cc + '">' + (on ? '☑ ' : '☐ ') + flag(cc) + ' ' + esc(cname(cc)) + '</span>'; }).join('') + '</div>' +
       '<div class="acts"><button class="btn f main" data-act="go">Look up ' + pickSel.length + ' countr' + (pickSel.length === 1 ? 'y' : 'ies') + '</button><button class="btn f" data-act="cancelpick">Cancel</button></div>';
   }
   function settingsPage() {
@@ -396,7 +397,7 @@ window.app = (function () {
     if (a === 'go' && f) {
       if (!pickSel.length) { toast('Tick at least one country'); return; }
       if (left != null && left < pickSel.length) { toast('Only ' + left + ' lookups left this month'); return; }
-      var only = pickSel.slice(); picking = false; estimateAll(f, only); if (!S.tracked[f.k]) { S.tracked[f.k] = f; persist(); } return;
+      var only = pickSel.slice(); S.pickLast = only.slice(); persist(); picking = false; estimateAll(f, only); if (!S.tracked[f.k]) { S.tracked[f.k] = f; persist(); } return;
     }
     if (a === 'switched') { lastNet = 0; watchCountry(true); toast('Checking your connection…'); return; }
     if (a === 'yt' && f) { var u = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(f.title + ' ' + f.year + ' full movie'); if (window.Native && Native.openLink) Native.openLink(u); else window.open(u); return; }
