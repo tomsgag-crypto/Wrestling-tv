@@ -25,3 +25,7 @@ const UAS = {
     }
   }
 })();
+(async () => {
+  const h = await (await fetch('https://play.google.com/store/movies/details?id=PpdcXmb6f6o.P&hl=en', { headers: { 'User-Agent': UAS.webview } })).text();
+  console.log('META', [...h.matchAll(/<meta[^>]*(?:description)[^>]*>/gi)].map(m => m[0].slice(0, 200)).slice(0, 5));
+})();
