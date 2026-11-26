@@ -368,7 +368,11 @@ window.app = (function () {
     if (a === 'switched') { lastNet = 0; watchCountry(true); toast('Checking your connection…'); return; }
     if (a === 'yt' && f) { var u = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(f.title + ' ' + f.year + ' full movie'); if (window.Native && Native.openLink) Native.openLink(u); else window.open(u); return; }
     if (a === 'reset') { S.countries = DEFAULT_CC.slice(); persist(); render(); return; }
-    if (a === 'update' && window.Native && Native.updateSelf) { var r = Native.updateSelf(); toast(r === 'allow' ? 'Allow installs from this app first, then try again' : 'Downloading the update…'); }
+    if (a === 'update' && window.Native && Native.updateSelf) {
+      var r = Native.updateSelf();
+      if (r === 'overlay' && Native.skipOverlay) { Native.skipOverlay(); r = Native.updateSelf(); }   // no need to reopen itself afterwards: just update
+      toast(r === 'allow' ? 'Turn on "Allow from this source" for Film Prices, press Back, then press Update again' : 'Downloading the update…');
+    }
   }
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-tab],[data-i],[data-act],[data-cc],[data-pick]'); if (!el) return;
