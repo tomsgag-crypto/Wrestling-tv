@@ -24,3 +24,13 @@ eval(['numOf', 'curOf', 'norm', 'words', 'overlap', 'ensurePeople', 'ensureOv', 
     } catch (e) { console.log('FLOW', q, 'ERR', e.message); }
   }
 })();
+
+(async () => {
+  const t = (await getJSON(TM + '/search/movie?api_key=' + KEY + '&query=The%20Odyssey')).results.sort((a, b) => b.popularity - a.popularity)[0];
+  const f = { k: 'x', id: t.id, title: t.title, year: '2026', ov: t.overview };
+  await ensurePeople(f); console.log('PEOPLE', JSON.stringify(f.people));
+  for (const id of ['Dx6po9kxhnE', '699AFDE3287C11FBMV', 'gpA7o9OwuiM.P', 'msis_R3JrkE.P']) {
+    const pg = await playPage(id, f).catch(e => ({ err: e.message }));
+    console.log('SCORE', id, JSON.stringify({ who: pg.who, ov: overlap(f.ov, pg.desc || '').toFixed(2), sale: !!(pg.buy && (pg.buy.length || pg.rent.length)), err: pg.err }));
+  }
+})();

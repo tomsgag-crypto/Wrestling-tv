@@ -143,8 +143,8 @@ window.app = (function () {
     return Promise.all([ensureOv(f), ensurePeople(f), playGet('https://play.google.com/store/search?q=' + encodeURIComponent(f.title) + '&c=movies&hl=en')]).then(function (r) {
       var h = r[2], re = /\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g, m, seen = {}, list = [];
       while ((m = re.exec(h))) { if (seen[m[2]]) continue; seen[m[2]] = 1; list.push({ slug: decodeURIComponent(m[1]).replace(/_/g, ' '), id: m[2] }); }
-      // the exact title, plus the same title with a year or a short extra on the end ("The Odyssey 2026")
-      var want = norm(f.title), cand = list.filter(function (x) { var n = norm(x.slug); return n === want || (n.indexOf(want + ' ') === 0 && /^(19|20)\d\d$|^\S+( \S+)?$/.test(n.slice(want.length + 1))); });
+      // the exact title, plus the same title with a year on the end ("The Odyssey 2026") – never sequels like "Gladiator II"
+      var want = norm(f.title), cand = list.filter(function (x) { var n = norm(x.slug); return n === want || (n.indexOf(want + ' ') === 0 && /^(19|20)\d\d$/.test(n.slice(want.length + 1))); });
       cand.sort(function (a, b) { var ya = f.year && norm(a.slug).indexOf(f.year) >= 0 ? 0 : 1, yb = f.year && norm(b.slug).indexOf(f.year) >= 0 ? 0 : 1; return ya - yb; });
       cand = cand.slice(0, 5);
       if (!cand.length) return null;
