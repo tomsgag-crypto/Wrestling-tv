@@ -65,7 +65,7 @@ window.app = (function () {
   S.countries = S.countries || DEFAULT_CC.slice();
   S.cache = S.cache || {};         // TMDB lists
   function persist() { save('state', S); }
-  Object.keys(S.prices).forEach(function (k) { Object.keys(S.prices[k]).forEach(function (cc) { var c = S.prices[k][cc].conf; if (c && c.none && !c.v) delete S.prices[k][cc].conf; }); });
+  Object.keys(S.prices).forEach(function (k) { Object.keys(S.prices[k]).forEach(function (cc) { var c = S.prices[k][cc].conf; if (c && c.none && (c.v || 0) < 3) delete S.prices[k][cc].conf; }); });
 
   // ---------------------------------------------------------------- films (TMDB)
   var TM = 'https://api.themoviedb.org/3', KEY = window.TMDB_KEY || '';
@@ -177,9 +177,9 @@ window.app = (function () {
       return estimate(f, cc).then(function () { var e = slot.est; return e && e.id ? playPage(e.id) : null; }, function () { return null; });
     }).then(function (o) {
       if (cc !== curCC) return slot.conf || { none: true, stale: true };   // the VPN moved while checking: don't file it under the old country
-      if (!o) { slot.conf = { none: true, at: Date.now(), v: 2, why: 'Not found on Google Play there' }; persist(); return slot.conf; }
+      if (!o) { slot.conf = { none: true, at: Date.now(), v: 3, why: 'Not found on Google Play there' }; persist(); return slot.conf; }
       o.buy.concat(o.rent).forEach(function (x) { if (!x.cur) x.cur = curOf(x.txt, cc); });
-      slot.conf = (o.buy.length || o.rent.length) ? { buy: o.buy, rent: o.rent, at: Date.now(), title: o.title, id: o.id, v: 2 } : { none: true, at: Date.now(), id: o.id, v: 2, why: 'On Google Play there, but not for sale' };
+      slot.conf = (o.buy.length || o.rent.length) ? { buy: o.buy, rent: o.rent, at: Date.now(), title: o.title, id: o.id, v: 3 } : { none: true, at: Date.now(), id: o.id, title: o.title, len: o.len, v: 3, why: 'On Google Play there, but not for sale' };
       persist(); return slot.conf;
     });
   }
@@ -305,7 +305,7 @@ window.app = (function () {
       var c = r.s.conf, e = r.s.est;
       var err = r.s.err && (!c || r.s.err.at > c.at) ? '<br><span class="dim">⚠ ' + esc(r.s.err.msg) + '</span>' : '';
       var hasConf = c && c.buy && c.buy.length;
-      var buy = hasConf ? c.buy.map(function (x) { return '<span class="ok">' + esc(x.txt) + (x.q ? ' ' + x.q : '') + '</span>'; }).join('<br>') : (c && c.none ? '<span class="dim">' + esc(c.why || 'Not on Google Play there') + '</span>' : '');
+      var buy = hasConf ? c.buy.map(function (x) { return '<span class="ok">' + esc(x.txt) + (x.q ? ' ' + x.q : '') + '</span>'; }).join('<br>') : (c && c.none ? '<span class="dim">' + esc(c.why || 'Not on Google Play there') + (c.id ? '<br>Read: “' + esc(c.title || '?') + '” (' + esc(c.id) + ', ' + Math.round((c.len || 0) / 1000) + ' KB)' : '') + '</span>' : '');
       if (!hasConf && e && !e.none) buy += (buy ? '<br>' : '') + '<span class="est">lowest ' + esc(e.txt) + '*</span>';
       else if (!hasConf && e && e.none && !c) buy += '<span class="dim">not found</span>';
       if (!buy) buy = '<span class="dim">–</span>';
@@ -392,7 +392,7 @@ window.app = (function () {
       var todo = Object.keys(S.tracked).map(function (k) { return S.tracked[k]; }).filter(function (f) {
         var c = ((S.prices[f.k] || {})[cc] || {}).conf; return !c || Date.now() - c.at > (changed ? 0 : 12 * 3600e3);
       });
-      if (open && todo.indexOf(open) < 0 && !(((S.prices[open.k] || {})[cc] || {}).conf)) todo.unshift(open);
+      if (open && !todo.some(function (t) { return t.k === open.k; }) && (changed || !(((S.prices[open.k] || {})[cc] || {}).conf))) todo.unshift(open);
       if (!todo.length || checking) return;
       checking = true; var i = 0, got = 0, done = 0, running = 0;
       busy = 'Checking ' + cname(cc) + ' prices for ' + todo.length + ' film' + (todo.length > 1 ? 's' : '') + '…'; render();

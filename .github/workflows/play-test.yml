@@ -8,3 +8,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: node tools/play_parse_test.js
+      - run: node tools/play_flow_test.js
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
