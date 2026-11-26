@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     static String zapList = "[]", pendingZap = null;   // the guide's channels for the player's mini guide; a channel picked there
     static int zapIndex = 0;
     private final Handler ui = new Handler(Looper.getMainLooper());
+    interface StrCb { void go(String s); }
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private long lastBack = 0;
     static MainActivity current;
@@ -479,17 +480,28 @@ public class MainActivity extends Activity {
                 w.getSettings().setDomStorageEnabled(true);
                 w.getSettings().setBlockNetworkImage(true);
                 w.layout(0, 0, 1280, 2000);
-                final Runnable finish = () -> {
+                // hand back the page exactly as Google sent it: Google's own scripts rearrange the live page, so ask for it again from inside this browser
+                final Runnable[] give = new Runnable[1];
+                final StrCb reply = body -> ui.post(() -> {
                     if (done[0]) return; done[0] = true;
-                    w.evaluateJavascript("document.documentElement.outerHTML", html -> {
-                        js("app._cb(" + JSONObject.quote(cbId) + "," + (html == null || "null".equals(html) ? "\"\"" : html) + ",null)");
-                        try { w.stopLoading(); w.destroy(); } catch (Exception ignored) { }
-                    });
-                };
-                w.setWebViewClient(new android.webkit.WebViewClient() {
-                    @Override public void onPageFinished(android.webkit.WebView v, String u) { ui.postDelayed(finish, 1200); }
+                    js("app._cb(" + JSONObject.quote(cbId) + "," + JSONObject.quote(body == null ? "" : body) + ",null)");
+                    try { w.stopLoading(); w.destroy(); } catch (Exception ignored) { }
                 });
-                ui.postDelayed(() -> { if (!done[0]) finish.run(); }, 25000);
+                w.addJavascriptInterface(new Object() {
+                    @android.webkit.JavascriptInterface public void done(String body) { reply.go(body); }
+                    @android.webkit.JavascriptInterface public void fail(String why) {
+                        ui.post(() -> { if (!done[0]) w.evaluateJavascript("document.documentElement.outerHTML", html -> {
+                            String t = html; try { t = new org.json.JSONArray("[" + html + "]").getString(0); } catch (Exception e) { t = ""; }
+                            reply.go(t); }); });
+                    }
+                }, "PlayPage");
+                give[0] = () -> { if (!done[0]) w.evaluateJavascript(
+                        "fetch(location.href,{credentials:'include'}).then(function(r){return r.text()}).then(function(t){PlayPage.done(t)},function(e){PlayPage.fail(String(e))})", null); };
+                final boolean[] asked = { false };
+                w.setWebViewClient(new android.webkit.WebViewClient() {
+                    @Override public void onPageFinished(android.webkit.WebView v, String u) { if (!asked[0]) { asked[0] = true; ui.postDelayed(give[0], 600); } }
+                });
+                ui.postDelayed(() -> { if (!done[0]) { done[0] = true; js("app._cb(" + JSONObject.quote(cbId) + ",null," + JSONObject.quote("Google Play took too long to load") + ")"); try { w.destroy(); } catch (Exception ignored) { } } }, 30000);
                 w.loadUrl(url);
             });
         }

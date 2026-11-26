@@ -109,7 +109,7 @@ window.app = (function () {
       out[kind.toLowerCase()].push({ txt: txt, q: q, amt: a.amt, cur: a.cur });
     }
     var tm = h.match(/<title[^>]*>([^<]+)<\/title>/); out.title = tm ? tm[1].replace(/ - Movies on Google Play.*$/i, '').replace(/&amp;/g, '&') : '';
-    var dm = h.match(/<meta name="description" content="([^"]*)"/) || h.match(/<meta property="og:description" content="([^"]*)"/); out.desc = dm ? dm[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"') : '';
+    var dm = h.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/) || h.match(/<meta[^>]*itemprop="description"[^>]*content="([^"]*)"/) || h.match(/<meta[^>]*property="og:description"[^>]*content="([^"]*)"/); out.desc = dm ? dm[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"') : '';
     out.id = id;
     return out;
   }
