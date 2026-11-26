@@ -23,3 +23,4 @@ eval(['numOf', 'curOf', 'norm', 'words', 'overlap', 'ensureOv', 'parsePlay', 'bl
     } catch (e) { console.log('FLOW', q, 'ERR', e.message); }
   }
 })();
+(async () => { const s = await get('https://play.google.com/store/search?q=The%20Odyssey&c=movies&hl=en'); console.log('ODYSSEY-LINKS', [...s.matchAll(/\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g)].map(m => m[1] + ' ' + m[2]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 12)); })();
