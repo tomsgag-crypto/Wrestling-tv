@@ -202,6 +202,9 @@ window.app = (function () {
       return (o.buy.length || o.rent.length) && castOk ? o : playFind(f);
     }, function () { return playFind(f); }) : playFind(f);
     return pick.then(function (o) {
+      // Google's website refused this country: get SerpApi's price for it instead (once), so the row isn't empty
+      if (o && !o.buy.length && !o.rent.length && /unavailable in your country/i.test(o.title || '') && SKEY && !(slot.est && !slot.est.none) && !(left != null && left < 1))
+        return estimate(f, cc).then(function () { return o; }, function () { return o; });
       if (o || !SKEY || (left != null && left < 1)) return o;
       return estimate(f, cc).then(function () { var e = slot.est; return e && e.id ? playPage(e.id) : null; }, function () { return null; });
     }).then(function (o) {
