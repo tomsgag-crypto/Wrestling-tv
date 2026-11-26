@@ -112,10 +112,16 @@ window.app = (function () {
     out.id = id;
     return out;
   }
-  function playPage(id) { return get('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en' + CONSENT).then(function (h) { return parsePlay(h, id); }); }
+  function blocked(h) {
+    if (/consent\.google\.|Before you continue to Google/i.test(h) && !/\/store\/movies\/details/.test(h)) return 'Google showed its cookie-consent page';
+    if (/unusual traffic|\/sorry\/index|recaptcha/i.test(h) && !/\/store\/movies\/details/.test(h)) return 'Google asked for a robot check (common on VPNs)';
+    return '';
+  }
+  function playGet(u) { return get(u + CONSENT).then(function (h) { var b = blocked(h); if (b) throw new Error(b); return h; }); }
+  function playPage(id) { return playGet('https://play.google.com/store/movies/details?id=' + encodeURIComponent(id) + '&hl=en').then(function (h) { return parsePlay(h, id); }); }
   /** find the film on Google Play from this connection; when several share the name, the one whose description matches the film's summary */
   function playFind(f) {
-    return Promise.all([ensureOv(f), get('https://play.google.com/store/search?q=' + encodeURIComponent(f.title) + '&c=movies&hl=en' + CONSENT)]).then(function (r) {
+    return Promise.all([ensureOv(f), playGet('https://play.google.com/store/search?q=' + encodeURIComponent(f.title) + '&c=movies&hl=en')]).then(function (r) {
       var h = r[1], re = /\/store\/movies\/details\/([^"?]+)\?id=([\w.\-]+)/g, m, seen = {}, list = [];
       while ((m = re.exec(h))) { if (seen[m[2]]) continue; seen[m[2]] = 1; list.push({ slug: decodeURIComponent(m[1]).replace(/_/g, ' '), id: m[2] }); }
       var want = norm(f.title), cand = list.filter(function (x) { return norm(x.slug) === want; });
@@ -157,6 +163,9 @@ window.app = (function () {
       return (o.buy.length || o.rent.length) && (!f.ov || !o.desc || overlap(f.ov, o.desc) >= 0.12) ? o : playFind(f);
     }, function () { return playFind(f); }) : playFind(f);
     return pick.then(function (o) {
+      if (o || !SKEY || (left != null && left < 1)) return o;
+      return estimate(f, cc).then(function () { var e = slot.est; return e && e.id ? playPage(e.id) : null; }, function () { return null; });
+    }).then(function (o) {
       if (cc !== curCC) return slot.conf || { none: true, stale: true };   // the VPN moved while checking: don't file it under the old country
       if (!o) { slot.conf = { none: true, at: Date.now(), v: 2, why: 'Not found on Google Play there' }; persist(); return slot.conf; }
       o.buy.concat(o.rent).forEach(function (x) { if (!x.cur) x.cur = curOf(x.txt, cc); });
@@ -253,7 +262,7 @@ window.app = (function () {
   function render() {
     $('tabs').innerHTML = TABS.map(function (t) { return '<button class="tab f' + (t[0] === view && !open ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
     $('status').innerHTML = '<button class="btn f" data-act="switched" style="float:right;margin-left:8px">🔄 I’ve switched country</button>' + (whereErr ? '<b>' + whereErr + '</b> · ' : '') + (curCC ? 'Connected via <span class="cc">' + flag(curCC) + ' ' + esc(cname(curCC)) + '</span> – Google Play prices here are checked automatically' : 'Finding your connection’s country…') +
-      (SKEY && left != null ? ' · ' + left + ' country lookups left this month' : '') + (busy ? ' · <b>' + esc(busy) + '</b>' : '');
+      (SKEY && left != null ? ' · ' + left + ' country lookups left this month' : '') + (window.Native && Native.version ? ' · v' + esc(Native.version()) : '') + (busy ? ' · <b>' + esc(busy) + '</b>' : '');
     var h = '';
     if (open) h = filmPage(open);
     else if (view === 'new') h = '<div class="note">Popular films out to buy or rent in the last few weeks. ★ marks the big ones.</div>' + (lists.new ? grid(lists.new, 'Nothing found.') : '<div class="note">Loading…</div>');
