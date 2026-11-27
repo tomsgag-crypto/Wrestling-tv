@@ -1298,7 +1298,8 @@ var app = (function () {
     if (!buy && !buyBusy) buyFetch(false);
     if (Date.now() - (buySources.metaAt || 0) > 3600000) { buySources.metaAt = Date.now(); buyMetaLoad(); }
     if (buy && Date.now() - buyAt > 12 * 3600000 && !buyBusy) buyFetch(false);
-    var all = (buy || []).map(buyItem), cats = [];
+    // one copy of each film: the details job marks extra copies (lower picture quality) and short clips to hide
+    var all = (buy || []).filter(function (x) { var md = buyMeta[x.id] || {}; return !md.dup && !md.x; }).map(buyItem), cats = [];
     all.sort(function (a, b) { var A = letterOf(a.title), B = letterOf(b.title); if (A !== B) return A === '#' ? -1 : B === '#' ? 1 : 0; return sortTitle(a.title).localeCompare(sortTitle(b.title), 'en', { numeric: true }); });
     if (!buy) cats.push({ src: 'msg', name: buyErr || 'Loading your films from YouTube…', items: [] });
     else {
@@ -1320,7 +1321,8 @@ var app = (function () {
     if (buyBusy) return 'Refreshing from YouTube…';
     if (!buy) return buyErr || 'Loading…';
     var d = new Date(buyAt);
-    return buy.length.toLocaleString('en-GB') + ' films · updated ' + (d.toDateString() === new Date().toDateString() ? 'today ' : d.getDate() + '/' + (d.getMonth() + 1) + ' ') + clock(buyAt / 1000) + (buyErr ? ' · ' + buyErr : '');
+    var hidden = buy.filter(function (x) { var md = buyMeta[x.id] || {}; return md.dup || md.x; }).length;
+    return (buy.length - hidden).toLocaleString('en-GB') + ' films' + (hidden ? ' (' + hidden + ' extra copies hidden)' : '') + ' · updated ' + (d.toDateString() === new Date().toDateString() ? 'today ' : d.getDate() + '/' + (d.getMonth() + 1) + ' ') + clock(buyAt / 1000) + (buyErr ? ' · ' + buyErr : '');
   }
   function buySearch() {
     var go = function () { buyQ = ($('popIn').value || '').trim(); od = []; buildOD(); odCat = 0; odRow = 0; odZone = buyQ ? 'grid' : 'cats'; };

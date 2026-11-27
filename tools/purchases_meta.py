@@ -17,11 +17,13 @@ while YT:
     for it in j.get("items", []):
         t = it["snippet"]["title"]
         if t.lower() in ("private video", "deleted video"): continue
-        films.append((it["contentDetails"]["videoId"], t, pos, it["snippet"].get("publishedAt") or ""))   # snippet.publishedAt = when it was added to the playlist; pos += 1
+        films.append((it["contentDetails"]["videoId"], t, pos, it["snippet"].get("publishedAt") or ""))   # snippet.publishedAt = when it was added to the playlist
+        pos += 1
     tok = j.get("nextPageToken")
     if not tok: break
 print("playlist films", len(films))
 INFO = {}   # videoId -> (minutes, upload year)
+DEF = {}    # videoId -> "hd" / "sd"
 for i in range(0, len(films), 50):
     try:
         ids = ",".join(f[0] for f in films[i:i + 50])
@@ -31,6 +33,7 @@ for i in range(0, len(films), 50):
             d = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?", v["contentDetails"].get("duration", "")) or None
             mins = (int(d.group(1) or 0) * 60 + int(d.group(2) or 0)) if d else 0
             INFO[v["id"]] = (mins, (v["snippet"].get("publishedAt") or "")[:4], v["snippet"].get("description") or "")
+            DEF[v["id"]] = v["contentDetails"].get("definition") or ""
     except Exception as e: print("youtube info fail", e)
 CUR = {"mins": 0, "up": "", "desc": ""}
 
@@ -141,7 +144,7 @@ def parts(q):
     return [x.strip() for x in re.split(r":\s|\s[-–|]\s", q) if len(x.strip()) > 2]
 
 # Tom's corrections: playlist title (lower case) -> TMDB film id
-FIXED = {"seven": 807, "teenage mutant ninja turtles": [("Teenage Mutant Ninja Turtles", "1990", 93), ("Teenage Mutant Ninja Turtles", "2014", 101)],
+FIXED = {"seven": 807, "evil dead": ("Evil Dead", "2013"), "flatliners": [("Flatliners", "1990", 115), ("Flatliners", "2017", 109)], "teenage mutant ninja turtles": [("Teenage Mutant Ninja Turtles", "1990", 93), ("Teenage Mutant Ninja Turtles", "2014", 101)],
          "cube": [("Cube", "1997", 90), ("Cube", "2021", 108)], "alice: subservience": ("Subservience", "2024"), "kursk: the last mission": ("Kursk", "2018"), "супер 8": ("Super 8", "2011"), "texas chainsaw massacre: the next generation": ("The Return of the Texas Chainsaw Massacre", "1995"),
          "the hobbit: the battle of five armies": ("The Hobbit: The Battle of the Five Armies", "2014"), "psycho 1960": ("Psycho", "1960"), "хеллбой: кровь и металл": ("Hellboy Animated: Blood and Iron", "2007"), "хеллбой: меч громов": ("Hellboy Animated: Sword of Storms", "2006"),
          "ничего себе поездочка 3": ("Joy Ride 3", "2014"), "куб": ("Cube", "1997"), "stephen king's, it!": ("It", "1990"), "fantastic four": [("Fantastic Four", "2005", 106), ("Fantastic Four", "2015", 100)], "dracula 2000": ("Dracula 2000", "2000"), "grindhouse: planet terror": ("Planet Terror", "2007"),
@@ -263,4 +266,38 @@ for t in missing:
         print("STILL NO MATCH:", t, "| tmdb says:", "; ".join("%s %s %.2f" % (b.get("title"), (b.get("release_date") or "")[:4], score(clean(t)[0], b, clean(t)[1])) for b in r))
     except Exception as e: print("STILL NO MATCH:", t, e)
 print("matched", sum(1 for v in out.values() if v.get("tm")), "of", len(films), "lookups", looked)
+CUT = r"(?i)unrated|extended|ultimate|director|noir|uncut|theatrical \+|special edition|final cut|redux"
+def cut_of(title): m = re.search(CUT, title); return m.group(0).lower() if m else ""
+titles = {vid: t for vid, t, p, a in films}
+groups = {}
+for vid, t, p, a in films:
+    m = out.get(vid) or {}
+    if not m.get("tm"): continue
+    mins = INFO.get(vid, (0,))[0]
+    if mins and mins < 20: m["x"] = 1; continue          # a clip or trailer, not the film
+    groups.setdefault((m["tm"], cut_of(t)), []).append(vid)
+def page_quality(vid):
+    """4K and HDR from the film's YouTube page; a page that lists its own stream qualities is YouTube's free-with-adverts version"""
+    try:
+        h = urllib.request.urlopen(urllib.request.Request("https://www.youtube.com/watch?v=" + vid + "&hl=en&gl=GB", headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131 Safari/537.36", "Accept-Language": "en-GB", "Cookie": "SOCS=CAI; CONSENT=YES+"}), timeout=40).read().decode("utf-8", "ignore")
+    except Exception as e:
+        print("page fail", vid, e); return None
+    free = '"qualityLabel"' in h
+    return (0 if free else 2) + (3 if re.search(r"\b4K\b|\bUHD\b", h) and not free else 0) + (1 if re.search(r"\bHDR\b", h) and not free else 0)
+dups = 0
+for key, vids in groups.items():
+    if len(vids) < 2:
+        out[vids[0]].pop("dup", None); continue
+    best, bs = None, None
+    for vid in vids:
+        q = page_quality(vid)
+        if q is None: q = 0
+        sc = (q, 1 if DEF.get(vid) == "hd" else 0, INFO.get(vid, (0,))[0], -out[vid].get("a", 0))
+        out[vid]["qs"] = q
+        if bs is None or sc > bs: best, bs = vid, sc
+    for vid in vids:
+        if vid == best: out[vid].pop("dup", None)
+        else: out[vid]["dup"] = best; dups += 1
+    print("DUPLICATE", titles[best], "| keep", best, out[best].get("qs"), "| hide", [(v, out[v].get("qs")) for v in vids if v != best])
+print("duplicates hidden", dups)
 json.dump({"n": len(films), "m": out}, open(sys.argv[1], "w"), separators=(",", ":"))
