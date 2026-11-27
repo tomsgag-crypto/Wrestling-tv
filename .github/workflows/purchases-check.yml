@@ -5,6 +5,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 tools/dup_quality_test.py
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node tools/purchases_sort_test.js
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}

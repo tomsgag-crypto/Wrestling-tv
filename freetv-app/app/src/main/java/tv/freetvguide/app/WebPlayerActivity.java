@@ -439,7 +439,7 @@ public class WebPlayerActivity extends Activity {
     // If a fixed picture quality won't start (Sky only allows some qualities on some devices), go back to Auto
     private int qChecks = 0;
     private final Runnable qualityWatch = new Runnable() { @Override public void run() {
-        if (web == null || quality() == 0 || !onSky()) return;
+        if (true) return;   // quality is fixed at "up to 540p" now, so there's nothing to fall back from (it used to warn after leaving Sky)
         web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
             "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);return v&&v.currentTime>2?'ok':'no';})()", r -> {
             if (r != null && r.contains("ok")) return;

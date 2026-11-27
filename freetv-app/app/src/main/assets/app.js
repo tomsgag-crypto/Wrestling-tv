@@ -1243,10 +1243,13 @@ var app = (function () {
   function buySorted(list, mode) {
     var buySort = mode || buyCatSort('');
     var m = function (it) { return buyMeta[it.yt] || {}; }, a = list.slice();
+    // every order is worked out from scratch (A–Z used to leave the list as it was, and Z–A just flipped whatever order it was in)
+    function az(x, y) { var A = letterOf(x.title), B = letterOf(y.title); if (A !== B) return A === '#' ? -1 : B === '#' ? 1 : (A < B ? -1 : 1); return sortTitle(x.title).localeCompare(sortTitle(y.title), 'en', { numeric: true }); }
+    a.sort(az);   // A–Z first: also the tie-break for the other orders
     if (buySort === 'za') a.reverse();
-    else if (buySort === 'new' || buySort === 'old') a.sort(function (x, y) { var d = (+m(y).y || 0) - (+m(x).y || 0); return buySort === 'new' ? d : -d; });
-    else if (buySort === 'top') a.sort(function (x, y) { return (m(y).r || 0) - (m(x).r || 0); });
-    else if (buySort === 'added') a.sort(function (x, y) { var d = String(m(y).d || '').localeCompare(String(m(x).d || '')); return d || ((m(y).a || 0) - (m(x).a || 0)); });   // when it went into the playlist
+    else if (buySort === 'new' || buySort === 'old') a.sort(function (x, y) { var d = (+m(y).y || 0) - (+m(x).y || 0); return (buySort === 'new' ? d : -d) || az(x, y); });
+    else if (buySort === 'top') a.sort(function (x, y) { return ((m(y).r || 0) - (m(x).r || 0)) || az(x, y); });
+    else if (buySort === 'added') a.sort(function (x, y) { var d = String(m(y).d || '').localeCompare(String(m(x).d || '')); return d || ((m(y).a || 0) - (m(x).a || 0)) || az(x, y); });   // when it went into the playlist
     return a;
   }
   /** OK on a list at the side (or the Sort button): show it, or choose how this list is sorted. Each list remembers its own order. */
@@ -1311,7 +1314,7 @@ var app = (function () {
     if (buy && Date.now() - buyAt > 12 * 3600000 && !buyBusy) buyFetch(false);
     // one copy of each film: the details job marks extra copies (lower picture quality) and short clips to hide
     var all = (buy || []).filter(function (x) { var md = buyMeta[x.id] || {}; return !md.dup && !md.x; }).map(buyItem), cats = [];
-    all.sort(function (a, b) { var A = letterOf(a.title), B = letterOf(b.title); if (A !== B) return A === '#' ? -1 : B === '#' ? 1 : 0; return sortTitle(a.title).localeCompare(sortTitle(b.title), 'en', { numeric: true }); });
+    all.sort(function (a, b) { var A = letterOf(a.title), B = letterOf(b.title); if (A !== B) return A === '#' ? -1 : B === '#' ? 1 : (A < B ? -1 : 1); return sortTitle(a.title).localeCompare(sortTitle(b.title), 'en', { numeric: true }); });
     if (!buy) cats.push({ src: 'msg', name: buyErr || 'Loading your films from YouTube…', items: [] });
     else {
       if (buyQ) { var q = buyQ.toLowerCase().trim().replace(/\s+(films?|movies?)$/, ''), kq = q.replace(/(ies)$/, 'y').replace(/([^s])s$/, '$1'), gq = BUY_GENRES.filter(function (g) { return g[0].toLowerCase() === q || (q.length > 3 && g[0].toLowerCase().indexOf(q) === 0) || (q === 'animated' && g[0] === 'Animation') || (q === 'scifi' || q === 'sci fi' ? g[0] === 'Sci-Fi' : false); })[0];
