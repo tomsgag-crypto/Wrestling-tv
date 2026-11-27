@@ -934,6 +934,7 @@ var app = (function () {
     var gen = (x.genre_ids || []).slice(0, 2).map(function (g) { return tmdbGenres[g]; }).filter(Boolean).join(', ');
     return { src: 'tmdb', svc: cat && cat.svcKey || '', title: title, tmdb: kind + '/' + x.id, kind: kind,
       sub: [year, gen].filter(Boolean).join(' · '), desc: x.overview || '',   // the IMDb rating is added when it's looked up
+      date: x.release_date || x.first_air_date || '', pop: x.popularity || 0, vote: x.vote_count > 20 ? x.vote_average || 0 : 0,
       img: x.backdrop_path ? 'https://image.tmdb.org/t/p/w300' + x.backdrop_path : x.poster_path ? 'https://image.tmdb.org/t/p/w185' + x.poster_path : '',
       big: x.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '',
       url: cat && cat.search ? cat.search + encodeURIComponent(title) : '' };
@@ -2197,7 +2198,7 @@ var app = (function () {
     var pool = (settings.hide.bbc ? [] : bbcCats).concat(settings.hide.pluto ? [] : plutoCats);
     streamCats.forEach(function (c) { if (!c.svcKey || mineSvc(c.svcKey)) pool.push(c); });
     pool.forEach(function (c) { (c.items || []).forEach(function (it) { var k = (it.title || '').toLowerCase() + '|' + (it.svc || ''); if ((match(it.title) || (topic.length > 3 && match((it.sub || '') + ' ' + (it.desc || '')))) && !seen[k]) { seen[k] = 1; found.push(it); } }); });
-    var cat = { id: 'odq', name: 'Results for "' + q + '"', src: 'odq', items: found.slice(0, 150) };
+    var cat = { id: 'odq', name: 'Search results', src: 'odq', items: found.slice(0, 300) };   // one name, so the chosen sort stays for every search
     odQSrc = { id: 'odq', name: 'Search: ' + q, cats: [cat] };
     odZone = found.length ? 'grid' : 'cats';
     render();
@@ -2231,8 +2232,8 @@ var app = (function () {
       kinds.forEach(function (kind) {
         var base = 'watch_region=GB&include_adult=false&sort_by=popularity.desc&with_watch_monetization_types=' + encodeURIComponent('flatrate|free|ads') + '&with_watch_providers=' + encodeURIComponent(provs.join('|'));
         var gk = gids.filter(function (g) { return true; }).join('|');
-        if (kws.length) [1, 2].forEach(function (pg) { reqs.push(tmdb('/discover/' + kind, base + '&page=' + pg + '&with_keywords=' + encodeURIComponent(kws.join('|'))).then(function (r) { return (r.results || []).map(function (x) { return tmdbItem(x, kind, null); }); }, function () { return []; })); });
-        if (gk) reqs.push(tmdb('/discover/' + kind, base + '&with_genres=' + encodeURIComponent(gk)).then(function (r) { return (r.results || []).map(function (x) { return tmdbItem(x, kind, null); }); }, function () { return []; }));
+        if (kws.length) [1, 2, 3, 4, 5].forEach(function (pg) { reqs.push(tmdb('/discover/' + kind, base + '&page=' + pg + '&with_keywords=' + encodeURIComponent(kws.join('|'))).then(function (r) { return (r.results || []).map(function (x) { return tmdbItem(x, kind, null); }); }, function () { return []; })); });
+        if (gk) [1, 2, 3].forEach(function (pg) { reqs.push(tmdb('/discover/' + kind, base + '&page=' + pg + '&with_genres=' + encodeURIComponent(gk)).then(function (r) { return (r.results || []).map(function (x) { return tmdbItem(x, kind, null); }); }, function () { return []; })); });
       });
       return Promise.all(reqs).then(function (lists) {
         if (mine !== odQSeq) return;
@@ -2253,6 +2254,10 @@ var app = (function () {
     var m = c ? catSort(c) : '';
     if (m === 'mine') { var a1 = [], b1 = []; items.forEach(function (it) { (inMyLists(it) ? a1 : b1).push(it); }); items = a1.concat(b1); }
     else if (m === 'az' && c && c.src !== 'tmdb') items = items.slice().sort(function (a, b) { return String(a.title).localeCompare(String(b.title)); });
+    else if (c && c.src === 'odq' && (m === 'new' || m === 'pop' || m === 'trend' || m === 'top')) {   // search results: sorted here (they come from several places)
+      var val = function (it) { return m === 'new' ? (it.date || (String(it.sub || '').match(/\b(19|20)\d\d\b/) || [''])[0]) : m === 'top' ? (it.vote || 0) : (it.pop || 0); };
+      items = items.slice().sort(function (a, b) { var x = val(a), y = val(b); return x < y ? 1 : x > y ? -1 : 0; });
+    }
     return items;
   }
   function ensureODItems() {
