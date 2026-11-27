@@ -5,8 +5,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: node tools/purchases_sort_test.js
+      - run: python3 tools/provider_check.py
         env:
-          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
