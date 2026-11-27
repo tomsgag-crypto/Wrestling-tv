@@ -732,6 +732,8 @@ var app = (function () {
   var EU_WEB = [   // [name, website or '', channel to pick on the site, VPN country, what it shows, listings key, official stream (plays in Free TV's player)]
     ['Virgin Media Two', 'https://play.virginmediatelevision.ie/live', 'Virgin Media Two', 'Ireland', 'Up to four Champions League games a week – English commentary', 'vm2'],
     ['Virgin Media One', 'https://play.virginmediatelevision.ie/live', 'Virgin Media One', 'Ireland', 'Virgin Media\'s main channel – English commentary', 'vm1'],
+    ['RTÉ2', 'https://www.rte.ie/player/', 'RTÉ2', 'Ireland', 'A Champions League game each week and Irish football – English commentary (free RTÉ Player account)', 'rte2'],
+    ['RTÉ One', 'https://www.rte.ie/player/', 'RTÉ One', 'Ireland', 'RTÉ\'s main channel – English commentary (free RTÉ Player account)', 'rte1'],
     ['ServusTV (Austria)', '', '', 'Austria', 'Champions League and Europa League – German commentary', 'servus', 'https://stv-live.akamaized.net/hls/live/20001604/lingeoSTVATwebPri-MSL5/master.m3u8'],
     ['TV8 (Italy)', 'https://www.tv8.it/streaming', '', 'Italy', 'A Champions League game each week, plus Europa League – Italian commentary', 'tv8'],
     ['Club RTL (Belgium)', 'https://www.rtlplay.be/', 'Club RTL', 'Belgium', 'Champions League – French commentary (free RTL Play account)', 'clubrtl'],

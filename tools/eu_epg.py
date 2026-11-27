@@ -7,6 +7,8 @@ BASE = "https://epgshare01.online/epgshare01/epg_ripper_%s.xml.gz"
 CH = {
     "vm1": (["IE1"], ["virgin media one", "virgin media 1", "virgin one"]),
     "vm2": (["IE1"], ["virgin media two", "virgin media 2", "virgin two"]),
+    "rte1": (["IE1"], ["rte one", "rte 1", "rte1"]),
+    "rte2": (["IE1"], ["rte2", "rte 2", "rte two"]),
     "servus": (["AT1", "DE1"], ["servustv", "servus tv", "servustv oesterreich", "servus tv osterreich", "servustv austria"]),
     "tv8": (["IT1"], ["tv8", "tv 8"]),
     "clubrtl": (["BE2", "BE1"], ["club rtl"]),
