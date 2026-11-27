@@ -11,16 +11,26 @@ except Exception: pass
 def get(u):
     return json.loads(urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"}), timeout=60).read())
 
-films, tok, pos = [], "", 0
-while YT:
-    j = get("https://www.googleapis.com/youtube/v3/playlistItems?" + urllib.parse.urlencode({"part": "snippet,contentDetails", "maxResults": 50, "playlistId": PL, "key": YT, "pageToken": tok}))
-    for it in j.get("items", []):
-        t = it["snippet"]["title"]
-        if t.lower() in ("private video", "deleted video"): continue
-        films.append((it["contentDetails"]["videoId"], t, pos, it["snippet"].get("publishedAt") or ""))   # snippet.publishedAt = when it was added to the playlist
-        pos += 1
-    tok = j.get("nextPageToken")
-    if not tok: break
+def read_playlist():
+    films, tok, pos, total = [], "", 0, 0
+    while YT:
+        j = get("https://www.googleapis.com/youtube/v3/playlistItems?" + urllib.parse.urlencode({"part": "snippet,contentDetails", "maxResults": 50, "playlistId": PL, "key": YT, "pageToken": tok}))
+        total = (j.get("pageInfo") or {}).get("totalResults", total)
+        for it in j.get("items", []):
+            t = it["snippet"]["title"]
+            pos += 1
+            if t.lower() in ("private video", "deleted video"): continue
+            films.append((it["contentDetails"]["videoId"], t, pos - 1, it["snippet"].get("publishedAt") or ""))   # snippet.publishedAt = when it was added to the playlist
+        tok = j.get("nextPageToken")
+        if not tok: break
+    return films, total, pos
+# YouTube sometimes leaves out a whole page of 50: read up to 3 times and keep the fullest read
+films, total, seen = [], 0, 0
+for attempt in range(3):
+    f, total, n = read_playlist()
+    print("read", attempt + 1, ":", len(f), "films of", total)
+    if len(f) > len(films): films, seen = f, n
+    if not total or seen >= total - 2: break
 print("playlist films", len(films))
 INFO = {}   # videoId -> (minutes, upload year)
 DEF = {}    # videoId -> "hd" / "sd"
@@ -266,6 +276,9 @@ for t in missing:
         print("STILL NO MATCH:", t, "| tmdb says:", "; ".join("%s %s %.2f" % (b.get("title"), (b.get("release_date") or "")[:4], score(clean(t)[0], b, clean(t)[1])) for b in r))
     except Exception as e: print("STILL NO MATCH:", t, e)
 print("matched", sum(1 for v in out.values() if v.get("tm")), "of", len(films), "lookups", looked)
+# a film missing from this read keeps its details from last time (the app only shows what's really in the playlist)
+for vid, m in old.items():
+    if vid not in out: out[vid] = m
 CUT = r"(?i)unrated|extended|ultimate|director|noir|uncut|theatrical \+|special edition|final cut|redux"
 def cut_of(title): m = re.search(CUT, title); return m.group(0).lower() if m else ""
 titles = {vid: t for vid, t, p, a in films}

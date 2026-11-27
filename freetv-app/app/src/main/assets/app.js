@@ -1274,19 +1274,30 @@ var app = (function () {
     var key = buyKey();
     if (!key) { buyErr = 'This build has no YouTube key (add the YT_API_KEY secret on GitHub, then update).'; return Promise.resolve(); }
     buyBusy = true; buyErr = ''; if (isOD()) render();
-    var out = [], pages = 0;
+    var out = [], pages = 0, total = 0, skipped = 0, tries = 0, best = null;
     function page(tok) {
       return get('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&maxResults=50&playlistId=' + BUY_PL + '&key=' + encodeURIComponent(key) + (tok ? '&pageToken=' + tok : '')).then(function (t) {
         var j = typeof t === 'string' ? JSON.parse(t) : t; pages++;
         if (j.error) throw new Error(j.error.message || 'YouTube said no');
+        if (j.pageInfo && j.pageInfo.totalResults) total = j.pageInfo.totalResults;
         (j.items || []).forEach(function (it) {
           var id = it.contentDetails && it.contentDetails.videoId || it.snippet && it.snippet.resourceId && it.snippet.resourceId.videoId, ti = it.snippet && it.snippet.title || '';
-          if (id && !/^(private|deleted) video$/i.test(ti)) out.push({ id: id, t: ti });
+          if (id && !/^(private|deleted) video$/i.test(ti)) out.push({ id: id, t: ti }); else skipped++;
         });
         if (j.nextPageToken && pages < 200) return page(j.nextPageToken);
       });
     }
-    return page('').then(function () {
+    // YouTube sometimes leaves out a whole page of 50: read the playlist again (up to 3 times) until the count matches, and keep the fullest read
+    function whole() {
+      tries++; out = []; pages = 0; skipped = 0;
+      return page('').then(function () {
+        if (!best || out.length > best.length) best = out;
+        if (total && best.length + skipped < total - 2 && tries < 3) return whole();
+        out = best;
+        if (buy && total && out.length + skipped < total - 2 && out.length < buy.length) out = buy;   // still short: keep the saved, fuller list
+      });
+    }
+    return whole().then(function () {
       out.sort(function (a, b) { var A = sortTitle(a.t), B = sortTitle(b.t), la = /^[a-z]/.test(A), lb = /^[a-z]/.test(B); return la !== lb ? (la ? 1 : -1) : A < B ? -1 : A > B ? 1 : 0; });
       buy = out; buyAt = Date.now(); save('buyFilms', buy); save('buyAt', buyAt); buyCats = null;
       try { console.log('My Purchases: fetched ' + out.length + ' films in ' + pages + ' pages'); } catch (e) {}
