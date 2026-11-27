@@ -728,8 +728,8 @@ var app = (function () {
   }
   /** Free European channels with football, watched on their own websites (Surfshark set to that country). pick: the channel to choose on the site. */
   var EU_WEB = [
-    ['Virgin Media Two (Ireland)', 'https://play.virginmediatelevision.ie/', 'Virgin Media Two', 'Ireland', 'Up to four Champions League games a week – English commentary'],
-    ['Virgin Media One (Ireland)', 'https://play.virginmediatelevision.ie/', 'Virgin Media One', 'Ireland', 'Virgin Media\'s main channel – some big football nights, English commentary'],
+    ['Virgin Media Two (Ireland)', 'https://www.virginmediatelevision.ie/player/live/virgin-media-two', 'Virgin Media Two', 'Ireland', 'Up to four Champions League games a week – English commentary'],
+    ['Virgin Media One (Ireland)', 'https://www.virginmediatelevision.ie/player/live/virgin-media-one', 'Virgin Media One', 'Ireland', 'Virgin Media\'s main channel – some big football nights, English commentary'],
     ['RTÉ2 (Ireland)', 'https://www.rte.ie/player/', 'RTÉ2', 'Ireland', 'A Champions League game each week and Irish football – English commentary (free RTÉ Player account)'],
     ['RTÉ One (Ireland)', 'https://www.rte.ie/player/', 'RTÉ One', 'Ireland', 'RTÉ\'s main channel – English commentary (free RTÉ Player account)'],
     ['ServusTV (Austria)', 'https://www.servustv.com/jetzt-live/', '', 'Austria', 'Champions League and Europa League games – German commentary'],
