@@ -101,12 +101,14 @@ try:
         if c.get("container_slug") in ("favorite_linear_channels", "recommended_linear_channels", "featured_channels", "recently_added_channels"): continue
         for i in c.get("contents") or []:
             if i not in cat_of: cat_of[i] = c.get("name") or ""; order.append(i)
+    print("tubi line-up", len(order), "channels in", len(data["epg"]["contentIdsByContainer"]), "groups")
     rows = {}
-    for b in range(0, len(order), 25):
-        q = "&".join("content_id=" + i for i in order[b:b + 25])
+    for b in range(0, len(order), 10):
+        q = "&".join("content_id=" + i for i in order[b:b + 10])
         try:
             j = json.loads(urllib.request.urlopen(urllib.request.Request("https://epg-cdn.production-public.tubi.io/content/epg/programming?platform=web&device_id=ftv-guide&lookahead=1&" + q, headers=UA), timeout=60).read())
             for r in j.get("rows") or []: rows[str(r.get("content_id"))] = r
+            print("tubi batch", b, len(j.get("rows") or []))
         except Exception as x:
             print("tubi batch failed", b, x)
     def iso(t): return int(datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=__import__("datetime").timezone.utc).timestamp())
