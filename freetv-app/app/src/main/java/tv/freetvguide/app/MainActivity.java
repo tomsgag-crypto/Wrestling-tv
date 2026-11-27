@@ -157,6 +157,13 @@ public class MainActivity extends Activity {
     protected void onStop() {
         super.onStop();
         if (mini != null) stopMiniAndTell();
+        // leaving Free TV (Home, or Back out of the guide): close the small corner video too
+        ui.postDelayed(() -> {
+            WebPlayerActivity p = WebPlayerActivity.pip;
+            if (visible || p == null || p.isFinishing()) return;
+            boolean small = p.cornered || (android.os.Build.VERSION.SDK_INT >= 24 && p.isInPictureInPictureMode());
+            if (small) { p.finish(); WebPlayerActivity.pip = null; }
+        }, 1500);
     }
 
     @Override
