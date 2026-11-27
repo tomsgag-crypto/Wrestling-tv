@@ -138,6 +138,7 @@ var app = (function () {
   var settings = Object.assign({ guideType: '', plutoInApp: true, helper: true, profile: '', bbc1: 'BBC One London', plus1: false, other: false, favs: [], favOnly: false, hide: {}, pay: true, hideWatched: false, remindMins: 30 }, load('settings') || {});
   var reminders = (load('reminders') || []).filter(function (r) { return r.item && r.item.e > Date.now() / 1000 - 3600; });
   var watched = load('watched') || {};          // key -> {at, item}
+  var epProg = load('epprog') || {};            // series tmdb id -> {s, e, t, at}: the last episode opened through Free TV
   var history = load('history') || [];          // [{at, item}] most recent first
   var lastOpen = null;
   var lists = load('lists') || [];
@@ -1066,17 +1067,35 @@ var app = (function () {
       var pickSeason = function (sn) {
         tmdb('/tv/' + id + '/season/' + sn, 'language=en-GB').then(function (sj) {
           var eps = (sj.episodes || []).filter(function (e) { return !e.air_date || e.air_date <= new Date().toISOString().slice(0, 10); });
-          showPop({ title: title + ' – ' + (sj.name || 'Season ' + sn), opts: eps.map(function (e) {
-            return { label: e.episode_number + '. ' + (e.name || 'Episode ' + e.episode_number) + (e.overview ? '  –  ' + e.overview.slice(0, 90) + (e.overview.length > 90 ? '…' : '') : ''),
-              fn: function () { openService(k, url, what, title, 'tv', { s: sn, e: e.episode_number, t: e.name || '' }); } };
+          var pg = epProg[id], row = 0;
+          eps.forEach(function (e, i) { if (pg && pg.s === sn && pg.e === e.episode_number) row = Math.min(eps.length - 1, i + 1); });
+          showPop({ title: title + ' – ' + (sj.name || 'Season ' + sn), row: row, opts: eps.map(function (e) {
+            var mark = !pg ? '' : (sn < pg.s || (sn === pg.s && e.episode_number < pg.e)) ? '✓ ' : (sn === pg.s && e.episode_number === pg.e) ? '● ' : '';
+            return { label: mark + e.episode_number + '. ' + (e.name || 'Episode ' + e.episode_number) + (e.overview ? '  –  ' + e.overview.slice(0, 90) + (e.overview.length > 90 ? '…' : '') : ''),
+              fn: function () { openEp(sn, e.episode_number, e.name || ''); } };
           }).concat(seasons.length > 1 ? [{ label: '◀ Other seasons', fn: function () { setTimeout(pickSeasonMenu, 0); } }] : [], [{ label: 'Open the series page instead', fn: function () { openService(k, url, what, title, 'tv'); } }, { label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }]) });
         }, function () { openService(k, url, what, title, 'tv'); });
       };
+      // where you're up to: the last episode opened through Free TV (● in the list, ✓ before it)
+      var openEp = function (sn, en, name) {
+        epProg[id] = { s: sn, e: en, t: name, at: Date.now(), title: title }; save('epProg', epProg);
+        openService(k, url, what, title, 'tv', { s: sn, e: en, t: name });
+        if (!(webSvc(k) || (k === 'prime' && appFindOK()))) toast('Opening ' + title + ' – choose Season ' + sn + ' Episode ' + en + ' there');
+      };
+      var pg0 = epProg[id];
       var pickSeasonMenu = function () {
-        if (seasons.length === 1) { pickSeason(seasons[0].season_number); return; }
-        showPop({ title: title + ' – choose a season', opts: seasons.map(function (x) {
-          return { label: (x.name || 'Season ' + x.season_number) + '  (' + x.episode_count + ' episodes)', fn: function () { setTimeout(function () { pickSeason(x.season_number); }, 0); } };
-        }).concat([{ label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }]) });
+        var cont = [];
+        if (pg0) {
+          var nextE = pg0.e + 1, cur = seasons.filter(function (x) { return x.season_number === pg0.s; })[0], nx = seasons.filter(function (x) { return x.season_number === pg0.s + 1; })[0];
+          var ns = pg0.s, ne = nextE;
+          if (cur && nextE > cur.episode_count && nx) { ns = nx.season_number; ne = 1; }
+          cont.push({ label: '▶ Next: Season ' + ns + ' Episode ' + ne + '  (you were up to S' + pg0.s + ' E' + pg0.e + ')', fn: function () { openEp(ns, ne, ''); } });
+          cont.push({ label: '✕ Forget where I\'m up to', fn: function () { delete epProg[id]; save('epProg', epProg); toast('Cleared'); } });
+        }
+        if (seasons.length === 1 && !pg0) { pickSeason(seasons[0].season_number); return; }
+        showPop({ title: title + (pg0 ? ' – up to S' + pg0.s + ' E' + pg0.e : ' – choose a season'), opts: cont.concat(seasons.map(function (x) {
+          return { label: (x.name || 'Season ' + x.season_number) + '  (' + x.episode_count + ' episodes)' + (pg0 && pg0.s === x.season_number ? '  ●' : ''), fn: function () { setTimeout(function () { pickSeason(x.season_number); }, 0); } };
+        })).concat([{ label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }]) });
       };
       pickSeasonMenu();
     }, function () { openService(k, url, what, title, 'tv'); });
@@ -1155,13 +1174,15 @@ var app = (function () {
       var ws = r[0], links = r[1];
       ws.forEach(function (w) { w.exact = links[w.k] || ''; });
       // a straight link in an app you have: just go
-      var direct = ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0];
+      var yours = ws.filter(function (w) { return mineSvc(w.k); }).length;
+      var direct = yours <= 1 ? ws.filter(function (w) { return w.exact && has(w.k) && (!it.svc || w.k === it.svc); })[0] : null;
+      if (direct && it.kind === 'tv') { pickEpisode(direct.k, direct.exact, '"' + it.title + '"', it.title, it); return; }
       if (direct && it.kind === 'tv' && webSvc(direct.k)) { pickEpisode(direct.k, direct.exact, '"' + it.title + '"', it.title, it); return; }
       // straight to one app (Netflix, Disney+ …): a short menu first, so the title can also go on a list
       if (direct) { showPop({ title: it.title, opts: [{ label: '▶ Open in ' + SVC[direct.k].name, fn: function () { openService(direct.k, direct.exact, '"' + it.title + '"', it.title, it.kind); } },
         { label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }, { label: 'Cancel' }] }); return; }
       // ITVX / Prime on the web don't need the app
-      var webOne = ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()) || (w.k === 'disney' && disneyWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
+      var webOne = yours > 1 ? null : ws.filter(function (w) { return (w.k === 'itv' && itvWeb()) || (w.k === 'prime' && primeWeb()) || (w.k === 'disney' && disneyWeb()); }).filter(function (w) { return !it.svc || w.k === it.svc; })[0];
       if (webOne && it.kind === 'tv') { pickEpisode(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it); return; }
       if (webOne) { showPop({ title: it.title, opts: [{ label: '▶ Open in ' + SVC[webOne.k].name, fn: function () { openService(webOne.k, webOne.exact, '"' + it.title + '"', it.title, it.kind); } },
         { label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }, { label: 'Cancel' }] }); return; }
@@ -1170,12 +1191,12 @@ var app = (function () {
       if (!ws) return;
       if (!ws.length) { toast('"' + it.title + '" isn\'t on any of your UK streaming apps right now'); return; }
       // prefer an app you have, free before paid
-      ws.sort(function (a, b) { return (has(b.k) ? 2 : 0) - (has(a.k) ? 2 : 0) + ((SVC[a.k].paid ? 1 : 0) - (SVC[b.k].paid ? 1 : 0)); });
+      ws.sort(function (a, b) { return (mineSvc(b.k) ? 2 : 0) - (mineSvc(a.k) ? 2 : 0) + ((SVC[a.k].paid ? 1 : 0) - (SVC[b.k].paid ? 1 : 0)); });
       var year = (it.sub || '').slice(0, 4);
       var gsearch = { label: TOUCH ? 'Search Google for it' : 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } };
       showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [].concat(ws.map(function (w) {
         return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (mineSvc(w.k) ? '' : ' (not installed)'),
-          fn: function () { var u = w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''); if (it.kind === 'tv' && webSvc(w.k)) pickEpisode(w.k, u, '"' + it.title + '"', it.title, it); else openService(w.k, u, '"' + it.title + '"', it.title, it.kind); } };
+          fn: function () { var u = w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''); if (it.kind === 'tv') pickEpisode(w.k, u, '"' + it.title + '"', it.title, it); else openService(w.k, u, '"' + it.title + '"', it.title, it.kind); } };
       })).concat(TOUCH ? [gsearch] : [], [{ label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }, { label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
   }
