@@ -2188,12 +2188,15 @@ var app = (function () {
   function odSearchRun(q) {
     odQ = q; odCat = 0; odRow = 0;
     if (!q) { odQSrc = null; odZone = 'cats'; render(); return; }
-    var words = q.toLowerCase().split(/\s+/), seen = {}, found = [];
+    // "christmas films", "zombie tv shows": the topic words, and whether films or TV were asked for
+    var ql = q.toLowerCase(), onlyK = /\b(films?|movies?)\b/.test(ql) ? 'movie' : /\b(tv|shows?|series|programmes?)\b/.test(ql) ? 'tv' : '';
+    var topic = ql.replace(/\b(films?|movies?|tv|shows?|series|programmes?|on demand)\b/g, ' ').replace(/\s+/g, ' ').trim() || ql;
+    var words = topic.split(/\s+/), seen = {}, found = [];
     var match = function (t) { t = String(t || '').toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); };
     // what's already loaded in On Demand (BBC iPlayer, Pluto, your apps' rows)
     var pool = (settings.hide.bbc ? [] : bbcCats).concat(settings.hide.pluto ? [] : plutoCats);
     streamCats.forEach(function (c) { if (!c.svcKey || mineSvc(c.svcKey)) pool.push(c); });
-    pool.forEach(function (c) { (c.items || []).forEach(function (it) { var k = (it.title || '').toLowerCase() + '|' + (it.svc || ''); if (match(it.title) && !seen[k]) { seen[k] = 1; found.push(it); } }); });
+    pool.forEach(function (c) { (c.items || []).forEach(function (it) { var k = (it.title || '').toLowerCase() + '|' + (it.svc || ''); if ((match(it.title) || (topic.length > 3 && match((it.sub || '') + ' ' + (it.desc || '')))) && !seen[k]) { seen[k] = 1; found.push(it); } }); });
     var cat = { id: 'odq', name: 'Results for "' + q + '"', src: 'odq', items: found.slice(0, 150) };
     odQSrc = { id: 'odq', name: 'Search: ' + q, cats: [cat] };
     odZone = found.length ? 'grid' : 'cats';
@@ -2201,8 +2204,8 @@ var app = (function () {
     // films and series on the apps you have (looked up on TMDB)
     if (!tmdbKey) return;
     var mine = ++odQSeq;
-    tmdb('/search/multi', 'region=GB&include_adult=false&query=' + encodeURIComponent(q)).then(function (j) {
-      var hits = (j.results || []).filter(function (x) { return x.media_type === 'movie' || x.media_type === 'tv'; }).slice(0, 16).map(function (x) { return tmdbItem(x, x.media_type, null); });
+    tmdb('/search/multi', 'region=GB&include_adult=false&query=' + encodeURIComponent(topic)).then(function (j) {
+      var hits = (j.results || []).filter(function (x) { return (x.media_type === 'movie' || x.media_type === 'tv') && (!onlyK || x.media_type === onlyK); }).slice(0, 16).map(function (x) { return tmdbItem(x, x.media_type, null); });
       return Promise.all(hits.map(function (it) {
         return whereToWatch(it).then(function (ws) { ws = ws.filter(function (w) { return mineSvc(w.k); }); it.where = ws.map(function (w) { return SVC[w.k].name; }).join(', '); return ws.length ? it : null; }, function () { return null; });
       }));
@@ -2212,7 +2215,35 @@ var app = (function () {
       cat.items = hits.filter(function (x) { return x && !seenT[x.title.toLowerCase()]; }).concat(cat.items);
       if (cat.items.length && odZone === 'cats') odZone = 'grid';
       if (isOD()) render();
+      return odTopic(topic, onlyK, cat, mine);
     }).catch(function () {});
+  }
+  /** Films / series about a topic ("christmas", "zombie", "comedy") on the apps you have, from TMDB's keywords and genres. */
+  function odTopic(topic, onlyK, cat, mine) {
+    var provs = myProvIds();
+    if (!provs.length) return Promise.resolve();
+    var gids = Object.keys(tmdbGenres).filter(function (id) { var n = tmdbGenres[id].toLowerCase(); return n === topic || n.split(/\s*&\s*/).indexOf(topic) >= 0 || (topic.length > 3 && n.indexOf(topic) === 0); });
+    return tmdb('/search/keyword', 'query=' + encodeURIComponent(topic)).then(function (j) {
+      var kws = (j.results || []).filter(function (k) { var n = k.name.toLowerCase(); return n === topic || n.indexOf(topic) >= 0; }).slice(0, 6).map(function (k) { return k.id; });
+      if (!kws.length && !gids.length) return;
+      var kinds = onlyK ? [onlyK] : ['movie', 'tv'];
+      var reqs = [];
+      kinds.forEach(function (kind) {
+        var base = 'watch_region=GB&include_adult=false&sort_by=popularity.desc&with_watch_monetization_types=' + encodeURIComponent('flatrate|free|ads') + '&with_watch_providers=' + encodeURIComponent(provs.join('|'));
+        var gk = gids.filter(function (g) { return true; }).join('|');
+        if (kws.length) [1, 2].forEach(function (pg) { reqs.push(tmdb('/discover/' + kind, base + '&page=' + pg + '&with_keywords=' + encodeURIComponent(kws.join('|'))).then(function (r) { return (r.results || []).map(function (x) { return tmdbItem(x, kind, null); }); }, function () { return []; })); });
+        if (gk) reqs.push(tmdb('/discover/' + kind, base + '&with_genres=' + encodeURIComponent(gk)).then(function (r) { return (r.results || []).map(function (x) { return tmdbItem(x, kind, null); }); }, function () { return []; }));
+      });
+      return Promise.all(reqs).then(function (lists) {
+        if (mine !== odQSeq) return;
+        var seenT = {}; cat.items.forEach(function (x) { seenT[(x.title || '').toLowerCase()] = 1; });
+        var add = [];
+        lists.forEach(function (l) { l.forEach(function (it) { var t = (it.title || '').toLowerCase(); if (!seenT[t]) { seenT[t] = 1; add.push(it); } }); });
+        cat.items = cat.items.concat(add);
+        if (cat.items.length && odZone === 'cats') odZone = 'grid';
+        if (isOD()) render();
+      });
+    });
   }
   function curCat() { return curSrc().cats[odCat]; }
   function odItems() {
