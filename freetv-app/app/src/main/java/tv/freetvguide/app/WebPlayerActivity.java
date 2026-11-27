@@ -173,7 +173,7 @@ public class WebPlayerActivity extends Activity {
                 "else if(v.__ftvAd&&(itv?(isFinite(d)&&d>240):!lab)){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
                     if (r != null && !r.equals("0") && cover.getVisibility() == View.VISIBLE && autoMode) cover.setText("Skipping adverts – " + getIntent().getStringExtra("title") + " starts in a moment…");
                 });
-        if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
+        if (!userPaused && find == null) web.evaluateJavascript("(function(){window.__ftvDelay=" + skyDelay() + ";function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
             "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(!v)return '';" +
             // pages with several videos (Prime: previews, adverts): watch the one that's playing and longest
             "if(!/skysports|virginmedia/.test(location.host)){var vs=[];(function c(r,d){if(!r||d>8)return;[].push.apply(vs,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)c(e.shadowRoot,d+1);});})(document,0);" +
@@ -187,12 +187,14 @@ public class WebPlayerActivity extends Activity {
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvWait&&Date.now()-v.__ftvWait>1200){v.__ftvFs=0;var ct=v.currentTime,inside=false,nx=-1;for(var g=0;g<v.buffered.length;g++){var bs=v.buffered.start(g),be=v.buffered.end(g);if(bs<=ct+0.02&&be>ct+0.5)inside=true;else if(bs>ct&&(nx<0||bs<nx))nx=bs;}" +
             "if(!inside&&nx>0&&nx-ct<6){v.currentTime=nx+0.1;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}else if(inside){v.currentTime=ct+0.2;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}v.__ftvWait=Date.now();}" +
             "if(v.paused&&!v.ended&&v.currentTime>1&&/bbc\\.co\\.uk/.test(location.host)){v.play();window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('paused');}" +
-            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&v.seekable&&v.seekable.length){var end=v.seekable.end(v.seekable.length-1);if(end-v.currentTime>90&&end-v.currentTime<7200&&!window.__ftvJump&&v.currentTime>0){window.__ftvJump=Date.now();" +
-            "try{localStorage.setItem('timeToLiveEdgeInMs','30000');}catch(e){}v.currentTime=end-30;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
+            "var LE=(function(){var n=v.seekable&&v.seekable.length,ct=v.currentTime,nw=Date.now()/1000;if(n){var e=v.seekable.end(n-1);if(e-ct>=0&&e-ct<7200)return e;}return Math.abs(nw-ct)<43200?nw-6:-1;})();window.__ftvLE=LE;" +
+            // more than a minute past the chosen delay (it showed old programmes): pull forward to the chosen delay, at most once a minute
+            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&LE>0&&v.currentTime>0){var D=window.__ftvDelay||30;if(LE-v.currentTime>D+60&&(!window.__ftvJump||Date.now()-window.__ftvJump>60000)){window.__ftvJump=Date.now();" +
+            "try{localStorage.setItem('timeToLiveEdgeInMs',String(D*1000));}catch(e){}v.currentTime=LE-D;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
             "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
             "if(v.__ftvRealWait&&!v.__ftvLogged&&Date.now()-v.__ftvRealWait>1200&&b<0.5&&!v.seeking){v.__ftvLogged=1;(window.__ftvLog=window.__ftvLog||[]).push('buffering');}" +
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
-            "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;if(bl>7200)bl=-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+(window.__ftvBack?'stepped back '+window.__ftvBack+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
+            "var bl=window.__ftvLE>0?Math.round(window.__ftvLE-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+(window.__ftvBack?'stepped back '+window.__ftvBack+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
             "var sb=false;if(/skysports/.test(location.host)){try{var roots=[],rn=v.getRootNode?v.getRootNode():document,hops=0;while(rn&&hops++<4){roots.push(rn);if(rn===document||!rn.host)break;rn=rn.host.getRootNode?rn.host.getRootNode():document;}" +
             // Sky's own "Buffering…" message on the player: if it's showing, it's buffering, whatever the clock says
@@ -242,6 +244,7 @@ public class WebPlayerActivity extends Activity {
                 int pageBufs = 0; { int ix = 0; while ((ix = r.indexOf("buffering", ix)) >= 0 && ix < r.indexOf('|') ) { pageBufs++; ix += 9; } }
                 if (sct >= 0) stallCt = sct;
                 stallFr = fr;
+                if (testing && onSky()) testTick(now2, bufNow, pageBufs);
                 // the start-up wait is over (shown or not): from now on watch for buffering, even if it never settled
                 if (onSky() && !skySettled && now2 > skyGateUntil + 1000) { skySettled = true; settledAt = now2; earlyBufs = 0; }
                 if (onSky() && skySettled && watching() && !userPaused) {
@@ -258,7 +261,7 @@ public class WebPlayerActivity extends Activity {
                         lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
                         while (!quickTimes.isEmpty() && now2 - quickTimes.peekFirst() > 60000) quickTimes.pollFirst();
                         if (quickTimes.size() < 4 || now2 - fullAt < 25000) { quickTimes.add(now2); quickRestart(); return; }
-                        quickTimes.clear(); fullAt = now2;
+                        quickTimes.clear(); fullAt = now2; tRestarts++;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;
                     }
@@ -683,14 +686,80 @@ public class WebPlayerActivity extends Activity {
     private long quickAt = 0;
     /** Restart without reloading the page: jump the same player to live (about 2 s). Used once; if it buffers again soon, the full restart follows. */
     private final java.util.ArrayDeque<Long> quickTimes = new java.util.ArrayDeque<>(); private long fullAt = 0; private int quickN = 0;
+    // ---- Sky test: tries each setup on this TV for about 3 minutes, counts buffering, then offers the best one ----
+    private int skyDelay() { return prefs().getInt("skyDelay", 30); }
+    private static final String[] TEST_NAMES = { "30 s behind live · browser downloads · auto restart", "30 s behind live · Free TV downloads · auto restart",
+        "30 s behind live · browser downloads · no auto restart", "10 s behind live · browser downloads · auto restart", "60 s behind live · browser downloads · auto restart" };
+    private static final int[][] TEST_SET = { {30, 0, 1}, {30, 1, 1}, {30, 0, 0}, {10, 0, 1}, {60, 0, 1} };   // delay, Free TV downloads, auto restart
+    private static final long TEST_SETTLE = 25000, TEST_RUN = 180000;
+    private boolean testing = false; private int testStep = -1, tBufs = 0, tStall = 0, tRestarts = 0; private long testAt = 0;
+    private final java.util.List<int[]> testScores = new java.util.ArrayList<>();
+    private android.widget.TextView testView;
+    private void applySetup(int[] st) { prefs().edit().putInt("skyDelay", st[0]).putBoolean("skyNet", st[1] == 1).putBoolean("skyAutoRestart", st[2] == 1).apply(); }
+    private void askTest() {
+        if (testing) {
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Stop the Sky test?")
+                .setPositiveButton("Stop", (d, w) -> { testing = false; applySetup(TEST_SET[0]); if (testView != null) testView.setVisibility(View.GONE); applyQuality(); })
+                .setNegativeButton("Keep going", null).show();
+            return;
+        }
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Run the Sky test?")
+            .setMessage("About 17 minutes on this channel. It tries 5 setups for 3 minutes each, counts the buffering on this TV, then shows the results and lets you keep the best one. Press left again to stop it.")
+            .setPositiveButton("Start", (d, w) -> startTest()).setNegativeButton("Cancel", null).show();
+    }
+    private void startTest() {
+        testing = true; testStep = -1; testScores.clear();
+        if (testView == null) {
+            testView = new android.widget.TextView(this);
+            testView.setTextColor(0xFFFFFFFF); testView.setTextSize(15); testView.setBackgroundColor(0xCC000000); testView.setPadding(24, 14, 24, 14);
+            root.addView(testView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM | android.view.Gravity.START));
+        }
+        testView.setVisibility(View.VISIBLE); testView.bringToFront();
+        nextTest();
+    }
+    private void nextTest() {
+        testStep++;
+        if (testStep >= TEST_SET.length) { finishTest(); return; }
+        applySetup(TEST_SET[testStep]);
+        testAt = android.os.SystemClock.uptimeMillis(); tBufs = 0; tStall = 0; tRestarts = 0;
+        testView.setText("Sky test " + (testStep + 1) + " of " + TEST_SET.length + ": " + TEST_NAMES[testStep] + " – starting…");
+        applyQuality();
+    }
+    private void testTick(long now, boolean buf, int pageBufs) {
+        long el = now - testAt;
+        if (el < TEST_SETTLE) { tBufs = 0; tStall = 0; tRestarts = 0; testView.setText("Sky test " + (testStep + 1) + " of " + TEST_SET.length + ": " + TEST_NAMES[testStep] + " – settling " + ((TEST_SETTLE - el) / 1000) + " s"); return; }
+        if (buf) tStall++;
+        tBufs += pageBufs;
+        long left = TEST_SETTLE + TEST_RUN - el;
+        testView.setText("Sky test " + (testStep + 1) + " of " + TEST_SET.length + ": " + TEST_NAMES[testStep] + "\n" + (left / 1000) + " s left · buffers " + tBufs + " · stopped " + tStall + " s · restarts " + tRestarts);
+        testView.bringToFront();
+        if (left <= 0) { testScores.add(new int[]{ tBufs, tStall, tRestarts }); nextTest(); }
+    }
+    private void finishTest() {
+        testing = false;
+        int best = 0; double bs = 1e9;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < testScores.size(); i++) {
+            int[] r = testScores.get(i); double score = r[1] + r[0] * 5 + r[2] * 3;   // seconds stopped, plus buffers and restarts
+            if (score < bs) { bs = score; best = i; }
+            sb.append(i + 1).append(". ").append(TEST_NAMES[i]).append("\n     buffers ").append(r[0]).append(" · stopped ").append(r[1]).append(" s · restarts ").append(r[2]).append("\n");
+        }
+        final int win = best;
+        sb.append("\nBest: ").append(win + 1).append(". ").append(TEST_NAMES[win]);
+        prefs().edit().putString("skyTestResults", sb.toString()).apply();
+        if (testView != null) testView.setVisibility(View.GONE);
+        applySetup(TEST_SET[0]);
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Sky test results").setMessage(sb.toString())
+            .setPositiveButton("Use the best", (d, w) -> { applySetup(TEST_SET[win]); applyQuality(); android.widget.Toast.makeText(this, "Using: " + TEST_NAMES[win], android.widget.Toast.LENGTH_LONG).show(); })
+            .setNegativeButton("Keep the normal setup", (d, w) -> applyQuality()).show();
+    }
     private boolean quickRestart() {
-        int back = new int[]{25, 30, 22, 35}[quickN++ % 4];   // land well behind live (a cushion against late chunks), at a different point each time
-        // Sky's "live point" can be on a different clock from the picture's position (it showed 79 years ahead), so only use it when it's sensible;
-        // otherwise step back from where the picture is now, giving the player video it can load – never more than 90 s behind in total
-        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{var ct=v.currentTime,B=" + back + ",s=v.seekable,n=s&&s.length;" +
-            "var st=n?s.start(0):0,end=n?s.end(n-1):ct;if(st>ct)st=0;" +
-            "if(n&&end-ct>=0&&end-ct<7200){v.currentTime=Math.max(st,end-B);}" +
-            "else{window.__ftvBack=window.__ftvBack||0;if(window.__ftvBack+B<=90){window.__ftvBack+=B;v.currentTime=Math.max(st,ct-B);}else{v.currentTime=Math.max(st,ct-0.5);}}" +
+        int back = skyDelay() + new int[]{-5, 0, -8, 5}[quickN++ % 4];   // the chosen delay behind live, at a slightly different point each time
+        tRestarts++;
+        // live = Sky's live point if it's sensible, otherwise now (the picture's position is clock time; Sky's own live point is a placeholder)
+        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{var ct=v.currentTime,B=" + back + ",s=v.seekable,n=s&&s.length,nw=Date.now()/1000;" +
+            "var st=n?s.start(0):0;if(st>ct)st=0;var LE=-1;if(n){var e=s.end(n-1);if(e-ct>=0&&e-ct<7200)LE=e;}if(LE<0&&Math.abs(nw-ct)<43200)LE=nw-6;" +
+            "if(LE>0){v.currentTime=Math.max(st,LE-B);}else{v.currentTime=Math.max(st,ct-0.5);}" +
             "v.play();}catch(e){}});})()", null);
         settledAt = android.os.SystemClock.uptimeMillis();
         note("Catching up…");
@@ -1284,7 +1353,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (watching() && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (!onSky()) adMenu(); }   // Sky: no options menu (they made no difference)
+                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (onSky()) askTest(); else adMenu(); }   // Sky: the Sky test
                 else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
             }
             return true;
