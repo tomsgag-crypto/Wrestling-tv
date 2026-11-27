@@ -1117,6 +1117,38 @@ var app = (function () {
     else if (r === 'store') toast('That app isn\'t installed – opening the Play Store');
     else if (r === 'app') toast('Opened the app – find ' + title + ' there');
   }
+  /** On Demand / My Purchases: OK on a film or series → watch it, or see its trailer on YouTube. */
+  function odOpen(it) {
+    var film = it.src === 'yt' || it.src === 'tmdb' || it.kind === 'movie' || it.kind === 'tv';
+    if (!film || !window.Native || !Native.openYouTube) { openItem(it); return; }
+    showPop({ title: it.title, opts: [
+      { label: it.src === 'yt' ? '▶ Watch' : '▶ Watch / open', fn: function () { setTimeout(function () { openItem(it); render(); }, 0); } },
+      { label: '🎬 Watch the trailer (YouTube)', fn: function () { playTrailer(it); } },
+      { label: 'Cancel' }] });
+  }
+  function playTrailer(it) {
+    if (!tmdbKey) { toast('Trailers need the film details service'); return; }
+    toast('Finding the trailer for "' + it.title + '"…');
+    var md = it.meta || {}, yr = (String(it.sub || '').match(/\b(19|20)\d\d\b/) || [''])[0];
+    var idP = it.tmdb ? Promise.resolve(it.tmdb) : md.tm ? Promise.resolve('movie/' + md.tm)
+      : tmdb('/search/multi', 'include_adult=false&query=' + encodeURIComponent(String(it.title || '').replace(/\s*\(.*?\)\s*$/, ''))).then(function (j) {
+          var r = (j.results || []).filter(function (x) { return x.media_type === 'movie' || x.media_type === 'tv'; });
+          var best = r.filter(function (x) { return yr && String(x.release_date || x.first_air_date || '').indexOf(yr) === 0; })[0] || r[0];
+          return best ? best.media_type + '/' + best.id : null;
+        });
+    idP.then(function (path) {
+      if (!path) return null;
+      var pick = function (j) {
+        var v = (j.results || []).filter(function (x) { return x.site === 'YouTube' && x.key; });
+        var score = function (x) { return (x.type === 'Trailer' ? 4 : x.type === 'Teaser' ? 2 : 0) + (x.official ? 1 : 0); };
+        v.sort(function (a, b) { return score(b) - score(a); });
+        return v[0] && score(v[0]) >= 2 ? v[0].key : null;
+      };
+      return tmdb('/' + path + '/videos', 'language=en-US').then(function (j) { return pick(j) || tmdb('/' + path + '/videos').then(pick); });
+    }).then(function (key) {
+      if (key) Native.openYouTube(key); else toast('No trailer found for "' + it.title + '"');
+    }, function () { toast('Couldn\'t look up the trailer for "' + it.title + '"'); });
+  }
   function openTMDB(it) {
     toast('Finding "' + it.title + '"…');
     Promise.all([whereToWatch(it), serviceLinks(it)]).then(function (r) {
@@ -2251,7 +2283,7 @@ var app = (function () {
       else if (k === 'right') { if (items.length) odZone = 'grid'; }
       else if (k === 'menu') { optionsMenu(); return; }
     } else {
-      if (k === 'ok') { if (items[odRow]) openItem(items[odRow]); render(); return; }
+      if (k === 'ok') { if (items[odRow]) odOpen(items[odRow]); render(); return; }
       if (k === 'hold' || k === 'add') { if (items[odRow]) addMenu(items[odRow]); return; }
       if (k === 'menu') { optionsMenu(); return; }
       var r = gridMove(k, odRow, items.length, $('odGrid'));
