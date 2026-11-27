@@ -54,8 +54,9 @@ for f, raw in data.items():
     ids = {}
     for k in keys:
         want = [norm(n) for n in CH[k][1]]
-        exact = [cid for cid, ns in names.items() if any(n in want for n in ns)]
-        loose = [cid for cid, ns in names.items() if any(n.startswith(w) and len(n) <= len(w) + 4 and not re.search(r"hd$|plus1|\+1", n) for n in ns for w in want)]
+        ok = {cid: [re.sub(r"(hd|uhd|fhd)$", "", n) for n in ns] for cid, ns in names.items() if not re.search(r"\+1|plus ?1|\+24", cid, re.I)}
+        exact = [cid for cid, ns in ok.items() if any(n in want for n in ns)]
+        loose = [cid for cid, ns in ok.items() if any(n.startswith(w) and len(n) <= len(w) + 4 for n in ns for w in want)]
         cands = exact or loose
         if cands:
             ids[k] = cands
