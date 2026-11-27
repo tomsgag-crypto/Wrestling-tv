@@ -284,6 +284,15 @@ def page_quality(vid):
         print("page fail", vid, e); return None
     # (YouTube doesn't show 4K / HDR on the page unless you're signed in, so those can't be told apart here)
     return 0 if '"qualityLabel"' in h else 2
+# copies more than 6 minutes apart in length are different cuts (extended / theatrical): keep each
+split = {}
+for key, vids in groups.items():
+    for vid in sorted(vids, key=lambda v: INFO.get(v, (0,))[0]):
+        mins = INFO.get(vid, (0,))[0]
+        for k2 in [k for k in split if k[0] == key]:
+            if abs(k2[1] - mins) <= 6: split[k2].append(vid); break
+        else: split[(key, mins)] = [vid]
+groups = {k: v for k, v in split.items()}
 dups = 0
 for key, vids in groups.items():
     if len(vids) < 2:
