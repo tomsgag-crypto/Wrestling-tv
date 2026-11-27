@@ -2116,6 +2116,7 @@ var app = (function () {
       if (c && c.appK === 'sling' && window.Native && Native.openPlay) { var nm = c.name.replace(/ \((Sling|US)\)$/, ''); var rr = Native.openPlay(SVC.sling.app, SVC.sling.store, nm);
         toast(rr === 'play' ? 'Asking Sling to play ' + nm + '…' : rr === 'search' ? 'Searching Sling for ' + nm : rr === 'app' ? 'Opened Sling – choose ' + nm : 'Sling TV isn\'t installed'); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
+      if (c && c.play === 'eu' && (!fp || fp.s <= now) && playPlutoChannel(c.id)) return;
       if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }

@@ -99,6 +99,7 @@ public class PlayerActivity extends Activity {
                 else { info3.setText("This channel won't play right now – try another (▲ ▼)"); showInfo(8000); }
             }
             @Override public void onPlaybackStateChanged(int s) { if (s == Player.STATE_READY) retries = 0; }
+            @Override public void onIsPlayingChanged(boolean p) { if (p) { stuckTries = 0; ui.removeCallbacks(startCheck); } }
         });
 
         GestureDetector g = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -166,7 +167,13 @@ public class PlayerActivity extends Activity {
         } finally { c.disconnect(); }
     }
 
+    // a channel that opens on a black screen: start it again (twice at most) if no picture after 12 s
+    private int stuckTries = 0;
+    private final Runnable startCheck = () -> {
+        if (player != null && !player.isPlaying() && player.getPlayWhenReady() && stuckTries++ < 2) play();
+    };
     private void play() {
+        ui.removeCallbacks(startCheck); ui.postDelayed(startCheck, 12000);
         updateInfo();
         showInfo(5000);
         final JSONObject cur = episode != null ? null : chans.optJSONObject(idx);
@@ -254,5 +261,5 @@ public class PlayerActivity extends Activity {
         if (stopped && player != null) { if (episode == null) play(); else player.play(); }   // live: catch up to now
         stopped = false;
     }
-    @Override protected void onDestroy() { super.onDestroy(); if (player != null) player.release(); net.shutdownNow(); }
+    @Override protected void onDestroy() { super.onDestroy(); ui.removeCallbacks(startCheck); if (player != null) player.release(); player = null; net.shutdownNow(); }
 }
