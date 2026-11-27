@@ -104,7 +104,7 @@ try:
     print("tubi line-up", len(order), "channels in", len(data["epg"]["contentIdsByContainer"]), "groups")
     rows = {}
     for b in range(0, len(order), 10):
-        q = "&".join("content_id=" + i for i in order[b:b + 10])
+        q = "content_id=" + ",".join(order[b:b + 10])
         try:
             j = json.loads(urllib.request.urlopen(urllib.request.Request("https://epg-cdn.production-public.tubi.io/content/epg/programming?platform=web&device_id=ftv-guide&lookahead=1&" + q, headers=UA), timeout=60).read())
             for r in j.get("rows") or []: rows[str(r.get("content_id"))] = r
