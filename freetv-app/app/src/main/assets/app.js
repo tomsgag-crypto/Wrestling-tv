@@ -204,7 +204,7 @@ var app = (function () {
     for (var d = Math.floor((a - day0) / 86400); d <= Math.floor((b - day0) / 86400); d++) if (d >= 0 && d < DAYS && ((!dayLoads[d] && !(dayFailed[d] && Date.now() - dayFailed[d] < 120000)) || (settings.pay && sky.list.length && !skyLoads[d]))) want.push(d);
     if (!want.length) return;
     status('guide', true);
-    Promise.all(want.map(function (d) { return Promise.all([loadDay(d), settings.pay ? loadSkyDay(d) : null]); })).then(function () {
+    Promise.all(want.map(function (d) { return soon(Promise.all([loadDay(d), settings.pay ? loadSkyDay(d) : null]), 25000); })).then(function () {
       status('guide', false); buildFilmsOnTV(); if (view === 'guide' || isOD()) render();
     });
   }
@@ -647,7 +647,7 @@ var app = (function () {
      ['USA Network (Sling)', SL + '#ftv-sling=USA', us('usa', 'USA Network on Sling TV – Premier League, WWE and more')]].forEach(function (r, i) {
       chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], appK: r[1] === PP ? 'paramount' : /sling\.com/.test(r[1]) ? 'sling' : '', cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
     });
-    euRows('Europe football (VPN)').forEach(function (r) { r.type = 'Sport'; chans.push(r); });
+    euRows('Europe TV').forEach(function (r) { r.type = 'Sport'; chans.push(r); });
     if (gRow >= chans.length) gRow = 0;
   }
   function buildChans() {
@@ -705,12 +705,12 @@ var app = (function () {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
       w.rows.forEach(function (r, i) { out.push({ sec: w.sec, id: 'w' + w.k + i, name: r[0], web: r[1], appK: w.k === 'pplus' ? 'paramount' : '', cat: r[2] || '', events: [] }); });
     });
-    euRows('Europe (VPN)').forEach(function (r) { out.push(r); });
+    euRows('Europe TV').forEach(function (r) { out.push(r); });
     out = out.filter(function (c) { return !settings.hide[c.sec.replace(' (US)', '')]; });
     var usFirst = isUS(); out = out.filter(function (c) { return (secGroup(c.sec) === 'US TV') === usFirst; }).concat(out.filter(function (c) { return (secGroup(c.sec) === 'US TV') !== usFirst; }));
     out.forEach(function (c) { c.type = chanType(c); });
     if (settings.guideType) out = out.filter(function (c) { return c.type === settings.guideType; });
-    if (/^(UK|US) TV$/.test(settings.guideSec || '')) { var gs = out.filter(function (c) { return secGroup(c.sec) === settings.guideSec; }); if (gs.length) out = gs; }
+    if (/^(UK|US|Europe) TV$/.test(settings.guideSec || '')) { var gs = out.filter(function (c) { return secGroup(c.sec) === settings.guideSec; }); if (gs.length) out = gs; }
     else if (settings.guideSec && out.some(function (c) { return c.sec === settings.guideSec; })) out = out.filter(function (c) { return c.sec === settings.guideSec; });
     // favourites at the top (or on their own)
     var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
@@ -727,24 +727,34 @@ var app = (function () {
       .catch(function () {});
   }
   /** Free European channels with football, watched on their own websites (Surfshark set to that country). pick: the channel to choose on the site. */
-  var EU_WEB = [
-    ['Virgin Media Two (Ireland)', 'https://www.virginmediatelevision.ie/player/live/virgin-media-two', 'Virgin Media Two', 'Ireland', 'Up to four Champions League games a week – English commentary'],
-    ['Virgin Media One (Ireland)', 'https://www.virginmediatelevision.ie/player/live/virgin-media-one', 'Virgin Media One', 'Ireland', 'Virgin Media\'s main channel – some big football nights, English commentary'],
-    ['RTÉ2 (Ireland)', 'https://www.rte.ie/player/', 'RTÉ2', 'Ireland', 'A Champions League game each week and Irish football – English commentary (free RTÉ Player account)'],
-    ['RTÉ One (Ireland)', 'https://www.rte.ie/player/', 'RTÉ One', 'Ireland', 'RTÉ\'s main channel – English commentary (free RTÉ Player account)'],
-    ['ServusTV (Austria)', 'https://www.servustv.com/jetzt-live/', '', 'Austria', 'Champions League and Europa League games – German commentary'],
-    ['TV8 (Italy)', 'https://www.tv8.it/streaming', '', 'Italy', 'A Champions League game each week, plus Europa League – Italian commentary'],
-    ['Club RTL (Belgium)', 'https://www.rtlplay.be/', 'Club RTL', 'Belgium', 'Champions League – French commentary (free RTL Play account)'],
-    ['VTM 2 (Belgium)', 'https://www.vtmgo.be/vtmgo/live-kijken', 'VTM 2', 'Belgium', 'Champions League – Dutch commentary (free VTM GO account)'],
-    ['SRF zwei (Switzerland)', 'https://www.srf.ch/play/tv/live', 'SRF zwei', 'Switzerland', 'Champions League and Europa League – German commentary'],
-    ['RTS 2 (Switzerland)', 'https://www.rts.ch/play/tv/direct', 'RTS 2', 'Switzerland', 'Champions League and Europa League – French commentary'],
-    ['RSI LA 2 (Switzerland)', 'https://www.rsi.ch/play/tv/live', 'RSI LA 2', 'Switzerland', 'Champions League and Europa League – Italian commentary'],
-    ['TRT 1 (Turkey)', 'https://www.tabii.com/', 'TRT 1', 'Turkey', 'Champions League – Turkish commentary (free tabii account)']
+  var EU_WEB = [   // [name, website or '', channel to pick on the site, VPN country, what it shows, listings key, official stream (plays in Free TV's player)]
+    ['Virgin Media Two', 'https://play.virginmediatelevision.ie/live', 'Virgin Media Two', 'Ireland', 'Up to four Champions League games a week – English commentary', 'vm2'],
+    ['Virgin Media One', 'https://play.virginmediatelevision.ie/live', 'Virgin Media One', 'Ireland', 'Virgin Media\'s main channel – English commentary', 'vm1'],
+    ['ServusTV (Austria)', '', '', 'Austria', 'Champions League and Europa League – German commentary', 'servus', 'https://stv-live.akamaized.net/hls/live/20001604/lingeoSTVATwebPri-MSL5/master.m3u8'],
+    ['TV8 (Italy)', 'https://www.tv8.it/streaming', '', 'Italy', 'A Champions League game each week, plus Europa League – Italian commentary', 'tv8'],
+    ['Club RTL (Belgium)', 'https://www.rtlplay.be/', 'Club RTL', 'Belgium', 'Champions League – French commentary (free RTL Play account)', 'clubrtl'],
+    ['VTM 2 (Belgium)', 'https://www.vtmgo.be/vtmgo/live-kijken', 'VTM 2', 'Belgium', 'Champions League – Dutch commentary (free VTM GO account)', 'vtm2'],
+    ['SRF zwei (Switzerland)', 'https://www.srf.ch/play/tv/live', 'SRF zwei', 'Switzerland', 'Champions League and Europa League – German commentary', 'srf2'],
+    ['RTS 2 (Switzerland)', 'https://www.rts.ch/play/tv/direct', 'RTS 2', 'Switzerland', 'Champions League and Europa League – French commentary', 'rts2'],
+    ['RSI LA 2 (Switzerland)', 'https://www.rsi.ch/play/tv/live', 'RSI LA 2', 'Switzerland', 'Champions League and Europa League – Italian commentary', 'rsi2'],
+    ['TRT 1 (Turkey)', '', '', 'Turkey', 'Champions League – Turkish commentary', 'trt1', 'https://tv-trt1.medya.trt.com.tr/master.m3u8']
   ];
+  var euEpg = load('euEpg') || {};
+  function loadEUEpg() {
+    return get('https://github.com/tomsgag-crypto/Wrestling-tv/releases/download/us-epg/eu-epg.json').then(function (t) {
+      var j = typeof t === 'string' ? JSON.parse(t) : t, out = {};
+      Object.keys(j.ch || {}).forEach(function (k) { out[k] = j.ch[k].map(function (x) { return { s: x[0], e: x[1], t: x[2], sub: x[3] || '', desc: x[4] || '', img: '' }; }); });
+      if (Object.keys(out).length) { euEpg = out; save('euEpg', out); }
+    }).catch(function () {});
+  }
   function euRows(sec) {
     var nowS = nowSec();
     return EU_WEB.map(function (r, i) {
-      return { sec: sec, id: 'eu' + i, name: r[0], web: r[1], pick: r[2], vpn: r[3], cat: 'Sports', events: [{ s: nowS - 3600, e: nowS + 7 * 86400, t: 'Live channel – Surfshark: ' + r[3], sub: r[4], desc: 'Set Surfshark on the TV to ' + r[3] + ', then press OK. Turn it off again afterwards – your UK channels won\'t play while it\'s on.', img: '' }] };
+      var ev = (euEpg[r[5]] || []).filter(function (e) { return e.e > nowS - 86400; });
+      if (!ev.length) ev = [{ s: nowS - 3600, e: nowS + 7 * 86400, t: 'Live channel', sub: r[4], desc: r[4] + '. Needs Surfshark set to ' + r[3] + '.', img: '' }];
+      var row = { sec: sec, id: 'eu' + r[5], name: r[0], vpn: r[3], cat: 'Sports', events: ev };
+      if (r[6]) { row.play = 'eu'; row.playName = 'EUROPE TV'; row.url = r[6]; } else { row.web = r[1]; row.pick = r[2]; }
+      return row;
     });
   }
   function isUS() { return country === 'US'; }
@@ -771,7 +781,7 @@ var app = (function () {
     });
   }
   /** US channels sit under "US TV", everything else under "UK TV". */
-  function secGroup(sec) { return /\(US\)/.test(sec) ? 'US TV' : 'UK TV'; }
+  function secGroup(sec) { return /\(US\)/.test(sec) ? 'US TV' : sec === 'Europe TV' ? 'Europe TV' : 'UK TV'; }
   /** Read the Virgin package by itself when it's never been read or is over 2 days old (at most once every 6 hours). */
   function autoVirginSync() {
     if (!settings.virgin || !window.Native || !Native.virginSyncQuiet) return;
@@ -781,22 +791,29 @@ var app = (function () {
     settings.vsyncTry = Date.now(); saveSettings();
     Native.virginSyncQuiet();
   }
+  /** A loading step that can't hold the guide up: gives up quietly after ms (default 15 s) or on an error. */
+  function soon(p, ms) { return Promise.race([Promise.resolve(p).catch(function () {}), new Promise(function (r) { setTimeout(r, ms || 15000); })]); }
+  var guideRetry = 0;
   function loadGuide() {
     if (SPORTS) {
       status('guide', true);
       settings.virgin = true;
-      return Promise.all([loadVirgin(), loadPrimeUCL(), loadUSSports(), loadUSEpg()]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
+      return Promise.all([soon(loadVirgin(), 25000), soon(loadPrimeUCL()), soon(loadUSSports()), soon(loadUSEpg()), soon(loadEUEpg())]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
     }
     setTimeout(autoVirginSync, 8000);
     status('guide', true);
-    return Promise.all([loadFreely().catch(function () {}), detectCountry().then(loadPluto), loadUSEpg()]).then(function () {
+    // each part gets a time limit and can fail on its own, so one slow or broken source can't stop the guide appearing
+    return Promise.all([soon(loadFreely(), 25000), soon(detectCountry().then(loadPluto), 25000), soon(loadUSEpg()), soon(loadEUEpg())]).then(function () {
       guideAt = Date.now();
       buildChans();
       buildFilmsOnTV();
       status('guide', false);
       render();
+      // the Freeview line-up didn't arrive: try again shortly (up to 3 times) rather than leaving the guide half empty
+      if (!(freely.order || []).length && (guideRetry = (guideRetry || 0) + 1) <= 3) setTimeout(function () { toast('Guide didn\'t load fully – trying again…'); loadGuide(); }, 8000);
+      else if ((freely.order || []).length) guideRetry = 0;
       // pay channels after the free ones are showing
-      Promise.all([loadSamsung(), loadPlex(), loadVirgin(), loadPrimeUCL()]).then(function () { buildChans(); buildFilmsOnTV(); render(); });
+      Promise.all([soon(loadSamsung(), 30000), soon(loadPlex(), 30000), soon(loadVirgin(), 30000), soon(loadPrimeUCL())]).then(function () { buildChans(); buildFilmsOnTV(); render(); });
       if (settings.pay && !sky.list.length) loadSkyServices().then(function () { buildChans(); render(); return Promise.all([loadSkyDay(0), loadSkyDay(1)]); }).then(function () { render(); });
     });
   }
@@ -1963,7 +1980,7 @@ var app = (function () {
     dh += '<div class="day opts' + (settings.guideType ? ' on' : '') + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">▾ Genre: ' + esc(settings.guideType || 'All') + '</div>';
     dh += '<div class="day sec on' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 ? ' sel' : '') + '" data-day="src">▾ Channels: ' + esc(settings.guideSec || 'All') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
     // country buttons: everything, UK TV only, US TV only
-    if (!SPORTS) [['', 'UK + US'], ['UK TV', 'UK TV'], ['US TV', 'US TV']].forEach(function (x, i) {
+    if (!SPORTS) [['', 'All'], ['UK TV', 'UK TV'], ['US TV', 'US TV'], ['Europe TV', 'Europe TV']].forEach(function (x, i) {
       dh += '<div class="day' + ((settings.guideSec || '') === x[0] ? ' on' : '') + (gZone === 'days' && zone === 'main' && gDay === DAYS + 2 + i ? ' sel' : '') + '" data-day="c' + i + '">' + x[1] + '</div>';
     });
     $('gDays').innerHTML = dh;
@@ -2068,10 +2085,10 @@ var app = (function () {
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       // the chips: day drop-down (0), Filter & options (DAYS), Channels (DAYS + 1)
-      var CH = SPORTS ? [0, DAYS, DAYS + 1] : [0, DAYS, DAYS + 1, DAYS + 2, DAYS + 3, DAYS + 4], ci = Math.max(0, CH.indexOf(gDay));
+      var CH = SPORTS ? [0, DAYS, DAYS + 1] : [0, DAYS, DAYS + 1, DAYS + 2, DAYS + 3, DAYS + 4, DAYS + 5], ci = Math.max(0, CH.indexOf(gDay));
       if (k === 'left') gDay = CH[Math.max(0, ci - 1)];
       else if (k === 'right') gDay = CH[Math.min(CH.length - 1, ci + 1)];
-      else if (k === 'ok' && gDay >= DAYS + 2) { setSource(['', 'UK TV', 'US TV'][gDay - DAYS - 2]); return; }
+      else if (k === 'ok' && gDay >= DAYS + 2) { setSource(['', 'UK TV', 'US TV', 'Europe TV'][gDay - DAYS - 2]); return; }
       else if (k === 'ok' && gDay === DAYS) { genreGuideMenu(); return; }
       else if (k === 'ok' && gDay > DAYS) { sourceMenu(); return; }
       else if (k === 'ok') { dayMenu(); return; }
@@ -2099,7 +2116,7 @@ var app = (function () {
       if (c && c.appK === 'sling' && window.Native && Native.openPlay) { var nm = c.name.replace(/ \((Sling|US)\)$/, ''); var rr = Native.openPlay(SVC.sling.app, SVC.sling.store, nm);
         toast(rr === 'play' ? 'Asking Sling to play ' + nm + '…' : rr === 'search' ? 'Searching Sling for ' + nm : rr === 'app' ? 'Opened Sling – choose ' + nm : 'Sling TV isn\'t installed'); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
-      if (c && c.vpn) { toast('Surfshark needs to be set to ' + c.vpn); if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
+      if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
       if (fp && c && (c.svc || c.play || fp.e <= now || ((c.pay || c.vid) && settings.virgin))) openItem(progItem(c, fp));
@@ -3087,7 +3104,7 @@ var app = (function () {
     if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var dy = e.target.closest('[data-day]');
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { genreGuideMenu(); return; }
-      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } var cy = /^c(\d)$/.exec(dy.getAttribute('data-day') || ''); if (cy) { setSource(['', 'UK TV', 'US TV'][+cy[1]]); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
+      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } var cy = /^c(\d)$/.exec(dy.getAttribute('data-day') || ''); if (cy) { setSource(['', 'UK TV', 'US TV', 'Europe TV'][+cy[1]]); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
     if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { if (curCat()) catMenu(curCat()); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'q') { odSearch(); return; } if (sv === 'a') { if (odQ && view === 'ondemand') { odSearchRun(''); return; } appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
