@@ -690,6 +690,24 @@ public class WebPlayerActivity extends Activity {
             ui.postDelayed(vodStep, next);
         });
     } };
+    // ---- free European channels: click the channel's name on the broadcaster's site ----
+    private String pick; private int pickTicks = 0;
+    private static final String PSTEP = "(function(P){try{" +
+        "function all(r,o){o=o||[];var n=r.querySelectorAll('*');for(var i=0;i<n.length;i++){o.push(n[i]);if(n[i].shadowRoot)all(n[i].shadowRoot,o);}return o;}" +
+        "function vis(e){var b=e.getBoundingClientRect();return b.width>4&&b.height>4;}" +
+        "function nm(x){return (x||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');}" +
+        "var E=all(document);if(E.some(function(e){return e.tagName=='VIDEO'&&e.currentTime>0.5&&!e.paused;}))return 'playing';" +
+        "var w=nm(P),best=null,bs=0;E.forEach(function(e){if(!vis(e))return;var tg=e.tagName,cl=tg=='A'||tg=='BUTTON'||e.getAttribute('role')=='button'||e.getAttribute('role')=='link'||e.hasAttribute('tabindex');if(!cl)return;" +
+        " [e.getAttribute('aria-label'),e.getAttribute('title'),(e.innerText||e.textContent||'').trim().split('\\n')[0],(e.querySelector&&e.querySelector('img[alt]')||{}).alt].forEach(function(c){var n=nm(c),sc=0;if(!n)return;if(n==w)sc=3;else if(n.indexOf(w)==0&&n.length<w.length+12)sc=2;else if(n.indexOf('live'+w)>=0||n.indexOf(w+'live')>=0)sc=1;if(sc>bs){bs=sc;best=e;}});});" +
+        "if(best){try{best.scrollIntoView({block:'center'});}catch(x){}best.click();return 'clicked';}return 'wait';}catch(x){return 'wait';}})";
+    private final Runnable pickStep = new Runnable() { @Override public void run() {
+        if (web == null || pick == null) return;
+        if (watching() || ++pickTicks > 25) { pick = null; reveal.run(); return; }
+        web.evaluateJavascript(PSTEP + "(" + org.json.JSONObject.quote(pick) + ")", r -> {
+            if (r != null && (r.contains("clicked") || r.contains("playing"))) { pick = null; ui.postDelayed(reveal, 2500); return; }
+            ui.postDelayed(pickStep, 1500);
+        });
+    } };
     private void vodGiveUp(String why) {
         vod = null; reveal.run();
         android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_LONG).show();
@@ -1213,6 +1231,8 @@ public class WebPlayerActivity extends Activity {
             }
         }
         if (find != null) { cover.setVisibility(View.VISIBLE); ui.postDelayed(step, 1500); }
+        pick = getIntent().getStringExtra("pick");
+        if (pick != null && pick.length() > 0) ui.postDelayed(pickStep, 4000); else pick = null;
         vod = getIntent().getStringExtra("vod");
         if (vod != null) { cover.setText("Searching Virgin TV Go for \"" + vod + "\"…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(vodStep, 4000); }
         if (start != null && start.contains("#ftv-sling=")) {

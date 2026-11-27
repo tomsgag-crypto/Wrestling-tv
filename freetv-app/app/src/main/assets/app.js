@@ -647,6 +647,7 @@ var app = (function () {
      ['USA Network (Sling)', SL + '#ftv-sling=USA', us('usa', 'USA Network on Sling TV – Premier League, WWE and more')]].forEach(function (r, i) {
       chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], appK: r[1] === PP ? 'paramount' : /sling\.com/.test(r[1]) ? 'sling' : '', cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
     });
+    euRows('Europe football (VPN)').forEach(function (r) { r.type = 'Sport'; chans.push(r); });
     if (gRow >= chans.length) gRow = 0;
   }
   function buildChans() {
@@ -704,6 +705,7 @@ var app = (function () {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
       w.rows.forEach(function (r, i) { out.push({ sec: w.sec, id: 'w' + w.k + i, name: r[0], web: r[1], appK: w.k === 'pplus' ? 'paramount' : '', cat: r[2] || '', events: [] }); });
     });
+    euRows('Europe (VPN)').forEach(function (r) { out.push(r); });
     out = out.filter(function (c) { return !settings.hide[c.sec.replace(' (US)', '')]; });
     var usFirst = isUS(); out = out.filter(function (c) { return (secGroup(c.sec) === 'US TV') === usFirst; }).concat(out.filter(function (c) { return (secGroup(c.sec) === 'US TV') !== usFirst; }));
     out.forEach(function (c) { c.type = chanType(c); });
@@ -723,6 +725,27 @@ var app = (function () {
     return getJSON('https://boot.pluto.tv/v4/start?appName=web&appVersion=9.0.0&deviceVersion=120.0.0&deviceModel=web&deviceMake=chrome&deviceType=web&clientID=ftv-country&clientModelNumber=1.0.0')
       .then(function (j) { var r = j && j.session && (j.session.activeRegion || j.session.countryCode); if (r) country = String(r).toUpperCase() === 'UK' ? 'GB' : String(r).toUpperCase(); })
       .catch(function () {});
+  }
+  /** Free European channels with football, watched on their own websites (Surfshark set to that country). pick: the channel to choose on the site. */
+  var EU_WEB = [
+    ['Virgin Media Two (Ireland)', 'https://play.virginmediatelevision.ie/', 'Virgin Media Two', 'Ireland', 'Up to four Champions League games a week – English commentary'],
+    ['Virgin Media One (Ireland)', 'https://play.virginmediatelevision.ie/', 'Virgin Media One', 'Ireland', 'Virgin Media\'s main channel – some big football nights, English commentary'],
+    ['RTÉ2 (Ireland)', 'https://www.rte.ie/player/', 'RTÉ2', 'Ireland', 'A Champions League game each week and Irish football – English commentary (free RTÉ Player account)'],
+    ['RTÉ One (Ireland)', 'https://www.rte.ie/player/', 'RTÉ One', 'Ireland', 'RTÉ\'s main channel – English commentary (free RTÉ Player account)'],
+    ['ServusTV (Austria)', 'https://www.servustv.com/jetzt-live/', '', 'Austria', 'Champions League and Europa League games – German commentary'],
+    ['TV8 (Italy)', 'https://www.tv8.it/streaming', '', 'Italy', 'A Champions League game each week, plus Europa League – Italian commentary'],
+    ['Club RTL (Belgium)', 'https://www.rtlplay.be/', 'Club RTL', 'Belgium', 'Champions League – French commentary (free RTL Play account)'],
+    ['VTM 2 (Belgium)', 'https://www.vtmgo.be/vtmgo/live-kijken', 'VTM 2', 'Belgium', 'Champions League – Dutch commentary (free VTM GO account)'],
+    ['SRF zwei (Switzerland)', 'https://www.srf.ch/play/tv/live', 'SRF zwei', 'Switzerland', 'Champions League and Europa League – German commentary'],
+    ['RTS 2 (Switzerland)', 'https://www.rts.ch/play/tv/direct', 'RTS 2', 'Switzerland', 'Champions League and Europa League – French commentary'],
+    ['RSI LA 2 (Switzerland)', 'https://www.rsi.ch/play/tv/live', 'RSI LA 2', 'Switzerland', 'Champions League and Europa League – Italian commentary'],
+    ['TRT 1 (Turkey)', 'https://www.tabii.com/', 'TRT 1', 'Turkey', 'Champions League – Turkish commentary (free tabii account)']
+  ];
+  function euRows(sec) {
+    var nowS = nowSec();
+    return EU_WEB.map(function (r, i) {
+      return { sec: sec, id: 'eu' + i, name: r[0], web: r[1], pick: r[2], vpn: r[3], cat: 'Sports', events: [{ s: nowS - 3600, e: nowS + 7 * 86400, t: 'Live channel – Surfshark: ' + r[3], sub: r[4], desc: 'Set Surfshark on the TV to ' + r[3] + ', then press OK. Turn it off again afterwards – your UK channels won\'t play while it\'s on.', img: '' }] };
+    });
   }
   function isUS() { return country === 'US'; }
   var US_WEB = [
@@ -2076,6 +2099,7 @@ var app = (function () {
       if (c && c.appK === 'sling' && window.Native && Native.openPlay) { var nm = c.name.replace(/ \((Sling|US)\)$/, ''); var rr = Native.openPlay(SVC.sling.app, SVC.sling.store, nm);
         toast(rr === 'play' ? 'Asking Sling to play ' + nm + '…' : rr === 'search' ? 'Searching Sling for ' + nm : rr === 'app' ? 'Opened Sling – choose ' + nm : 'Sling TV isn\'t installed'); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
+      if (c && c.vpn) { toast('Surfshark needs to be set to ' + c.vpn); if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
       if (fp && c && fp.s > now) { addMenu(progItem(c, fp)); return; }
       if (fp && c && (c.svc || c.play || fp.e <= now || ((c.pay || c.vid) && settings.virgin))) openItem(progItem(c, fp));

@@ -646,6 +646,12 @@ public class MainActivity extends Activity {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title);
             ui.post(() -> { stopMini(); startActivity(i); });
         }
+        /** A free European channel's website: open it and click the channel named `pick` (Virgin Media Play, RTÉ Player…). */
+        @JavascriptInterface
+        public void openWebPick(String url, String title, String pick) {
+            Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title).putExtra("pick", pick);
+            ui.post(() -> { stopMini(); startActivity(i); });
+        }
         /** Open a website that has no per-channel links and pick the channel on it (Virgin TV Go). */
         @JavascriptInterface
         public void openWebFind(String url, String title, String find) {
