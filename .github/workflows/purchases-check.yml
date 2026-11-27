@@ -1,0 +1,10 @@
+name: purchases-check
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/purchases_check.py
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
