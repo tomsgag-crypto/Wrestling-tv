@@ -187,8 +187,8 @@ public class WebPlayerActivity extends Activity {
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvWait&&Date.now()-v.__ftvWait>1200){v.__ftvFs=0;var ct=v.currentTime,inside=false,nx=-1;for(var g=0;g<v.buffered.length;g++){var bs=v.buffered.start(g),be=v.buffered.end(g);if(bs<=ct+0.02&&be>ct+0.5)inside=true;else if(bs>ct&&(nx<0||bs<nx))nx=bs;}" +
             "if(!inside&&nx>0&&nx-ct<6){v.currentTime=nx+0.1;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}else if(inside){v.currentTime=ct+0.2;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}v.__ftvWait=Date.now();}" +
             "if(v.paused&&!v.ended&&v.currentTime>1&&/bbc\\.co\\.uk/.test(location.host)){v.play();window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('paused');}" +
-            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&v.seekable&&v.seekable.length){var end=v.seekable.end(v.seekable.length-1);if(end-v.currentTime>40&&end-v.currentTime<7200&&!window.__ftvJump&&v.currentTime>0){window.__ftvJump=Date.now();" +
-            "try{localStorage.removeItem('timeToLiveEdgeInMs');}catch(e){}v.currentTime=end-15;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
+            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&v.seekable&&v.seekable.length){var end=v.seekable.end(v.seekable.length-1);if(end-v.currentTime>90&&end-v.currentTime<7200&&!window.__ftvJump&&v.currentTime>0){window.__ftvJump=Date.now();" +
+            "try{localStorage.setItem('timeToLiveEdgeInMs','30000');}catch(e){}v.currentTime=end-30;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
             "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
             "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
@@ -682,7 +682,7 @@ public class WebPlayerActivity extends Activity {
     /** Restart without reloading the page: jump the same player to live (about 2 s). Used once; if it buffers again soon, the full restart follows. */
     private final java.util.ArrayDeque<Long> quickTimes = new java.util.ArrayDeque<>(); private long fullAt = 0; private int quickN = 0;
     private boolean quickRestart() {
-        int back = new int[]{4, 8, 3, 12}[quickN++ % 4];   // land a little behind live, at a different point each time
+        int back = new int[]{25, 30, 22, 35}[quickN++ % 4];   // land well behind live (a cushion against late chunks), at a different point each time
         web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{if(v.seekable&&v.seekable.length){v.currentTime=Math.max(0,v.seekable.end(v.seekable.length-1)-" + back + ");}v.play();}catch(e){}});})()", null);
         settledAt = android.os.SystemClock.uptimeMillis();
         note("Catching up…");
@@ -943,7 +943,7 @@ public class WebPlayerActivity extends Activity {
         "g('userAgentData',ua);g('platform','Linux x86_64');g('maxTouchPoints',0);g('vendor','Google Inc.');" +
         "try{delete window.ontouchstart;}catch(e){}" +
         "if(/skysports|sky\\.com/.test(location.host)){" +
-        "try{localStorage.removeItem('timeToLiveEdgeInMs');}catch(e){}" +
+        "try{localStorage.setItem('timeToLiveEdgeInMs','30000');}catch(e){}" +
         "var SHIFT=8000,RD=Date,now0=RD.now.bind(RD);function SD(){var a=arguments;if(!(this instanceof SD))return new RD(now0()-SHIFT).toString();if(a.length===0)return new RD(now0()-SHIFT);return new (Function.prototype.bind.apply(RD,[null].concat([].slice.call(a))))();}" +
         "SD.prototype=RD.prototype;SD.now=function(){return now0()-SHIFT;};SD.parse=RD.parse;SD.UTC=RD.UTC;try{Object.defineProperty(SD.prototype,'constructor',{value:SD,configurable:true,writable:true});}catch(e){}window.Date=SD;" +
         "var D=Document.prototype;try{Object.defineProperty(D,'hidden',{get:function(){return false;},configurable:true});Object.defineProperty(D,'visibilityState',{get:function(){return 'visible';},configurable:true});}catch(e){}" +
@@ -953,8 +953,11 @@ public class WebPlayerActivity extends Activity {
         "var QH=0;function capMpd(t){try{if(typeof t!=='string'||t.indexOf('<MPD')<0)return t;var x=new DOMParser().parseFromString(t,'application/xml');if(x.getElementsByTagName('parsererror').length)return t;var n=0,hs={};" +
         "[].forEach.call(x.getElementsByTagName('AdaptationSet'),function(a){var reps=[].slice.call(a.getElementsByTagName('Representation'));var ah=+a.getAttribute('height')||0;var vid=/video/.test((a.getAttribute('mimeType')||'')+(a.getAttribute('contentType')||''))||reps.some(function(r){return /video/.test(r.getAttribute('mimeType')||'')||r.hasAttribute('height');});if(!vid||!reps.length)return;" +
         "function H(r){return +r.getAttribute('height')||ah;}reps.forEach(function(r){if(H(r))hs[H(r)]=1;});if(!QH||reps.length<2)return;" +
-        "var ok=reps.filter(function(r){return H(r)&&H(r)<=QH;});var best=ok.length?Math.max.apply(null,ok.map(H)):Math.min.apply(null,reps.map(H));" +
-        "reps.forEach(function(r){if(H(r)!==best){r.parentNode.removeChild(r);n++;}});});" +
+        "var CAP=Math.abs(QH),ok=reps.filter(function(r){return H(r)&&H(r)<=CAP;});if(!ok.length)ok=[reps.reduce(function(a,b){return H(a)<=H(b)?a:b;})];" +
+        "var keep=QH<0?ok:[ok.reduce(function(a,b){return H(a)>=H(b)?a:b;})];" +
+        "reps.forEach(function(r){if(keep.indexOf(r)<0){r.parentNode.removeChild(r);n++;}});});" +
+        // live: sit 30 s behind the live edge with an 8 s cushion, so a late chunk doesn't stall the picture
+        "var M=x.documentElement;if(M&&M.getAttribute('type')==='dynamic'){M.setAttribute('suggestedPresentationDelay','PT30S');var mb=M.getAttribute('minBufferTime')||'';var mbs=+(mb.match(/([\\d.]+)S/)||[0,0])[1];if(mbs<8)M.setAttribute('minBufferTime','PT8S');n++;}" +
         "window.__ftvQs=Object.keys(hs).sort(function(a,b){return a-b;}).join('/');return n?new XMLSerializer().serializeToString(x):t;}catch(e){return t;}}" +
         "var N=window.__ftvNet={ok:0,bad:0,codes:{},kb:0,ms:0,seg:0};function cnt(st,u,t0,b){if(st>=400||st===0){N.bad++;N.codes[st]=(N.codes[st]||0)+1;N.last=String(u).replace(/^https?:\\/\\//,'').replace(/\\?.*/,'').slice(-70);}else N.ok++;if(/\\.(m4s|mp4|m4v|ts|cmfv)|segment|chunk/i.test(u)&&b){N.seg++;N.kb+=b/1024;N.ms+=Date.now()-t0;}}" +
         "var F=window.fetch;window.fetch=function(i,o){var t0=Date.now(),U=String(i&&i.url||i);return F.apply(this,arguments).then(function(r){try{var cl=+r.headers.get('content-length')||0;cnt(r.status,U,t0,cl);}catch(e){}try{var u=r.url||'';var ct=r.headers.get('content-type')||'';if(!/\\.mpd|dash/i.test(u+ct))return r;return r.clone().text().then(function(t){var c=capMpd(t);if(c===t)return r;var nr=new Response(c,{status:r.status,statusText:r.statusText,headers:r.headers});try{Object.defineProperty(nr,'url',{value:u});}catch(e){}return nr;});}catch(e){return r;}});};" +
@@ -964,8 +967,18 @@ public class WebPlayerActivity extends Activity {
         "if(typeof v==='string')out=capMpd(v);else if(v instanceof ArrayBuffer){var t=new TextDecoder().decode(v),c=capMpd(t);out=c===t?v:new TextEncoder().encode(c).buffer;}this.__ftvC=[v,out];return out;}catch(e){return v;}}});});" +
         "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
         "}catch(e){}})();";
-    private int quality() { return getSharedPreferences("player", MODE_PRIVATE).getInt("skyq", 0); }
-    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", false) ? 8000 : 0) + ",") ; }
+    private int quality() { return -540; }   // up to 540p (what this player can show on the Chromecast); all of those kept so Sky can drop lower when needed
+    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=0,").replace("157.0.8103.79", chromeFull()).replace("version:'157'", "version:'" + chromeMajor() + "'"); }
+    // the browser version this TV really has (the desktop disguise used to claim 157, which can make Sky's player pick settings this browser handles badly)
+    private String chromeFullV = null;
+    private String chromeFull() {
+        if (chromeFullV == null) {
+            chromeFullV = "131.0.0.0";
+            try { java.util.regex.Matcher m = java.util.regex.Pattern.compile("Chrome/([\\d.]+)").matcher(android.webkit.WebSettings.getDefaultUserAgent(this)); if (m.find()) chromeFullV = m.group(1); } catch (Exception ignored) { }
+        }
+        return chromeFullV;
+    }
+    private String chromeMajor() { String f = chromeFull(); int i = f.indexOf('.'); return i > 0 ? f.substring(0, i) : f; }
     private Object startScript;   // the script handle, so a new quality can replace it
     private void looksLikeDesktop(WebSettings s) {
         try {
@@ -1078,6 +1091,9 @@ public class WebPlayerActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // the Sky options menu is gone: anything changed in it goes back to normal (once)
+        if (!prefs().getBoolean("skyMenuGone", false))
+            prefs().edit().remove("skyq").remove("skyclock").remove("skypage").remove("skyNoAds").remove("skyNet").remove("skyFresh").remove("skyAutoRestart").putBoolean("skyMenuGone", true).apply();
         if (pip != null && pip != this) { pip.finish(); pip = null; }   // a new channel replaces the corner window
         if (android.os.Build.VERSION.SDK_INT >= 30) { try { setTranslucent(false); } catch (Throwable ignored) { } }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -1113,7 +1129,7 @@ public class WebPlayerActivity extends Activity {
         s.setUseWideViewPort(false);
         s.setLoadWithOverviewMode(false);
         web.setInitialScale(0);
-        s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36");
+        s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chromeMajor() + ".0.0.0 Safari/537.36");
         looksLikeDesktop(s);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
@@ -1259,7 +1275,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (watching() && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (onSky()) qualityMenu(); else adMenu(); }
+                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (!onSky()) adMenu(); }   // Sky: no options menu (they made no difference)
                 else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
             }
             return true;
