@@ -277,13 +277,13 @@ for vid, t, p, a in films:
     if mins and mins < 20: m["x"] = 1; continue          # a clip or trailer, not the film
     groups.setdefault((m["tm"], cut_of(t)), []).append(vid)
 def page_quality(vid):
-    """4K and HDR from the film's YouTube page; a page that lists its own stream qualities is YouTube's free-with-adverts version"""
+    """a bought copy scores 2; YouTube's free-with-adverts version (its page lists its own stream qualities) scores 0"""
     try:
         h = urllib.request.urlopen(urllib.request.Request("https://www.youtube.com/watch?v=" + vid + "&hl=en&gl=GB", headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131 Safari/537.36", "Accept-Language": "en-GB", "Cookie": "SOCS=CAI; CONSENT=YES+"}), timeout=40).read().decode("utf-8", "ignore")
     except Exception as e:
         print("page fail", vid, e); return None
-    free = '"qualityLabel"' in h
-    return (0 if free else 2) + (3 if re.search(r"\b4K\b|\bUHD\b", h) and not free else 0) + (1 if re.search(r"\bHDR\b", h) and not free else 0)
+    # (YouTube doesn't show 4K / HDR on the page unless you're signed in, so those can't be told apart here)
+    return 0 if '"qualityLabel"' in h else 2
 dups = 0
 for key, vids in groups.items():
     if len(vids) < 2:
