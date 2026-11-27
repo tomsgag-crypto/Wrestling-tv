@@ -191,7 +191,7 @@ public class WebPlayerActivity extends Activity {
             "try{localStorage.setItem('timeToLiveEdgeInMs','30000');}catch(e){}v.currentTime=end-30;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
             "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
-            "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
+            "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;if(bl>7200)bl=-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+(window.__ftvBack?'stepped back '+window.__ftvBack+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
             "var sb=false;if(/skysports/.test(location.host)){try{var roots=[],rn=v.getRootNode?v.getRootNode():document,hops=0;while(rn&&hops++<4){roots.push(rn);if(rn===document||!rn.host)break;rn=rn.host.getRootNode?rn.host.getRootNode():document;}" +
             // Sky's own "Buffering…" message on the player: if it's showing, it's buffering, whatever the clock says
@@ -683,7 +683,13 @@ public class WebPlayerActivity extends Activity {
     private final java.util.ArrayDeque<Long> quickTimes = new java.util.ArrayDeque<>(); private long fullAt = 0; private int quickN = 0;
     private boolean quickRestart() {
         int back = new int[]{25, 30, 22, 35}[quickN++ % 4];   // land well behind live (a cushion against late chunks), at a different point each time
-        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{if(v.seekable&&v.seekable.length){v.currentTime=Math.max(0,v.seekable.end(v.seekable.length-1)-" + back + ");}v.play();}catch(e){}});})()", null);
+        // Sky's "live point" can be on a different clock from the picture's position (it showed 79 years ahead), so only use it when it's sensible;
+        // otherwise step back from where the picture is now, giving the player video it can load – never more than 90 s behind in total
+        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{var ct=v.currentTime,B=" + back + ",s=v.seekable,n=s&&s.length;" +
+            "var st=n?s.start(0):0,end=n?s.end(n-1):ct;if(st>ct)st=0;" +
+            "if(n&&end-ct>=0&&end-ct<7200){v.currentTime=Math.max(st,end-B);}" +
+            "else{window.__ftvBack=window.__ftvBack||0;if(window.__ftvBack+B<=90){window.__ftvBack+=B;v.currentTime=Math.max(st,ct-B);}else{v.currentTime=Math.max(st,ct-0.5);}}" +
+            "v.play();}catch(e){}});})()", null);
         settledAt = android.os.SystemClock.uptimeMillis();
         note("Catching up…");
         return true;
