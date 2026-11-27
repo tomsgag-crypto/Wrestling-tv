@@ -180,7 +180,7 @@ public class WebPlayerActivity extends Activity {
             "vs.sort(function(a,b){var sa=(a.paused?0:2)+(isFinite(a.duration)&&a.duration>240?1:0),sb2=(b.paused?0:2)+(isFinite(b.duration)&&b.duration>240?1:0);return sb2-sa||((isFinite(b.duration)?b.duration:0)-(isFinite(a.duration)?a.duration:0));});if(vs[0])v=vs[0];}" +
             // watch the picture: restart it the moment the site pauses it, and note buffering, so we can tell which is happening
             "if(!v.__ftvW){v.__ftvW=1;window.__ftvLog=window.__ftvLog||[];v.addEventListener('pause',function(){if(window.__ftvUserPaused||v.ended||!/bbc\\.co\\.uk/.test(location.host))return;window.__ftvLog.push('paused');setTimeout(function(){if(v.paused&&!window.__ftvUserPaused)v.play();},150);});" +
-            "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');if(!v.__ftvWait)v.__ftvWait=Date.now();});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});v.addEventListener('playing',function(){v.__ftvWait=0;});v.addEventListener('pause',function(){if(!window.__ftvUserPaused&&/skysports/.test(location.host))window.__ftvLog.push('buffering');});}" +
+            "v.addEventListener('waiting',function(){if(!v.__ftvWait)v.__ftvWait=Date.now();v.__ftvRealWait=Date.now();v.__ftvLogged=0;});v.addEventListener('playing',function(){v.__ftvWait=0;v.__ftvRealWait=0;});v.addEventListener('pause',function(){if(!window.__ftvUserPaused&&/skysports/.test(location.host))window.__ftvLog.push('buffering');});}" +
             // Sky: waiting although the video is already here (a tiny hole in it, or the decoder stuck) → jump over the hole or nudge it on, instead of sitting on "Buffering"
             "var tfr=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality().totalVideoFrames:-1;if(v.paused||tfr!==v.__ftvF){if(!v.paused&&v.__ftvF>=0&&tfr>v.__ftvF)v.__ftvWait=0;v.__ftvF=tfr;v.__ftvFs=0;}else if(!v.__ftvFs){v.__ftvFs=Date.now();}" +
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvFs&&Date.now()-v.__ftvFs>1500&&!v.__ftvWait)v.__ftvWait=v.__ftvFs;" +
@@ -190,6 +190,7 @@ public class WebPlayerActivity extends Activity {
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&v.seekable&&v.seekable.length){var end=v.seekable.end(v.seekable.length-1);if(end-v.currentTime>90&&end-v.currentTime<7200&&!window.__ftvJump&&v.currentTime>0){window.__ftvJump=Date.now();" +
             "try{localStorage.setItem('timeToLiveEdgeInMs','30000');}catch(e){}v.currentTime=end-30;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
             "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
+            "if(v.__ftvRealWait&&!v.__ftvLogged&&Date.now()-v.__ftvRealWait>1200&&b<0.5&&!v.seeking){v.__ftvLogged=1;(window.__ftvLog=window.__ftvLog||[]).push('buffering');}" +
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
             "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;if(bl>7200)bl=-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+(window.__ftvBack?'stepped back '+window.__ftvBack+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
@@ -246,13 +247,14 @@ public class WebPlayerActivity extends Activity {
                 if (onSky() && skySettled && watching() && !userPaused) {
                     // buffering: quick restarts (jump the same player to live, ~2 s) again and again until it plays smoothly;
                     // only if 4 quick ones in a minute don't fix it, a full page restart
-                    if (now2 - lastLiveReload > 3000) {   // (a restart's own short wait doesn't count)
+                    if (now2 - lastLiveReload > 10000) {   // (a restart's own wait while it jumps doesn't count: 10 s)
                         if (bufNow && !wasBuffering) bufStarts.add(now2);
                         for (int b = (bufNow && !wasBuffering) ? 1 : 0; b < pageBufs; b++) bufStarts.add(now2);   // short stutters between checks
                     }
                     while (!bufStarts.isEmpty() && now2 - bufStarts.peekFirst() > 12000) bufStarts.pollFirst();
                     stallRun = bufNow ? stallRun + 1 : 0;
-                    if ((bufStarts.size() >= 2 || stallRun >= 3) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 4000) {
+                    if (now2 - lastLiveReload < 10000) { stallRun = 0; bufStarts.clear(); }
+                    if ((bufStarts.size() >= 2 || stallRun >= 3) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 10000) {
                         lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
                         while (!quickTimes.isEmpty() && now2 - quickTimes.peekFirst() > 60000) quickTimes.pollFirst();
                         if (quickTimes.size() < 4 || now2 - fullAt < 25000) { quickTimes.add(now2); quickRestart(); return; }
@@ -1143,7 +1145,8 @@ public class WebPlayerActivity extends Activity {
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
                 String h = req.getUrl().getHost();
                 // Sky: Free TV downloads the video pieces itself and retries any that stall, so Sky's player never waits on a hung download
-                if (skyPage && "GET".equalsIgnoreCase(req.getMethod()) && prefs().getBoolean("skyNet", true)) {
+                // the browser now downloads Sky's video itself, like a normal browser (Free TV fetching every piece added a hand-off the player could wait on)
+                if (skyPage && "GET".equalsIgnoreCase(req.getMethod()) && prefs().getBoolean("skyNet", false)) {
                     String path = String.valueOf(req.getUrl().getPath()).toLowerCase();
                     if (path.matches(".*\\.(m4s|m4v|m4a|mp4|cmfv|cmfa|ts|aac)$") || path.matches(".*/(segment|chunk|fragment)[^/]*$") || path.matches(".*/(time|t|number|n)[-_=]?\\d{3,}[^/]*$")) {
                         android.webkit.WebResourceResponse wr = fetchPiece(req);
