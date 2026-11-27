@@ -581,7 +581,7 @@ var app = (function () {
   var SKY_SLUGS = [[/main ?event/i, 'sky-sports-main-event'], [/\bpl\b|premier/i, 'sky-sports-premier-league'], [/football/i, 'sky-sports-football'], [/cricket/i, 'sky-sports-cricket'],
     [/golf/i, 'sky-sports-golf'], [/f1/i, 'sky-sports-f1'], [/tennis/i, 'sky-sports-tennis'], [/nfl/i, 'sky-sports-nfl'], [/racing/i, 'sky-sports-racing'], [/news/i, 'sky-sports-news'], [/mix/i, 'sky-sports-mix'], [/\+|plus/i, 'sky-sports-plus']];
   function skySlug(n) { for (var i = 0; i < SKY_SLUGS.length; i++) if (SKY_SLUGS[i][0].test(n)) return SKY_SLUGS[i][1]; return ''; }
-  var usEpg = load('usEpg') || {}, usPluto = [], slingIds = load('slingIds') || {};
+  var usEpg = load('usEpg') || {}, usPluto = [], usTubi = [], slingIds = load('slingIds') || {};
   /** A channel's own Sling address (the Sling app opens straight on it), from Sling's public channel list. */
   function slingLink(name) {
     var n = function (x) { return String(x).toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, ''); };
@@ -598,6 +598,7 @@ var app = (function () {
       Object.keys(j.ch || {}).forEach(function (k) { out[k] = j.ch[k].map(function (x) { return { s: x[0], e: x[1], t: x[2], sub: x[3], desc: x[4], img: '' }; }); });
       if (Object.keys(out).length) { usEpg = out; save('usEpg', out); }
       if (j.pluto && j.pluto.length) usPluto = j.pluto;
+      if (j.tubi && j.tubi.length) usTubi = j.tubi;
       if (j.sling && Object.keys(j.sling).length) { slingIds = j.sling; save('slingIds', slingIds); }
     }).catch(function () {});
   }
@@ -700,6 +701,7 @@ var app = (function () {
     if (!SPORTS && !isUS() && primeUCL.length) out.push({ sec: 'Prime Video', id: 'primeucl', name: 'Prime Video Champions League', cat: 'Sports', svc: 'prime', primeLive: true, events: primeUCL });
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (!settings.hide['Sling TV']) slingRows().forEach(function (r) { out.push(r); });
+    if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); });
     if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
@@ -767,6 +769,33 @@ var app = (function () {
     ['comedy', 'Comedy Central'], ['ifc', 'IFC'], ['bbca', 'BBC America'], ['freeform', 'Freeform'], ['cartoon', 'Cartoon Network'], ['nickjr', 'Nick Jr.'], ['hgtv', 'HGTV'],
     ['food', 'Food Network'], ['tlc', 'TLC'], ['travel', 'Travel Channel'], ['cnn', 'CNN'], ['foxnews', 'Fox News'], ['bloomberg', 'Bloomberg TV'], ['vice', 'VICE'],
     ['axs', 'AXS TV'], ['fuse', 'Fuse'], ['comet', 'COMET'], ['mgmdi', 'MGM+ Drive-In'], ['qvc', 'QVC']];
+  /** Tubi's free live channels (US connection, no login): played in Free TV's player. */
+  var tubiUrls = load('tubiUrls') || { at: 0, u: {} };
+  function tubiRows() {
+    return usTubi.map(function (c) {
+      return { sec: 'Tubi (US)', id: 'tb_' + c.id, tid: c.id, name: c.n, cat: c.cat || '', play: 'tubi', playName: 'TUBI', url: tubiUrls.u[c.id] || '',
+        events: (c.ev || []).map(function (x) { return { s: x[0], e: x[1], t: x[2], sub: '', desc: x[3] || '', img: '' }; }) };
+    });
+  }
+  /** Tubi's stream links carry a 3-day pass made for the device asking, so they're fetched here (on your connection) and kept for a day. */
+  function tubiPlay(c) {
+    var fresh = Date.now() - tubiUrls.at < 86400000 && tubiUrls.u[c.tid];
+    var go = function () { chans.forEach(function (x) { if (x.play === 'tubi') x.url = tubiUrls.u[x.tid] || ''; }); if (!c.url && !tubiUrls.u[c.tid]) { toast('Tubi didn\'t give a stream for ' + c.name + ' – it needs a US connection'); return; } playPlutoChannel(c.id); };
+    if (fresh) { go(); return; }
+    toast('Opening ' + c.name + ' on Tubi…');
+    var ids = chans.filter(function (x) { return x.play === 'tubi'; }).map(function (x) { return x.tid; }), dev = load('tubiDev') || ('ftv' + Math.random().toString(36).slice(2, 12));
+    save('tubiDev', dev);
+    var batches = []; for (var b = 0; b < ids.length; b += 10) batches.push(ids.slice(b, b + 10));
+    var u = {};
+    Promise.all(batches.map(function (bt) {
+      return soon(getJSON('https://epg-cdn.production-public.tubi.io/content/epg/programming?platform=web&lookahead=1&device_id=' + dev + '&content_id=' + bt.join(',')).then(function (j) {
+        (j.rows || []).forEach(function (r) { var v = (r.video_resources || []).filter(function (x) { return x.manifest && x.manifest.url && /hls/i.test(x.type || ''); })[0]; if (v && !r.needs_login) u[String(r.content_id)] = v.manifest.url; });
+      }), 20000);
+    })).then(function () {
+      if (Object.keys(u).length) { tubiUrls = { at: Date.now(), u: u }; save('tubiUrls', tubiUrls); }
+      go();
+    });
+  }
   function plutoUSRows() {
     return usPluto.map(function (c) {
       return { sec: 'Pluto TV (US)', id: 'pu_' + c.id, name: c.n, num: c.num, web: 'https://pluto.tv/us/live-tv/' + (c.slug || ''), appK: 'pluto', cat: c.cat || '',
@@ -2116,6 +2145,7 @@ var app = (function () {
       if (c && c.appK === 'sling' && window.Native && Native.openPlay) { var nm = c.name.replace(/ \((Sling|US)\)$/, ''); var rr = Native.openPlay(SVC.sling.app, SVC.sling.store, nm);
         toast(rr === 'play' ? 'Asking Sling to play ' + nm + '…' : rr === 'search' ? 'Searching Sling for ' + nm : rr === 'app' ? 'Opened Sling – choose ' + nm : 'Sling TV isn\'t installed'); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
+      if (c && c.play === 'tubi') { tubiPlay(c); return; }
       if (c && c.play === 'eu' && (!fp || fp.s <= now) && playPlutoChannel(c.id)) return;
       if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
