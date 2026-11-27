@@ -173,28 +173,25 @@ public class WebPlayerActivity extends Activity {
                 "else if(v.__ftvAd&&(itv?(isFinite(d)&&d>240):!lab)){v.muted=v.__ftvAd.m;v.playbackRate=1;v.__ftvAd=null;}});return n;})()", r -> {
                     if (r != null && !r.equals("0") && cover.getVisibility() == View.VISIBLE && autoMode) cover.setText("Skipping adverts – " + getIntent().getStringExtra("title") + " starts in a moment…");
                 });
-        if (!userPaused && find == null) web.evaluateJavascript("(function(){window.__ftvDelay=" + skyDelay() + ";function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
+        if (!userPaused && find == null) web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
             "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);if(!v)return '';" +
             // pages with several videos (Prime: previews, adverts): watch the one that's playing and longest
             "if(!/skysports|virginmedia/.test(location.host)){var vs=[];(function c(r,d){if(!r||d>8)return;[].push.apply(vs,[].slice.call(r.querySelectorAll('video')));[].forEach.call(r.querySelectorAll('*'),function(e){if(e.shadowRoot)c(e.shadowRoot,d+1);});})(document,0);" +
             "vs.sort(function(a,b){var sa=(a.paused?0:2)+(isFinite(a.duration)&&a.duration>240?1:0),sb2=(b.paused?0:2)+(isFinite(b.duration)&&b.duration>240?1:0);return sb2-sa||((isFinite(b.duration)?b.duration:0)-(isFinite(a.duration)?a.duration:0));});if(vs[0])v=vs[0];}" +
             // watch the picture: restart it the moment the site pauses it, and note buffering, so we can tell which is happening
             "if(!v.__ftvW){v.__ftvW=1;window.__ftvLog=window.__ftvLog||[];v.addEventListener('pause',function(){if(window.__ftvUserPaused||v.ended||!/bbc\\.co\\.uk/.test(location.host))return;window.__ftvLog.push('paused');setTimeout(function(){if(v.paused&&!window.__ftvUserPaused)v.play();},150);});" +
-            "v.addEventListener('waiting',function(){if(!v.__ftvWait)v.__ftvWait=Date.now();v.__ftvRealWait=Date.now();v.__ftvLogged=0;});v.addEventListener('playing',function(){v.__ftvWait=0;v.__ftvRealWait=0;});v.addEventListener('pause',function(){if(!window.__ftvUserPaused&&/skysports/.test(location.host))window.__ftvLog.push('buffering');});}" +
+            "v.addEventListener('waiting',function(){window.__ftvLog.push('buffering');if(!v.__ftvWait)v.__ftvWait=Date.now();});v.addEventListener('stalled',function(){window.__ftvLog.push('buffering');});v.addEventListener('playing',function(){v.__ftvWait=0;});v.addEventListener('pause',function(){if(!window.__ftvUserPaused&&/skysports/.test(location.host))window.__ftvLog.push('buffering');});}" +
             // Sky: waiting although the video is already here (a tiny hole in it, or the decoder stuck) → jump over the hole or nudge it on, instead of sitting on "Buffering"
             "var tfr=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality().totalVideoFrames:-1;if(v.paused||tfr!==v.__ftvF){if(!v.paused&&v.__ftvF>=0&&tfr>v.__ftvF)v.__ftvWait=0;v.__ftvF=tfr;v.__ftvFs=0;}else if(!v.__ftvFs){v.__ftvFs=Date.now();}" +
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvFs&&Date.now()-v.__ftvFs>1500&&!v.__ftvWait)v.__ftvWait=v.__ftvFs;" +
             "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&!v.paused&&v.__ftvWait&&Date.now()-v.__ftvWait>1200){v.__ftvFs=0;var ct=v.currentTime,inside=false,nx=-1;for(var g=0;g<v.buffered.length;g++){var bs=v.buffered.start(g),be=v.buffered.end(g);if(bs<=ct+0.02&&be>ct+0.5)inside=true;else if(bs>ct&&(nx<0||bs<nx))nx=bs;}" +
             "if(!inside&&nx>0&&nx-ct<6){v.currentTime=nx+0.1;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}else if(inside){v.currentTime=ct+0.2;window.__ftvUnstuck=(window.__ftvUnstuck||0)+1;}v.__ftvWait=Date.now();}" +
             "if(v.paused&&!v.ended&&v.currentTime>1&&/bbc\\.co\\.uk/.test(location.host)){v.play();window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('paused');}" +
-            "var LE=(function(){var n=v.seekable&&v.seekable.length,ct=v.currentTime,nw=Date.now()/1000;if(n){var e=v.seekable.end(n-1);if(e-ct>=0&&e-ct<7200)return e;}return Math.abs(nw-ct)<43200?nw-6:-1;})();window.__ftvLE=LE;" +
-            // more than a minute past the chosen delay (it showed old programmes): pull forward to the chosen delay, at most once a minute
-            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&LE>0&&v.currentTime>0){var D=window.__ftvDelay||30;if(LE-v.currentTime>D+60&&(!window.__ftvJump||Date.now()-window.__ftvJump>60000)){window.__ftvJump=Date.now();" +
-            "try{localStorage.setItem('timeToLiveEdgeInMs',String(D*1000));}catch(e){}v.currentTime=LE-D;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
+            "if(/skysports/.test(location.host)&&!window.__ftvUserPaused&&v.seekable&&v.seekable.length){var end=v.seekable.end(v.seekable.length-1);if(end-v.currentTime>40&&end-v.currentTime<7200&&!window.__ftvJump&&v.currentTime>0){window.__ftvJump=Date.now();" +
+            "try{localStorage.removeItem('timeToLiveEdgeInMs');}catch(e){}v.currentTime=end-15;window.__ftvLog=(window.__ftvLog||[]);window.__ftvLog.push('caughtup');}}" +
             "var b=0;for(var i=0;i<v.buffered.length;i++)if(v.buffered.start(i)<=v.currentTime+0.5&&v.buffered.end(i)>v.currentTime)b=v.buffered.end(i)-v.currentTime;" +
-            "if(v.__ftvRealWait&&!v.__ftvLogged&&Date.now()-v.__ftvRealWait>1200&&b<0.5&&!v.seeking){v.__ftvLogged=1;(window.__ftvLog=window.__ftvLog||[]).push('buffering');}" +
             "var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};var N=window.__ftvNet||{};var sp=N.ms?Math.round(N.kb*8/N.ms*10)/10:0;" +
-            "var bl=window.__ftvLE>0?Math.round(window.__ftvLE-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+(window.__ftvBack?'stepped back '+window.__ftvBack+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
+            "var bl=v.seekable&&v.seekable.length?Math.round(v.seekable.end(v.seekable.length-1)-v.currentTime):-1;window.__ftvStat=(bl>=0?'behind live '+bl+'s · ':'')+'ahead '+b.toFixed(1)+'s · '+v.videoHeight+'p'+(window.__ftvQs?' (Sky offers '+window.__ftvQs+')':'')+' · net '+sp+' Mb/s · got '+(N.ok||0)+' failed '+(N.bad||0)+(N.bad?' '+JSON.stringify(N.codes)+' last: '+String(N.last).slice(-40):'')+' · dropped '+(q.droppedVideoFrames||0)+'/'+(q.totalVideoFrames||0)+(window.__ftvCapped?' · capped':'')+' · '+(v.paused?'paused':'playing')+(window.__ftvUnstuck?' · unstuck '+window.__ftvUnstuck:'');" +
             "if(/skysports/.test(location.host)&&document.querySelector('[data-is-behind-live=\\'true\\']'))(window.__ftvLog=window.__ftvLog||[]).push('behind');" +
             "var sb=false;if(/skysports/.test(location.host)){try{var roots=[],rn=v.getRootNode?v.getRootNode():document,hops=0;while(rn&&hops++<4){roots.push(rn);if(rn===document||!rn.host)break;rn=rn.host.getRootNode?rn.host.getRootNode():document;}" +
             // Sky's own "Buffering…" message on the player: if it's showing, it's buffering, whatever the clock says
@@ -244,24 +241,22 @@ public class WebPlayerActivity extends Activity {
                 int pageBufs = 0; { int ix = 0; while ((ix = r.indexOf("buffering", ix)) >= 0 && ix < r.indexOf('|') ) { pageBufs++; ix += 9; } }
                 if (sct >= 0) stallCt = sct;
                 stallFr = fr;
-                if (testing && onSky()) testTick(now2, bufNow, pageBufs);
                 // the start-up wait is over (shown or not): from now on watch for buffering, even if it never settled
                 if (onSky() && !skySettled && now2 > skyGateUntil + 1000) { skySettled = true; settledAt = now2; earlyBufs = 0; }
                 if (onSky() && skySettled && watching() && !userPaused) {
                     // buffering: quick restarts (jump the same player to live, ~2 s) again and again until it plays smoothly;
                     // only if 4 quick ones in a minute don't fix it, a full page restart
-                    if (now2 - lastLiveReload > 10000) {   // (a restart's own wait while it jumps doesn't count: 10 s)
+                    if (now2 - lastLiveReload > 3000) {   // (a restart's own short wait doesn't count)
                         if (bufNow && !wasBuffering) bufStarts.add(now2);
                         for (int b = (bufNow && !wasBuffering) ? 1 : 0; b < pageBufs; b++) bufStarts.add(now2);   // short stutters between checks
                     }
                     while (!bufStarts.isEmpty() && now2 - bufStarts.peekFirst() > 12000) bufStarts.pollFirst();
                     stallRun = bufNow ? stallRun + 1 : 0;
-                    if (now2 - lastLiveReload < 10000) { stallRun = 0; bufStarts.clear(); }
-                    if ((bufStarts.size() >= 2 || stallRun >= 3) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 10000) {
+                    if ((bufStarts.size() >= 2 || stallRun >= 3) && prefs().getBoolean("skyAutoRestart", true) && now2 - lastLiveReload > 4000) {
                         lastLiveReload = now2; wasBuffering = false; bufStarts.clear(); stallRun = 0; stallCt = -1; stallFr = -2;
                         while (!quickTimes.isEmpty() && now2 - quickTimes.peekFirst() > 60000) quickTimes.pollFirst();
                         if (quickTimes.size() < 4 || now2 - fullAt < 25000) { quickTimes.add(now2); quickRestart(); return; }
-                        quickTimes.clear(); fullAt = now2; tRestarts++;
+                        quickTimes.clear(); fullAt = now2;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;
                     }
@@ -444,7 +439,7 @@ public class WebPlayerActivity extends Activity {
     // If a fixed picture quality won't start (Sky only allows some qualities on some devices), go back to Auto
     private int qChecks = 0;
     private final Runnable qualityWatch = new Runnable() { @Override public void run() {
-        if (true) return;   // quality is fixed at "up to 540p" now, so there's nothing to fall back from (it used to warn after leaving Sky)
+        if (web == null || quality() == 0 || !onSky()) return;
         web.evaluateJavascript("(function(){function deep(r,d){if(!r||d>8)return null;var v=r.querySelector&&r.querySelector('video');if(v)return v;var a=r.querySelectorAll?r.querySelectorAll('*'):[];" +
             "for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var f=deep(a[i].shadowRoot,d+1);if(f)return f;}}return null;}var v=deep(document,0);return v&&v.currentTime>2?'ok':'no';})()", r -> {
             if (r != null && r.contains("ok")) return;
@@ -686,81 +681,9 @@ public class WebPlayerActivity extends Activity {
     private long quickAt = 0;
     /** Restart without reloading the page: jump the same player to live (about 2 s). Used once; if it buffers again soon, the full restart follows. */
     private final java.util.ArrayDeque<Long> quickTimes = new java.util.ArrayDeque<>(); private long fullAt = 0; private int quickN = 0;
-    // ---- Sky test: tries each setup on this TV for about 3 minutes, counts buffering, then offers the best one ----
-    private int skyDelay() { return prefs().getInt("skyDelay", 30); }
-    private static final String[] TEST_NAMES = { "30 s behind live · browser downloads · auto restart", "30 s behind live · Free TV downloads · auto restart",
-        "30 s behind live · browser downloads · no auto restart", "10 s behind live · browser downloads · auto restart", "60 s behind live · browser downloads · auto restart" };
-    private static final int[][] TEST_SET = { {30, 0, 1}, {30, 1, 1}, {30, 0, 0}, {10, 0, 1}, {60, 0, 1} };   // delay, Free TV downloads, auto restart
-    private static final long TEST_SETTLE = 25000, TEST_RUN = 180000;
-    private boolean testing = false; private int testStep = -1, tBufs = 0, tStall = 0, tRestarts = 0; private long testAt = 0;
-    private final java.util.List<int[]> testScores = new java.util.ArrayList<>();
-    private android.widget.TextView testView;
-    private void applySetup(int[] st) { prefs().edit().putInt("skyDelay", st[0]).putBoolean("skyNet", st[1] == 1).putBoolean("skyAutoRestart", st[2] == 1).apply(); }
-    private void askTest() {
-        if (testing) {
-            new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Stop the Sky test?")
-                .setPositiveButton("Stop", (d, w) -> { testing = false; applySetup(TEST_SET[0]); if (testView != null) testView.setVisibility(View.GONE); applyQuality(); })
-                .setNegativeButton("Keep going", null).show();
-            return;
-        }
-        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Run the Sky test?")
-            .setMessage("About 17 minutes on this channel. It tries 5 setups for 3 minutes each, counts the buffering on this TV, then shows the results and lets you keep the best one. Press left again to stop it.")
-            .setPositiveButton("Start", (d, w) -> startTest()).setNegativeButton("Cancel", null).show();
-    }
-    private void startTest() {
-        testing = true; testStep = -1; testScores.clear();
-        if (testView == null) {
-            testView = new android.widget.TextView(this);
-            testView.setTextColor(0xFFFFFFFF); testView.setTextSize(15); testView.setBackgroundColor(0xCC000000); testView.setPadding(24, 14, 24, 14);
-            root.addView(testView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM | android.view.Gravity.START));
-        }
-        testView.setVisibility(View.VISIBLE); testView.bringToFront();
-        nextTest();
-    }
-    private void nextTest() {
-        testStep++;
-        if (testStep >= TEST_SET.length) { finishTest(); return; }
-        applySetup(TEST_SET[testStep]);
-        testAt = android.os.SystemClock.uptimeMillis(); tBufs = 0; tStall = 0; tRestarts = 0;
-        testView.setText("Sky test " + (testStep + 1) + " of " + TEST_SET.length + ": " + TEST_NAMES[testStep] + " – starting…");
-        applyQuality();
-    }
-    private void testTick(long now, boolean buf, int pageBufs) {
-        long el = now - testAt;
-        if (el < TEST_SETTLE) { tBufs = 0; tStall = 0; tRestarts = 0; testView.setText("Sky test " + (testStep + 1) + " of " + TEST_SET.length + ": " + TEST_NAMES[testStep] + " – settling " + ((TEST_SETTLE - el) / 1000) + " s"); return; }
-        if (buf) tStall++;
-        tBufs += pageBufs;
-        long left = TEST_SETTLE + TEST_RUN - el;
-        testView.setText("Sky test " + (testStep + 1) + " of " + TEST_SET.length + ": " + TEST_NAMES[testStep] + "\n" + (left / 1000) + " s left · buffers " + tBufs + " · stopped " + tStall + " s · restarts " + tRestarts);
-        testView.bringToFront();
-        if (left <= 0) { testScores.add(new int[]{ tBufs, tStall, tRestarts }); nextTest(); }
-    }
-    private void finishTest() {
-        testing = false;
-        int best = 0; double bs = 1e9;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < testScores.size(); i++) {
-            int[] r = testScores.get(i); double score = r[1] + r[0] * 5 + r[2] * 3;   // seconds stopped, plus buffers and restarts
-            if (score < bs) { bs = score; best = i; }
-            sb.append(i + 1).append(". ").append(TEST_NAMES[i]).append("\n     buffers ").append(r[0]).append(" · stopped ").append(r[1]).append(" s · restarts ").append(r[2]).append("\n");
-        }
-        final int win = best;
-        sb.append("\nBest: ").append(win + 1).append(". ").append(TEST_NAMES[win]);
-        prefs().edit().putString("skyTestResults", sb.toString()).apply();
-        if (testView != null) testView.setVisibility(View.GONE);
-        applySetup(TEST_SET[0]);
-        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Sky test results").setMessage(sb.toString())
-            .setPositiveButton("Use the best", (d, w) -> { applySetup(TEST_SET[win]); applyQuality(); android.widget.Toast.makeText(this, "Using: " + TEST_NAMES[win], android.widget.Toast.LENGTH_LONG).show(); })
-            .setNegativeButton("Keep the normal setup", (d, w) -> applyQuality()).show();
-    }
     private boolean quickRestart() {
-        int back = skyDelay() + new int[]{-5, 0, -8, 5}[quickN++ % 4];   // the chosen delay behind live, at a slightly different point each time
-        tRestarts++;
-        // live = Sky's live point if it's sensible, otherwise now (the picture's position is clock time; Sky's own live point is a placeholder)
-        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{var ct=v.currentTime,B=" + back + ",s=v.seekable,n=s&&s.length,nw=Date.now()/1000;" +
-            "var st=n?s.start(0):0;if(st>ct)st=0;var LE=-1;if(n){var e=s.end(n-1);if(e-ct>=0&&e-ct<7200)LE=e;}if(LE<0&&Math.abs(nw-ct)<43200)LE=nw-6;" +
-            "if(LE>0){v.currentTime=Math.max(st,LE-B);}else{v.currentTime=Math.max(st,ct-0.5);}" +
-            "v.play();}catch(e){}});})()", null);
+        int back = new int[]{4, 8, 3, 12}[quickN++ % 4];   // land a little behind live, at a different point each time
+        web.evaluateJavascript("(function(){" + DEEP_MEDIA + "deep(document,0,[]).forEach(function(v){try{if(v.seekable&&v.seekable.length){v.currentTime=Math.max(0,v.seekable.end(v.seekable.length-1)-" + back + ");}v.play();}catch(e){}});})()", null);
         settledAt = android.os.SystemClock.uptimeMillis();
         note("Catching up…");
         return true;
@@ -1073,7 +996,7 @@ public class WebPlayerActivity extends Activity {
         "g('userAgentData',ua);g('platform','Linux x86_64');g('maxTouchPoints',0);g('vendor','Google Inc.');" +
         "try{delete window.ontouchstart;}catch(e){}" +
         "if(/skysports|sky\\.com/.test(location.host)){" +
-        "try{localStorage.setItem('timeToLiveEdgeInMs','30000');}catch(e){}" +
+        "try{localStorage.removeItem('timeToLiveEdgeInMs');}catch(e){}" +
         "var SHIFT=8000,RD=Date,now0=RD.now.bind(RD);function SD(){var a=arguments;if(!(this instanceof SD))return new RD(now0()-SHIFT).toString();if(a.length===0)return new RD(now0()-SHIFT);return new (Function.prototype.bind.apply(RD,[null].concat([].slice.call(a))))();}" +
         "SD.prototype=RD.prototype;SD.now=function(){return now0()-SHIFT;};SD.parse=RD.parse;SD.UTC=RD.UTC;try{Object.defineProperty(SD.prototype,'constructor',{value:SD,configurable:true,writable:true});}catch(e){}window.Date=SD;" +
         "var D=Document.prototype;try{Object.defineProperty(D,'hidden',{get:function(){return false;},configurable:true});Object.defineProperty(D,'visibilityState',{get:function(){return 'visible';},configurable:true});}catch(e){}" +
@@ -1083,11 +1006,8 @@ public class WebPlayerActivity extends Activity {
         "var QH=0;function capMpd(t){try{if(typeof t!=='string'||t.indexOf('<MPD')<0)return t;var x=new DOMParser().parseFromString(t,'application/xml');if(x.getElementsByTagName('parsererror').length)return t;var n=0,hs={};" +
         "[].forEach.call(x.getElementsByTagName('AdaptationSet'),function(a){var reps=[].slice.call(a.getElementsByTagName('Representation'));var ah=+a.getAttribute('height')||0;var vid=/video/.test((a.getAttribute('mimeType')||'')+(a.getAttribute('contentType')||''))||reps.some(function(r){return /video/.test(r.getAttribute('mimeType')||'')||r.hasAttribute('height');});if(!vid||!reps.length)return;" +
         "function H(r){return +r.getAttribute('height')||ah;}reps.forEach(function(r){if(H(r))hs[H(r)]=1;});if(!QH||reps.length<2)return;" +
-        "var CAP=Math.abs(QH),ok=reps.filter(function(r){return H(r)&&H(r)<=CAP;});if(!ok.length)ok=[reps.reduce(function(a,b){return H(a)<=H(b)?a:b;})];" +
-        "var keep=QH<0?ok:[ok.reduce(function(a,b){return H(a)>=H(b)?a:b;})];" +
-        "reps.forEach(function(r){if(keep.indexOf(r)<0){r.parentNode.removeChild(r);n++;}});});" +
-        // live: sit 30 s behind the live edge with an 8 s cushion, so a late chunk doesn't stall the picture
-        "var M=x.documentElement;if(M&&M.getAttribute('type')==='dynamic'){M.setAttribute('suggestedPresentationDelay','PT30S');var mb=M.getAttribute('minBufferTime')||'';var mbs=+(mb.match(/([\\d.]+)S/)||[0,0])[1];if(mbs<8)M.setAttribute('minBufferTime','PT8S');n++;}" +
+        "var ok=reps.filter(function(r){return H(r)&&H(r)<=QH;});var best=ok.length?Math.max.apply(null,ok.map(H)):Math.min.apply(null,reps.map(H));" +
+        "reps.forEach(function(r){if(H(r)!==best){r.parentNode.removeChild(r);n++;}});});" +
         "window.__ftvQs=Object.keys(hs).sort(function(a,b){return a-b;}).join('/');return n?new XMLSerializer().serializeToString(x):t;}catch(e){return t;}}" +
         "var N=window.__ftvNet={ok:0,bad:0,codes:{},kb:0,ms:0,seg:0};function cnt(st,u,t0,b){if(st>=400||st===0){N.bad++;N.codes[st]=(N.codes[st]||0)+1;N.last=String(u).replace(/^https?:\\/\\//,'').replace(/\\?.*/,'').slice(-70);}else N.ok++;if(/\\.(m4s|mp4|m4v|ts|cmfv)|segment|chunk/i.test(u)&&b){N.seg++;N.kb+=b/1024;N.ms+=Date.now()-t0;}}" +
         "var F=window.fetch;window.fetch=function(i,o){var t0=Date.now(),U=String(i&&i.url||i);return F.apply(this,arguments).then(function(r){try{var cl=+r.headers.get('content-length')||0;cnt(r.status,U,t0,cl);}catch(e){}try{var u=r.url||'';var ct=r.headers.get('content-type')||'';if(!/\\.mpd|dash/i.test(u+ct))return r;return r.clone().text().then(function(t){var c=capMpd(t);if(c===t)return r;var nr=new Response(c,{status:r.status,statusText:r.statusText,headers:r.headers});try{Object.defineProperty(nr,'url',{value:u});}catch(e){}return nr;});}catch(e){return r;}});};" +
@@ -1097,18 +1017,8 @@ public class WebPlayerActivity extends Activity {
         "if(typeof v==='string')out=capMpd(v);else if(v instanceof ArrayBuffer){var t=new TextDecoder().decode(v),c=capMpd(t);out=c===t?v:new TextEncoder().encode(c).buffer;}this.__ftvC=[v,out];return out;}catch(e){return v;}}});});" +
         "var IO=window.IntersectionObserver;if(IO){window.IntersectionObserver=function(cb,opt){var o=new IO(function(es,ob){cb(es.map(function(e){return {target:e.target,time:e.time,rootBounds:e.rootBounds,boundingClientRect:e.boundingClientRect,intersectionRect:e.boundingClientRect,isIntersecting:true,isVisible:true,intersectionRatio:1};}),ob);},opt);return o;};window.IntersectionObserver.prototype=IO.prototype;}}" +
         "}catch(e){}})();";
-    private int quality() { return -540; }   // up to 540p (what this player can show on the Chromecast); all of those kept so Sky can drop lower when needed
-    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=0,").replace("157.0.8103.79", chromeFull()).replace("version:'157'", "version:'" + chromeMajor() + "'"); }
-    // the browser version this TV really has (the desktop disguise used to claim 157, which can make Sky's player pick settings this browser handles badly)
-    private String chromeFullV = null;
-    private String chromeFull() {
-        if (chromeFullV == null) {
-            chromeFullV = "131.0.0.0";
-            try { java.util.regex.Matcher m = java.util.regex.Pattern.compile("Chrome/([\\d.]+)").matcher(android.webkit.WebSettings.getDefaultUserAgent(this)); if (m.find()) chromeFullV = m.group(1); } catch (Exception ignored) { }
-        }
-        return chromeFullV;
-    }
-    private String chromeMajor() { String f = chromeFull(); int i = f.indexOf('.'); return i > 0 ? f.substring(0, i) : f; }
+    private int quality() { return getSharedPreferences("player", MODE_PRIVATE).getInt("skyq", 0); }
+    private String desktopJs() { return DESKTOP.replace("var QH=0;", "var QH=" + quality() + ";").replace("var SHIFT=8000,", "var SHIFT=" + (prefs().getBoolean("skyclock", false) ? 8000 : 0) + ",") ; }
     private Object startScript;   // the script handle, so a new quality can replace it
     private void looksLikeDesktop(WebSettings s) {
         try {
@@ -1221,9 +1131,11 @@ public class WebPlayerActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        // the Sky options menu is gone: anything changed in it goes back to normal (once)
-        if (!prefs().getBoolean("skyMenuGone", false))
-            prefs().edit().remove("skyq").remove("skyclock").remove("skypage").remove("skyNoAds").remove("skyNet").remove("skyFresh").remove("skyAutoRestart").putBoolean("skyMenuGone", true).apply();
+        // back to the Sky setup of 2.39 (25 Nov): clear anything the later Sky tests changed (once)
+        if (!prefs().getBoolean("skyBack239", false)) {
+            prefs().edit().remove("skyDelay").remove("skyNet").remove("skyAutoRestart").remove("skyclock").remove("skypage").remove("skyNoAds").remove("skyFresh").remove("skyTestResults").putBoolean("skyBack239", true).apply();
+            getSharedPreferences("player", MODE_PRIVATE).edit().remove("skyq").apply();
+        }
         if (pip != null && pip != this) { pip.finish(); pip = null; }   // a new channel replaces the corner window
         if (android.os.Build.VERSION.SDK_INT >= 30) { try { setTranslucent(false); } catch (Throwable ignored) { } }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -1259,7 +1171,7 @@ public class WebPlayerActivity extends Activity {
         s.setUseWideViewPort(false);
         s.setLoadWithOverviewMode(false);
         web.setInitialScale(0);
-        s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chromeMajor() + ".0.0.0 Safari/537.36");
+        s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36");
         looksLikeDesktop(s);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
@@ -1267,8 +1179,7 @@ public class WebPlayerActivity extends Activity {
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
                 String h = req.getUrl().getHost();
                 // Sky: Free TV downloads the video pieces itself and retries any that stall, so Sky's player never waits on a hung download
-                // the browser now downloads Sky's video itself, like a normal browser (Free TV fetching every piece added a hand-off the player could wait on)
-                if (skyPage && "GET".equalsIgnoreCase(req.getMethod()) && prefs().getBoolean("skyNet", false)) {
+                if (skyPage && "GET".equalsIgnoreCase(req.getMethod()) && prefs().getBoolean("skyNet", true)) {
                     String path = String.valueOf(req.getUrl().getPath()).toLowerCase();
                     if (path.matches(".*\\.(m4s|m4v|m4a|mp4|cmfv|cmfa|ts|aac)$") || path.matches(".*/(segment|chunk|fragment)[^/]*$") || path.matches(".*/(time|t|number|n)[-_=]?\\d{3,}[^/]*$")) {
                         android.webkit.WebResourceResponse wr = fetchPiece(req);
@@ -1408,7 +1319,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (watching() && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (onSky()) askTest(); else adMenu(); }   // Sky: the Sky test
+                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (!onSky()) adMenu(); }   // Sky: no options menu
                 else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
             }
             return true;
