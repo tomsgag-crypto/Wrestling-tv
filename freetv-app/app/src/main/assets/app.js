@@ -648,7 +648,6 @@ var app = (function () {
      ['USA Network (Sling)', SL + '#ftv-sling=USA', us('usa', 'USA Network on Sling TV – Premier League, WWE and more')]].forEach(function (r, i) {
       chans.push({ sec: 'US sports (VPN)', id: 'us' + i, name: r[0], web: r[1], appK: r[1] === PP ? 'paramount' : /sling\.com/.test(r[1]) ? 'sling' : '', cat: 'Sports', type: 'Sport', svc: '', events: r[2] });
     });
-    euRows('Europe TV').forEach(function (r) { r.type = 'Sport'; chans.push(r); });
     if (gRow >= chans.length) gRow = 0;
   }
   function buildChans() {
@@ -707,12 +706,12 @@ var app = (function () {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
       w.rows.forEach(function (r, i) { out.push({ sec: w.sec, id: 'w' + w.k + i, name: r[0], web: r[1], appK: w.k === 'pplus' ? 'paramount' : '', cat: r[2] || '', events: [] }); });
     });
-    euRows('Europe TV').forEach(function (r) { out.push(r); });
     out = out.filter(function (c) { return !settings.hide[c.sec.replace(' (US)', '')]; });
     var usFirst = isUS(); out = out.filter(function (c) { return (secGroup(c.sec) === 'US TV') === usFirst; }).concat(out.filter(function (c) { return (secGroup(c.sec) === 'US TV') !== usFirst; }));
     out.forEach(function (c) { c.type = chanType(c); });
     if (settings.guideType) out = out.filter(function (c) { return c.type === settings.guideType; });
-    if (/^(UK|US|Europe) TV$/.test(settings.guideSec || '')) { var gs = out.filter(function (c) { return secGroup(c.sec) === settings.guideSec; }); if (gs.length) out = gs; }
+    if (settings.guideSec === 'Europe TV') settings.guideSec = '';
+    if (/^(UK|US) TV$/.test(settings.guideSec || '')) { var gs = out.filter(function (c) { return secGroup(c.sec) === settings.guideSec; }); if (gs.length) out = gs; }
     else if (settings.guideSec && out.some(function (c) { return c.sec === settings.guideSec; })) out = out.filter(function (c) { return c.sec === settings.guideSec; });
     // favourites at the top (or on their own)
     var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
@@ -829,12 +828,12 @@ var app = (function () {
     if (SPORTS) {
       status('guide', true);
       settings.virgin = true;
-      return Promise.all([soon(loadVirgin(), 25000), soon(loadPrimeUCL()), soon(loadUSSports()), soon(loadUSEpg()), soon(loadEUEpg())]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
+      return Promise.all([soon(loadVirgin(), 25000), soon(loadPrimeUCL()), soon(loadUSSports()), soon(loadUSEpg())]).then(function () { guideAt = Date.now(); buildChans(); status('guide', false); render(); });
     }
     setTimeout(autoVirginSync, 8000);
     status('guide', true);
     // each part gets a time limit and can fail on its own, so one slow or broken source can't stop the guide appearing
-    return Promise.all([soon(loadFreely(), 25000), soon(detectCountry().then(loadPluto), 25000), soon(loadUSEpg()), soon(loadEUEpg())]).then(function () {
+    return Promise.all([soon(loadFreely(), 25000), soon(detectCountry().then(loadPluto), 25000), soon(loadUSEpg())]).then(function () {
       guideAt = Date.now();
       buildChans();
       buildFilmsOnTV();
@@ -2011,7 +2010,7 @@ var app = (function () {
     dh += '<div class="day opts' + (settings.guideType ? ' on' : '') + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">▾ Genre: ' + esc(settings.guideType || 'All') + '</div>';
     dh += '<div class="day sec on' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 ? ' sel' : '') + '" data-day="src">▾ Channels: ' + esc(settings.guideSec || 'All') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
     // country buttons: everything, UK TV only, US TV only
-    if (!SPORTS) [['', 'All'], ['UK TV', 'UK TV'], ['US TV', 'US TV'], ['Europe TV', 'Europe TV']].forEach(function (x, i) {
+    if (!SPORTS) [['', 'All'], ['UK TV', 'UK TV'], ['US TV', 'US TV']].forEach(function (x, i) {
       dh += '<div class="day' + ((settings.guideSec || '') === x[0] ? ' on' : '') + (gZone === 'days' && zone === 'main' && gDay === DAYS + 2 + i ? ' sel' : '') + '" data-day="c' + i + '">' + x[1] + '</div>';
     });
     $('gDays').innerHTML = dh;
@@ -2116,7 +2115,7 @@ var app = (function () {
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       // the chips: day drop-down (0), Filter & options (DAYS), Channels (DAYS + 1)
-      var CH = SPORTS ? [0, DAYS, DAYS + 1] : [0, DAYS, DAYS + 1, DAYS + 2, DAYS + 3, DAYS + 4, DAYS + 5], ci = Math.max(0, CH.indexOf(gDay));
+      var CH = SPORTS ? [0, DAYS, DAYS + 1] : [0, DAYS, DAYS + 1, DAYS + 2, DAYS + 3, DAYS + 4], ci = Math.max(0, CH.indexOf(gDay));
       if (k === 'left') gDay = CH[Math.max(0, ci - 1)];
       else if (k === 'right') gDay = CH[Math.min(CH.length - 1, ci + 1)];
       else if (k === 'ok' && gDay >= DAYS + 2) { setSource(['', 'UK TV', 'US TV', 'Europe TV'][gDay - DAYS - 2]); return; }

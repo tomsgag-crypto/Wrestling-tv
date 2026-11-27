@@ -12,11 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Cut the US guide down to the sports channels
         run: python3 tools/us_epg.py us-epg.json
-      - name: Europe TV listings
-        run: python3 tools/eu_epg.py eu-epg.json || echo '{"ch":{}}' > eu-epg.json
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view us-epg >/dev/null 2>&1 || gh release create us-epg --title "US sports listings" --notes "Listings for Sky Sports TV's US rows, refreshed every 6 hours."
-          gh release upload us-epg us-epg.json eu-epg.json --clobber
+          gh release upload us-epg us-epg.json --clobber
