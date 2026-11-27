@@ -1082,6 +1082,7 @@ var app = (function () {
     }, function () { openService(k, url, what, title, 'tv'); });
   }
   function openService(k, url, what, title, kind, ep) {
+    if (k === 'skyvirgin') { if (window.Native && Native.openVirginVod) { Native.openVirginVod(title); toast('Finding "' + title + '" in Virgin TV Go…'); } return; }
     var tag = ep ? '#ftv-ep=' + encodeURIComponent(JSON.stringify(ep)) : kind === 'tv' ? '#ftv-series' : '';   // an episode to go to, or a series to choose from
     if (k === 'itv' && itvWeb()) {
       toast('Finding ' + what + ' on ITVX…');
@@ -1141,7 +1142,7 @@ var app = (function () {
       var year = (it.sub || '').slice(0, 4);
       var gsearch = { label: TOUCH ? 'Search Google for it' : 'Find on Google TV – opens it in the right app', fn: function () { findOnTV(it.title + (/^\d{4}$/.test(year) ? ' ' + year : '')); } };
       showPop({ title: '"' + it.title + '" is on ' + ws.map(function (w) { return SVC[w.k].name; }).join(', '), opts: [].concat(ws.map(function (w) {
-        return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (has(w.k) ? '' : ' (not installed)'),
+        return { label: 'Open ' + SVC[w.k].name + (w.exact ? ' – straight to it' : '') + (mineSvc(w.k) ? '' : ' (not installed)'),
           fn: function () { var u = w.exact || (w.search ? w.search + encodeURIComponent(it.title) : ''); if (it.kind === 'tv' && webSvc(w.k)) pickEpisode(w.k, u, '"' + it.title + '"', it.title, it); else openService(w.k, u, '"' + it.title + '"', it.title, it.kind); } };
       })).concat(TOUCH ? [gsearch] : [], [{ label: '➕ Add to My Lists', fn: function () { setTimeout(function () { addMenu(it); }, 0); } }, { label: 'Cancel' }]) });
     }, function () { toast('Couldn\'t check where "' + it.title + '" is'); });
@@ -1780,6 +1781,11 @@ var app = (function () {
   function status(what, on) { loading[what] = on; renderHelp(); }
 
   function setView(v) {
+    // leaving the TV guide: stop the channel playing in its picture box (it used to carry on hidden in the background)
+    if (view === 'guide' && v !== 'guide' && window.Native) {
+      if (mini && Native.miniStop) { Native.miniStop(); mini = null; }
+      if (Native.pipActive && Native.pipActive() && Native.pipStop) { Native.pipStop(); pipOn = false; }
+    }
     if (v !== view && (v === 'popular' || v === 'ondemand' || v === 'purchases' || isOD())) {
       // On Demand and Most Popular share a screen: keep each one's place
       if (isOD()) odStash[view] = { s: odSrc, c: odCat, r: odRow, z: odZone, h: odChip };
@@ -2115,7 +2121,46 @@ var app = (function () {
   }
 
   // ---------------------------------------------------------------- on demand
-  function curSrc() { return od[odSrc] || { cats: [] }; }
+  // On Demand search: while a search is showing, its results stand in for the chosen app's rows
+  var odQ = '', odQSrc = null, odQSeq = 0;
+  function curSrc() { if (odQ && odQSrc && view === 'ondemand') return odQSrc; return od[odSrc] || { cats: [] }; }
+  function odSearch() {
+    var go = function () { odSearchRun(($('popIn').value || '').trim()); };
+    showPop({ title: 'Search On Demand (type, or use the mic on the remote)', input: true, inputFocus: true, opts: [
+      { label: '🔍 Search', fn: go },
+      { label: 'Clear search', fn: function () { odSearchRun(''); } }, { label: 'Cancel' }] });
+    $('popIn').value = odQ; $('popIn').setAttribute('inputmode', 'text'); setTimeout(function () { $('popIn').focus(); }, 30);
+    $('popIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); closePop(); go(); render(); } };
+  }
+  function odSearchRun(q) {
+    odQ = q; odCat = 0; odRow = 0;
+    if (!q) { odQSrc = null; odZone = 'cats'; render(); return; }
+    var words = q.toLowerCase().split(/\s+/), seen = {}, found = [];
+    var match = function (t) { t = String(t || '').toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0; }); };
+    // what's already loaded in On Demand (BBC iPlayer, Pluto, your apps' rows)
+    var pool = (settings.hide.bbc ? [] : bbcCats).concat(settings.hide.pluto ? [] : plutoCats);
+    streamCats.forEach(function (c) { if (!c.svcKey || mineSvc(c.svcKey)) pool.push(c); });
+    pool.forEach(function (c) { (c.items || []).forEach(function (it) { var k = (it.title || '').toLowerCase() + '|' + (it.svc || ''); if (match(it.title) && !seen[k]) { seen[k] = 1; found.push(it); } }); });
+    var cat = { id: 'odq', name: 'Results for "' + q + '"', src: 'odq', items: found.slice(0, 150) };
+    odQSrc = { id: 'odq', name: 'Search: ' + q, cats: [cat] };
+    odZone = found.length ? 'grid' : 'cats';
+    render();
+    // films and series on the apps you have (looked up on TMDB)
+    if (!tmdbKey) return;
+    var mine = ++odQSeq;
+    tmdb('/search/multi', 'region=GB&include_adult=false&query=' + encodeURIComponent(q)).then(function (j) {
+      var hits = (j.results || []).filter(function (x) { return x.media_type === 'movie' || x.media_type === 'tv'; }).slice(0, 16).map(function (x) { return tmdbItem(x, x.media_type, null); });
+      return Promise.all(hits.map(function (it) {
+        return whereToWatch(it).then(function (ws) { ws = ws.filter(function (w) { return mineSvc(w.k); }); it.where = ws.map(function (w) { return SVC[w.k].name; }).join(', '); return ws.length ? it : null; }, function () { return null; });
+      }));
+    }).then(function (hits) {
+      if (mine !== odQSeq || odQ !== q) return;
+      var seenT = {}; cat.items.forEach(function (x) { seenT[(x.title || '').toLowerCase()] = 1; });
+      cat.items = hits.filter(function (x) { return x && !seenT[x.title.toLowerCase()]; }).concat(cat.items);
+      if (cat.items.length && odZone === 'cats') odZone = 'grid';
+      if (isOD()) render();
+    }).catch(function () {});
+  }
   function curCat() { return curSrc().cats[odCat]; }
   function odItems() {
     var c = curCat(), items = c && c.items || [];
@@ -2147,11 +2192,11 @@ var app = (function () {
   function renderOD() {
     if (!od.length) buildOD();
     if (odCat >= curSrc().cats.length) odCat = 0;
-    if (odChip > 3) odChip = 0;
+    if (odChip > 3 && !(odChip === 5 && view === 'ondemand')) odChip = 0;
     var act = zone === 'main';
-    var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z'][n] + '">' + esc(txt) + '</div>'; };
+    var chip = function (n, txt) { return '<div class="chip gen' + (n === 0 ? ' on' : '') + (act && odZone === 'src' && odChip === n ? ' sel' : '') + '" data-s="' + ['a', 'g', 'o', 'z', 'u', 'q'][n] + '">' + esc(txt) + '</div>'; };
     if (view === 'purchases') $('odSrc').innerHTML = chip(0, '🔍 Search my films' + (buyQ ? ': ' + buyQ : '')) + chip(3, '⇅ Sort: ' + (BUY_SORTS.filter(function (x) { return x[0] === buyCatSort(curCat() ? curCat().id : ''); })[0] || BUY_SORTS[0])[1]) + chip(1, '⟳ Refresh') + (BUYONLY ? chip(4, '⬆ Update app') : '') + '<div class="chip gen" style="opacity:.8">' + esc(buyInfo()) + '</div>';
-    else $('odSrc').innerHTML = chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
+    else $('odSrc').innerHTML = (view === 'ondemand' ? chip(5, '🔍 Search' + (odQ ? ': ' + odQ + '  ✕' : '')) : '') + chip(0, '▾ ' + (view === 'popular' ? 'Family on: ' : 'Showing: ') + (curSrc().name || '')) + chip(1, '▾ Genre: ' + (odGenre ? OD_GENRES[odGenre][0] : 'All')) + chip(3, '⇅ Sort: ' + (curCat() && catSort(curCat()) ? (SORTS.filter(function (x) { return x[0] === catSort(curCat()); })[0] || SORTS[0])[1] : 'Normal')) + chip(2, '☰ Filter & options');
     if (act && odZone === 'src') scrollChip($('odSrc'));
     var cats = curSrc().cats;
     $('odCats').innerHTML = cats.map(function (c, i) {
@@ -2186,11 +2231,12 @@ var app = (function () {
         render(); return;
       }
       // buttons left to right: app (0), genre (1), sort (3), filter & options (2)
-      var ORDER = [0, 1, 3, 2], oi = ORDER.indexOf(odChip);
+      var ORDER = view === 'ondemand' ? [5, 0, 1, 3, 2] : [0, 1, 3, 2], oi = Math.max(0, ORDER.indexOf(odChip));
       if (k === 'left') odChip = ORDER[Math.max(0, oi - 1)];
       else if (k === 'right') odChip = ORDER[Math.min(ORDER.length - 1, oi + 1)];
       else if (k === 'ok' && odChip === 3) { if (curCat()) catMenu(curCat()); return; }
-      else if (k === 'ok' && odChip === 0) { appMenu(); return; }
+      else if (k === 'ok' && odChip === 5) { odSearch(); return; }
+      else if (k === 'ok' && odChip === 0) { if (odQ) { odSearchRun(''); return; } appMenu(); return; }
       else if (k === 'ok' && odChip === 1) { genreMenu(); return; }
       else if (k === 'ok' && odChip === 2) { optionsMenu(); return; }
       else if (k === 'down') { if (items.length) { odZone = 'grid'; if (odRow >= items.length) odRow = 0; } else odZone = 'cats'; }
@@ -2930,7 +2976,7 @@ var app = (function () {
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { genreGuideMenu(); return; }
       if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } var cy = /^c(\d)$/.exec(dy.getAttribute('data-day') || ''); if (cy) { setSource(['', 'UK TV', 'US TV'][+cy[1]]); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
-    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { if (curCat()) catMenu(curCat()); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'a') { appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
+    if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { if (curCat()) catMenu(curCat()); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'q') { odSearch(); return; } if (sv === 'a') { if (odQ && view === 'ondemand') { odSearchRun(''); return; } appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
     var t = e.target.closest('.tab, .blk, .gch, .cat, .card, .app, .opt');
     if (!t) return;
