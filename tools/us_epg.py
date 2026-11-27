@@ -89,5 +89,38 @@ for subs in ["217,658,713", "231,658,713", "217,231,658,713"]:
         except Exception as x:
             print("sling list failed", subs, tz, x)
 print("sling sample", list(sling.items())[:12])
-json.dump({"at": int(now), "ch": out, "pluto": pluto, "sling": sling}, open(sys.argv[1], "w"), separators=(",", ":"))
+# Tubi's free live channels (no login): the line-up from tubitv.com/live, names and listings from Tubi's programming service
+tubi = []
+try:
+    UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"}
+    h = urllib.request.urlopen(urllib.request.Request("https://tubitv.com/live", headers=UA), timeout=60).read().decode("utf-8", "replace")
+    m = __import__("re").search(r"window\.__data\s*=\s*(\{.*?\});\s*</script>", h, __import__("re").S)
+    data = json.loads(m.group(1).replace("undefined", "null"))
+    cat_of, order = {}, []
+    for c in data["epg"]["contentIdsByContainer"]:
+        if c.get("container_slug") in ("favorite_linear_channels", "recommended_linear_channels", "featured_channels", "recently_added_channels"): continue
+        for i in c.get("contents") or []:
+            if i not in cat_of: cat_of[i] = c.get("name") or ""; order.append(i)
+    rows = {}
+    for b in range(0, len(order), 25):
+        q = "&".join("content_id=" + i for i in order[b:b + 25])
+        try:
+            j = json.loads(urllib.request.urlopen(urllib.request.Request("https://epg-cdn.production-public.tubi.io/content/epg/programming?platform=web&device_id=ftv-guide&lookahead=1&" + q, headers=UA), timeout=60).read())
+            for r in j.get("rows") or []: rows[str(r.get("content_id"))] = r
+        except Exception as x:
+            print("tubi batch failed", b, x)
+    def iso(t): return int(datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=__import__("datetime").timezone.utc).timestamp())
+    for i in order:
+        r = rows.get(i)
+        if not r or r.get("needs_login"): continue
+        ev = []
+        for p in r.get("programs") or []:
+            try: ev.append([iso(p["start_time"]), iso(p["end_time"]), p.get("title") or "", (p.get("description") or "")[:140]])
+            except Exception: pass
+        img = ((r.get("images") or {}).get("thumbnail") or [""])[0]
+        tubi.append({"id": i, "n": r.get("title") or "", "cat": cat_of[i], "img": img, "ev": ev})
+except Exception as x:
+    print("tubi failed", x)
+print("tubi channels", len(tubi))
+json.dump({"at": int(now), "ch": out, "pluto": pluto, "sling": sling, "tubi": tubi}, open(sys.argv[1], "w"), separators=(",", ":"))
 print({k: len(v) for k, v in out.items()})
