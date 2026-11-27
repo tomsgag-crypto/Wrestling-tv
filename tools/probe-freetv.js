@@ -1,30 +1,25 @@
-const fs = require('fs'); const zlib = require('zlib');
-const out = [];
-const uuid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
-async function t(u, o) { try { const r = await fetch(u, o); const b = Buffer.from(await r.arrayBuffer()); return { s: r.status, h: r.headers, b, url: r.url }; } catch (e) { return { s: 'ERR ' + e.message, b: Buffer.from('') }; } }
+// Probe: public stream lists and Virgin Media Play's live page routes for the Europe TV channels
+const fs = require('fs'); fs.mkdirSync('probe', { recursive: true });
+const want = /virgin media (one|two)|servus|^tv8|club rtl|vtm 2|srf zwei|rts 2|rsi la 2|trt 1\b/i;
 (async () => {
-  const j = JSON.parse(zlib.gunzipSync((await t('https://i.mjh.nz/SamsungTVPlus/.channels.json.gz')).b).toString());
-  const gb = j.regions.gb.channels; const keys = {};
-  Object.values(gb).forEach(c => Object.keys(c).forEach(k => keys[k] = (keys[k] || 0) + 1));
-  out.push('samsung keys ' + JSON.stringify(keys));
-  const drm = Object.entries(gb).filter(([k, c]) => c.license_url || c.drm || c.licence_url);
-  out.push('with licence ' + drm.length + ': ' + drm.map(([k, c]) => c.name).join(' | '));
-  out.push('groups ' + [...new Set(Object.values(gb).map(c => c.group))].join(' | '));
-  out.push('all names: ' + Object.values(gb).map(c => c.name).join(' | '));
-  out.push('programs sample ' + JSON.stringify(Object.values(gb)[3].programs.slice(0, 4)) + ' count ' + Object.values(gb)[3].programs.length);
-  const id = uuid();
-  const r = await t('https://clients.plex.tv/api/v2/users/anonymous', { method: 'POST', headers: { Accept: 'application/json', 'X-Plex-Product': 'Plex Mediaverse', 'X-Plex-Client-Identifier': id, 'X-Plex-Version': '1.0.0' } });
-  const tok = JSON.parse(r.b.toString()).authToken;
-  const H = { Accept: 'application/json', 'X-Plex-Token': tok };
-  const c = JSON.parse((await t('https://epg.provider.plex.tv/lineups/plex/channels', { headers: H })).b.toString()).MediaContainer.Channel;
-  out.push('plex channel keys ' + Object.keys(c[0]).join(',') + ' sample ' + JSON.stringify(c[0]).slice(0, 800));
-  const day = new Date().toISOString().slice(0, 10);
-  for (const u of ['https://epg.provider.plex.tv/grid?channelGridKey=' + c[0].gridKey + '&date=' + day,
-                   'https://epg.provider.plex.tv/grid?channelGridKey=' + c.slice(0, 3).map(x => x.gridKey).join(',') + '&date=' + day,
-                   'https://epg.provider.plex.tv/grid?type=1,4&date=' + day]) {
-    const g = await t(u, { headers: H });
-    out.push('GRID ' + u.slice(30, 160) + ' -> ' + g.s + ' ' + g.b.length + ' ' + g.b.toString().slice(0, 1500));
+  let out = '';
+  for (const c of ['ie', 'at', 'it', 'be', 'ch', 'tr']) {
+    try {
+      const t = await (await fetch('https://raw.githubusercontent.com/iptv-org/iptv/master/streams/' + c + '.m3u')).text();
+      const L = t.split('\n');
+      for (let i = 0; i < L.length; i++) if (L[i].startsWith('#EXTINF') && want.test(L[i].split(',').pop())) out += c + ' | ' + L[i].split(',').pop() + ' | ' + (L[i + 1] || '') + ' | ' + (L[i].match(/http-referrer="[^"]*"|http-user-agent="[^"]*"/g) || []).join(' ') + '\n';
+    } catch (e) { out += c + ' failed ' + e + '\n'; }
   }
-  fs.mkdirSync('probe', { recursive: true });
-  fs.writeFileSync('probe/fast.txt', out.join('\n'));
-})().catch(e => { fs.mkdirSync('probe', { recursive: true }); fs.writeFileSync('probe/fast.txt', out.join('\n') + '\nERR ' + e.stack); });
+  fs.writeFileSync('probe/streams.txt', out);
+  let vm = '';
+  for (const u of ['https://play.virginmediatelevision.ie/', 'https://play.virginmediatelevision.ie/live', 'https://www.virginmediatelevision.ie/player/live/virgin-media-two']) {
+    try {
+      const r = await fetch(u, { redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36' } });
+      const h = await r.text();
+      vm += '== ' + u + ' -> ' + r.status + ' ' + r.url + ' len ' + h.length + '\n' + (h.match(/["'(\/][a-z0-9\-\/]*live[a-z0-9\-\/?=]*["')]/gi) || []).slice(0, 60).join(' ') + '\n';
+      const js = [...h.matchAll(/src="([^"]+\.js)"/g)].map(m => new URL(m[1], r.url).href).slice(0, 12);
+      for (const j of js) { try { const s = await (await fetch(j)).text(); const m = s.match(/["'`]\/?live[^"'`]{0,60}["'`]|channel[A-Za-z]*["'`]?\s*[:=]\s*["'`][^"'`]{2,40}/g) || []; if (m.length) vm += '  ' + j + ': ' + [...new Set(m)].slice(0, 40).join(' ') + '\n'; } catch (e) {} }
+    } catch (e) { vm += u + ' failed ' + e + '\n'; }
+  }
+  fs.writeFileSync('probe/vmplay.txt', vm);
+})();
