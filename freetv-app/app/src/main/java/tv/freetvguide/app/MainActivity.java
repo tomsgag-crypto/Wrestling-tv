@@ -651,6 +651,12 @@ public class MainActivity extends Activity {
             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", url).putExtra("title", title).putExtra("find", find).putExtra("pin", true);
             ui.post(() -> { stopMini(); startActivity(i); });
         }
+        /** Sky (via Virgin TV Go) on demand: open Virgin TV Go's search, find the title and press play. */
+        @JavascriptInterface
+        public void openVirginVod(String title) {
+            Intent i = new Intent(MainActivity.this, WebPlayerActivity.class).putExtra("url", "https://virgintvgo.virginmedia.com/en/search").putExtra("title", title).putExtra("vod", title);
+            ui.post(() -> { stopMini(); startActivity(i); });
+        }
         /** Your Virgin channels ({ids, names}), as last read from the Virgin TV Go page; "" if not checked yet. */
         @JavascriptInterface
         public String virginOwned() { return getSharedPreferences("player", MODE_PRIVATE).getString("owned", ""); }

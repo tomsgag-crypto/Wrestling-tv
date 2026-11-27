@@ -770,6 +770,59 @@ public class WebPlayerActivity extends Activity {
     /** Sky: start the "wait for live" check over (a new channel, or a restart). */
     private void skyGate() { if (signIn()) return; skySettled = false; settleTicks = 0; settleCt = -1; skyGateUntil = android.os.SystemClock.uptimeMillis() + 20000; ui.postDelayed(reveal, 20500); }
     private String find;   // a channel to pick on the site (Virgin TV Go), or null
+    // ---- Sky (via Virgin TV Go) on demand: search Virgin TV Go for a title, open it and press play ----
+    private String vod;            // the programme or film to find, or null
+    private int vodStage = 0, vodTicks = 0, vodStageTicks = 0;
+    private static final String VSTEP = "(function(T,S){try{" +
+        "function all(r,o){o=o||[];var n=r.querySelectorAll('*');for(var i=0;i<n.length;i++){o.push(n[i]);if(n[i].shadowRoot)all(n[i].shadowRoot,o);}return o;}" +
+        "function vis(e){var b=e.getBoundingClientRect();return b.width>4&&b.height>4&&b.bottom>0&&b.top<innerHeight*3;}" +
+        "function nm(x){return (x||'').toLowerCase().replace(/&/g,' and ').replace(/[^a-z0-9]/g,'');}" +
+        "function txt(e){return (e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||e.textContent||'').trim();}" +
+        "function click(e){try{e.scrollIntoView({block:'center'});}catch(x){}var b=e.getBoundingClientRect(),o={bubbles:true,cancelable:true,view:window,clientX:b.left+b.width/2,clientY:b.top+b.height/2};" +
+        "['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){try{e.dispatchEvent(new (t.indexOf('pointer')==0?PointerEvent:MouseEvent)(t,o));}catch(x){}});}" +
+        "var E=all(document);" +
+        "if(E.some(function(e){return e.tagName=='INPUT'&&e.type=='password'&&vis(e);}))return JSON.stringify({act:'login'});" +
+        "var V=E.filter(function(e){return e.tagName=='VIDEO'&&e.currentTime>0.5&&!e.paused;});if(V.length)return JSON.stringify({act:'playing'});" +
+        "var want=nm(T);" +
+        "if(S==0){var inp=E.filter(function(e){return e.tagName=='INPUT'&&vis(e)&&(e.type=='search'||/search/i.test((e.placeholder||'')+(e.getAttribute('aria-label')||'')+(e.name||'')+(e.id||'')));})[0];" +
+        " if(!inp){var sb=E.filter(function(e){return vis(e)&&/^(search|open search)$/i.test(txt(e))&&(e.tagName=='BUTTON'||e.tagName=='A'||e.getAttribute('role')=='button');})[0];if(sb){click(sb);return JSON.stringify({act:'opensearch'});}return JSON.stringify({act:'wait',why:'no search box'});}" +
+        " inp.focus();var st=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;st.call(inp,T);" +
+        " inp.dispatchEvent(new Event('input',{bubbles:true}));inp.dispatchEvent(new Event('change',{bubbles:true}));" +
+        " inp.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:T.slice(-1)}));return JSON.stringify({act:'typed'});}" +
+        "if(S==1){var best=null,bs=0;E.forEach(function(e){if(!vis(e)||e.tagName=='INPUT')return;var tg=e.tagName,cl=(tg=='A'||tg=='BUTTON'||e.getAttribute('role')=='button'||e.getAttribute('role')=='link'||e.hasAttribute('tabindex')||e.onclick);if(!cl)return;" +
+        "  var cand=[txt(e)];var im=e.querySelector&&e.querySelector('img[alt]');if(im)cand.push(im.alt);" +
+        "  cand.forEach(function(c){var n=nm(c.split('\\n')[0]),sc=0;if(!n)return;if(n==want)sc=3;else if(n.indexOf(want)==0&&n.length<want.length+8)sc=2;else if(want.length>5&&n.indexOf(want)>=0&&n.length<want.length*2)sc=1;if(sc>bs){bs=sc;best=e;}});});" +
+        " if(best){click(best);return JSON.stringify({act:'opened',score:bs});}return JSON.stringify({act:'wait',why:'no result yet'});}" +
+        "if(S==2){var pl=E.filter(function(e){return vis(e)&&(e.tagName=='BUTTON'||e.tagName=='A'||e.getAttribute('role')=='button')&&/^(play|watch|watch now|play now|resume|continue watching|play from start|start from beginning|play episode|watch episode|s\\s*1\\s*e\\s*1)\\b/i.test(txt(e));})[0];" +
+        " if(pl){click(pl);return JSON.stringify({act:'pressed',what:txt(pl).slice(0,40)});}return JSON.stringify({act:'wait',why:'no play button'});}" +
+        "return JSON.stringify({act:'wait'});}catch(x){return JSON.stringify({act:'wait',why:''+x});}})";
+    private final Runnable vodStep = new Runnable() { @Override public void run() {
+        if (web == null || vod == null) return;
+        if (watching()) { vod = null; return; }
+        if (++vodTicks > 75) { vodGiveUp("Couldn't play \"" + vod + "\" automatically – pick it on the Virgin TV Go page"); return; }
+        vodStageTicks++;
+        web.evaluateJavascript(VSTEP + "(" + org.json.JSONObject.quote(vod) + "," + vodStage + ")", r -> {
+            String act = "wait";
+            try { act = new org.json.JSONObject(new org.json.JSONTokener(r).nextValue().toString()).optString("act", "wait"); } catch (Exception ignored) { }
+            long next = 1000;
+            switch (act) {
+                case "login": reveal.run(); android.widget.Toast.makeText(WebPlayerActivity.this, "Sign in to Virgin TV Go, then it carries on", android.widget.Toast.LENGTH_LONG).show(); next = 5000; vodTicks -= 4; break;
+                case "playing": vod = null; reveal.run(); return;
+                case "typed": vodStage = 1; vodStageTicks = 0; cover.setText("Looking for \"" + vod + "\"…"); next = 2500; break;
+                case "opensearch": next = 1200; break;
+                case "opened": vodStage = 2; vodStageTicks = 0; cover.setText("Opening \"" + vod + "\"…"); next = 3000; break;
+                case "pressed": cover.setText("Starting \"" + vod + "\"…"); next = 4000; vodStageTicks = 0; break;
+                default:
+                    if (vodStage == 1 && vodStageTicks > 12) { vodGiveUp("Virgin TV Go didn't show \"" + vod + "\" – it may not be on Virgin's Sky catalogue"); return; }
+                    if (vodStage == 2 && vodStageTicks > 15) { vodGiveUp("Pick the episode you want – then press play"); return; }
+            }
+            ui.postDelayed(vodStep, next);
+        });
+    } };
+    private void vodGiveUp(String why) {
+        vod = null; reveal.run();
+        android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_LONG).show();
+    }
     private boolean isPlayer(String u) { return find != null || (u != null && (u.matches(".*bbc\\.co\\.uk/iplayer/(live|episode)/.*") || u.matches(".*skysports\\.com/watch/.*"))); }
 
     /** What the last stuck page looked like (shared on the home network with "Record app screens for Claude"). */
@@ -1298,6 +1351,8 @@ public class WebPlayerActivity extends Activity {
             }
         }
         if (find != null) { cover.setVisibility(View.VISIBLE); ui.postDelayed(step, 1500); }
+        vod = getIntent().getStringExtra("vod");
+        if (vod != null) { cover.setText("Searching Virgin TV Go for \"" + vod + "\"…"); cover.setVisibility(View.VISIBLE); ui.postDelayed(vodStep, 4000); }
         if (start != null && start.contains("#ftv-sling=")) {
             slingCh = android.net.Uri.decode(start.substring(start.indexOf("#ftv-sling=") + 11));
             String known = getSharedPreferences("sling", MODE_PRIVATE).getString(slingCh, null);

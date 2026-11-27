@@ -37,6 +37,7 @@ var app = (function () {
     appletv: { name: 'Apple TV', app: '^apple tv|com\\.apple\\.atve', store: 'q:Apple TV', cls: '', desc: 'Subscription', paid: 1 },
     now: { name: 'NOW', app: '^now$|^now tv|nowtv', store: 'q:NOW TV', cls: '', desc: 'Subscription – Sky channels and films', paid: 1 },
     skysports: { name: 'Sky Sports', app: 'sky sports', store: 'q:Sky Sports', cls: '', desc: 'Subscription', paid: 1 },
+    skyvirgin: { name: 'Sky (via Virgin TV Go)', app: '^$never$', store: '', cls: '', desc: 'Sky box sets and films, played in Virgin TV Go', paid: 1 },
     paramount: { name: 'Paramount+', app: 'paramount', store: 'q:Paramount+', cls: '', desc: 'Subscription', paid: 1 },
     sling: { name: 'Sling TV', app: 'sling', store: 'q:Sling TV', cls: '', desc: 'Subscription (US)', paid: 1 },
     discovery: { name: 'discovery+', app: 'discovery', store: 'q:discovery+', cls: '', desc: 'Subscription (some free)', paid: 1 },
@@ -53,7 +54,8 @@ var app = (function () {
   var installed = [];
   function refreshInstalled() { try { installed = JSON.parse(window.Native ? Native.apps() : '[]'); } catch (e) { installed = []; } }
   /** Services you can watch: apps on this TV, plus the ones Free TV plays from their websites. */
-  function mineSvc(k) { return has(k) || (k === 'bbc' && bbcWeb()) || (k === 'itv' && itvWeb()) || (k === 'prime' && primeWeb()) || (k === 'disney' && disneyWeb()); }
+  function virginSignedIn() { try { return !!(window.Native && Native.virginOwned && Native.virginOwned()); } catch (e) { return false; } }
+  function mineSvc(k) { return (k === 'skyvirgin' && virginSignedIn()) || has(k) || (k === 'bbc' && bbcWeb()) || (k === 'itv' && itvWeb()) || (k === 'prime' && primeWeb()) || (k === 'disney' && disneyWeb()); }
   function myProvIds() { var ids = {}; streamCats.forEach(function (c) { if (c.prov && c.svcKey && mineSvc(c.svcKey)) ids[c.prov] = 1; }); return Object.keys(ids); }
   function has(svc) {
     var re = new RegExp(SVC[svc] ? SVC[svc].app : svc, 'i');
@@ -857,7 +859,7 @@ var app = (function () {
     ['bbc', /^bbc iplayer$/i, 'https://www.bbc.co.uk/iplayer/search?q='], ['itv', /^itvx$/i, 'https://www.itv.com/watch/search?q='],
     ['c4', /^channel 4$/i, 'https://www.channel4.com/search?q='], ['five', /^my5$|^channel 5$|^5$/i, ''], ['u', /^u$|^uktv( play)?$/i, ''],
     ['pluto', /^pluto tv$/i, ''], ['tubi', /^tubi( tv)?$/i, ''], ['rakuten', /^rakuten tv$/i, ''], ['plex', /^plex$/i, ''],
-    ['britbox', /^britbox$/i, ''], ['mubi', /^mubi$/i, ''], ['crunchyroll', /^crunchyroll$/i, ''], ['skysports', /^sky go$/i, '']
+    ['britbox', /^britbox$/i, ''], ['mubi', /^mubi$/i, ''], ['crunchyroll', /^crunchyroll$/i, ''], ['skyvirgin', /^sky go$/i, '']
   ];
   function tmdb(path, q) {
     return getJSON(TMDB + path + (path.indexOf('?') < 0 ? '?' : '&') + 'api_key=' + tmdbKey + (q ? '&' + q : ''));
@@ -1537,6 +1539,8 @@ var app = (function () {
 
   // ---------------------------------------------------------------- opening things
   function openItem(it) {
+    // Sky (via Virgin TV Go): find it in Virgin TV Go's on-demand and press play there
+    if (it.svc === 'skyvirgin' && window.Native && Native.openVirginVod) { logOpen(it); Native.openVirginVod(it.title); toast('Finding "' + it.title + '" in Virgin TV Go…'); return; }
     if (it.src === 'yt') { if (window.Native && Native.openYouTube) Native.openYouTube(it.yt); toast('Opening ' + it.title + ' in YouTube…'); return; }
     var now = nowSec();
     if (!(it.src === 'tv' && it.s > now)) logOpen(it);
@@ -2359,7 +2363,7 @@ var app = (function () {
       return st;
     }
     // free services first, then subscriptions (installed ones first within each)
-    var NOT_ON_APPS = ['s4c', 'stv', 'rakuten', 'plex', 'skysports', 'discovery', 'britbox', 'mubi', 'spotify'];   // Tom doesn't want these on the Apps tab
+    var NOT_ON_APPS = ['skyvirgin', 's4c', 'stv', 'rakuten', 'plex', 'skysports', 'discovery', 'britbox', 'mubi', 'spotify'];   // Tom doesn't want these on the Apps tab
     var keys = Object.keys(SVC).filter(function (k) { return NOT_ON_APPS.indexOf(k) < 0; }), rank = function (k) { return (SVC[k].paid ? 2 : 0) + (has(k) ? 0 : 1); };
     keys.sort(function (a, b) { return rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b); });
     var t = keys.map(function (k) { return { kind: 'svc', k: k, name: SVC[k].name, desc: SVC[k].desc, ok: has(k) }; });
