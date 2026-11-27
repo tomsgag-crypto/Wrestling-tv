@@ -55,7 +55,7 @@ var app = (function () {
   function refreshInstalled() { try { installed = JSON.parse(window.Native ? Native.apps() : '[]'); } catch (e) { installed = []; } }
   /** Services you can watch: apps on this TV, plus the ones Free TV plays from their websites. */
   function virginSignedIn() { try { return !!(window.Native && Native.virginOwned && Native.virginOwned()); } catch (e) { return false; } }
-  function mineSvc(k) { return (k === 'skyvirgin' && virginSignedIn()) || has(k) || (k === 'bbc' && bbcWeb()) || (k === 'itv' && itvWeb()) || (k === 'prime' && primeWeb()) || (k === 'disney' && disneyWeb()); }
+  function mineSvc(k) { return has(k) || (k === 'bbc' && bbcWeb()) || (k === 'itv' && itvWeb()) || (k === 'prime' && primeWeb()) || (k === 'disney' && disneyWeb()); }
   function myProvIds() { var ids = {}; streamCats.forEach(function (c) { if (c.prov && c.svcKey && mineSvc(c.svcKey)) ids[c.prov] = 1; }); return Object.keys(ids); }
   function has(svc) {
     var re = new RegExp(SVC[svc] ? SVC[svc].app : svc, 'i');
@@ -860,7 +860,7 @@ var app = (function () {
     ['bbc', /^bbc iplayer$/i, 'https://www.bbc.co.uk/iplayer/search?q='], ['itv', /^itvx$/i, 'https://www.itv.com/watch/search?q='],
     ['c4', /^channel 4$/i, 'https://www.channel4.com/search?q='], ['five', /^my5$|^channel 5$|^5$/i, ''], ['u', /^u$|^uktv( play)?$/i, ''],
     ['pluto', /^pluto tv$/i, ''], ['tubi', /^tubi( tv)?$/i, ''], ['rakuten', /^rakuten tv$/i, ''], ['plex', /^plex$/i, ''],
-    ['britbox', /^britbox$/i, ''], ['mubi', /^mubi$/i, ''], ['crunchyroll', /^crunchyroll$/i, ''], ['skyvirgin', /^sky go$/i, '']
+    ['britbox', /^britbox$/i, ''], ['mubi', /^mubi$/i, ''], ['crunchyroll', /^crunchyroll$/i, ''], ['skysports', /^sky go$/i, '']
   ];
   function tmdb(path, q) {
     return getJSON(TMDB + path + (path.indexOf('?') < 0 ? '?' : '&') + 'api_key=' + tmdbKey + (q ? '&' + q : ''));
