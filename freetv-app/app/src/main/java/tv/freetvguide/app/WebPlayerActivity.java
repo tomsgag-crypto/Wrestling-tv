@@ -137,7 +137,8 @@ public class WebPlayerActivity extends Activity {
         return new android.webkit.WebResourceResponse(p.type, null, p.code, p.reason, out, new java.io.ByteArrayInputStream(p.body));
     }
     volatile int aheadHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
-    private boolean onYtEmbed() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("youtube.com/embed/"); }
+    private boolean ytEmbed = false;
+    private boolean onYtEmbed() { return ytEmbed; }
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
     /** Opened from a "Sign in" tile: show every page as it is (no loading screen, no player tricks). */
@@ -1251,7 +1252,18 @@ public class WebPlayerActivity extends Activity {
             String known = getSharedPreferences("sling", MODE_PRIVATE).getString(slingCh, null);
             if (known != null) start = known; else { slingTries = 0; ui.postDelayed(slingFind, 4000); }
         }
-        web.loadUrl(start);
+        if (start != null && start.contains("youtube.com/embed/")) {
+            // YouTube only plays embedded videos inside a page from a website (it shows "video player configuration error" otherwise),
+            // so the player sits in a small page of our own, given a website address to come from
+            ytEmbed = true;
+            String base = "https://tomsgag-crypto.github.io/freetv/";
+            String src = start + "&enablejsapi=1&origin=" + android.net.Uri.encode("https://tomsgag-crypto.github.io") + "&widget_referrer=" + android.net.Uri.encode(base);
+            String html = "<!DOCTYPE html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><meta name=referrer content='strict-origin-when-cross-origin'></head>"
+                + "<body style='margin:0;background:#000;overflow:hidden'><iframe src='" + src.replace("'", "%27") + "' style='position:fixed;left:0;top:0;width:100vw;height:100vh;border:0'"
+                + " allow='autoplay; encrypted-media; fullscreen; picture-in-picture' allowfullscreen referrerpolicy='strict-origin-when-cross-origin'></iframe></body></html>";
+            web.loadDataWithBaseURL(base, html, "text/html", "utf-8", null);
+            ui.postDelayed(reveal, 2500);
+        } else web.loadUrl(start);
         web.requestFocus();
         ui.post(cursorWatch);
         ui.postDelayed(qualityWatch, 5000);
