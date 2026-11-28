@@ -322,4 +322,6 @@ for key, vids in groups.items():
         else: out[vid]["dup"] = best; dups += 1
     print("DUPLICATE", titles[best], "| keep", best, out[best].get("qs"), "| hide", [(v, out[v].get("qs")) for v in vids if v != best])
 print("duplicates hidden", dups)
+for vid in out:
+    if INFO.get(vid) and INFO[vid][0]: out[vid]["mn"] = INFO[vid][0]   # running time in minutes (for the guide's movie channels)
 json.dump({"n": len(films), "m": out}, open(sys.argv[1], "w"), separators=(",", ":"))

@@ -704,6 +704,7 @@ var app = (function () {
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (!settings.hide['Sling TV']) slingRows().forEach(function (r) { out.push(r); });
     if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); });
+    if (!settings.hide['My Movie Channels']) movieChannels('My Movie Channels').forEach(function (r) { out.push(r); });
     if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); cazeRows(goatList, 'Canal GOAT', 'goat').forEach(function (r) { out.push(r); }); }
     if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
     if (isUS()) US_WEB.forEach(function (w) {
@@ -1452,6 +1453,37 @@ var app = (function () {
       .then(function () { buyBusy = false; if (isOD()) { od = []; buildOD(); render(); } });
   }
   /** The side list: All, a search result, #, A–Z (each letter jumps to its films). */
+  /** My Movie Channels: your purchased films as 24/7 channels in the guide, one per genre, played back-to-back on a fixed schedule.
+   *  The schedule is worked out from the clock, so it's the same every time you look and OK joins the film where it's "up to". */
+  var MOVIE_CH = [['All My Movies', null], ['Action', [28]], ['Comedy', [35]], ['Horror', [27]], ['Sci-Fi', [878]], ['Thriller', [53, 9648]], ['Crime', [80]],
+    ['Drama', [18]], ['Family & Animation', [10751, 16]], ['Fantasy & Adventure', [14, 12]], ['War & Western', [10752, 37]], ['Christmas', 'christmas']];
+  function movieChannels(sec) {
+    if (!buy || !buy.length || !Object.keys(buyMeta).length) return [];
+    var films = buy.filter(function (x) { var md = buyMeta[x.id] || {}; return !md.dup && !md.x && md.tm; }).map(function (x) {
+      var md = buyMeta[x.id] || {}; return { yt: x.id, t: (md.t && (md.f || !/[a-z]/i.test(x.title))) ? md.t : x.title, mn: md.mn || 100, md: md };
+    });
+    films.sort(function (a, b) { return a.yt < b.yt ? -1 : 1; });
+    var now = nowSec(), from = now - 6 * 3600, to = now + 8 * 86400, E0 = 1767225600;   // 1 Jan 2026: the schedule's starting point
+    return MOVIE_CH.map(function (ch, ci) {
+      var list = films.filter(function (f) {
+        if (!ch[1]) return true;
+        if (typeof ch[1] === 'string') return (f.md.k || []).some(function (k) { return /^(christmas|christmas (eve|party|horror|carol|present|spirit|movie|magic)|santa claus|santa)$/i.test(k); }) || f.t.toLowerCase().indexOf(ch[1]) >= 0;
+        return ch[1].some(function (g) { return (f.md.g || []).indexOf(g) >= 0; });
+      });
+      if (list.length < 3) return null;
+      // a fixed shuffle per channel, so neighbouring channels don't show the same films at the same time
+      var seed = 7 + ci * 131; list = list.map(function (f, i) { seed = (seed * 9301 + 49297) % 233280; return [seed, f]; }).sort(function (a, b) { return a[0] - b[0]; }).map(function (x) { return x[1]; });
+      var loop = list.reduce(function (a, f) { return a + f.mn * 60 + 120; }, 0);
+      var t = E0 + Math.floor((from - E0) / loop) * loop, i = 0, ev = [];
+      while (t + list[i].mn * 60 + 120 < from) { t += list[i].mn * 60 + 120; i = (i + 1) % list.length; }
+      while (t < to) {
+        var f = list[i], md = f.md, e = t + f.mn * 60 + 120;
+        ev.push({ s: t, e: e, t: f.t, sub: [md.y, md.r ? '★ ' + md.r : ''].filter(Boolean).join(' · '), desc: '', img: md.p ? 'https://image.tmdb.org/t/p/w300' + md.p : '', yt: f.yt });
+        t = e; i = (i + 1) % list.length;
+      }
+      return { sec: sec, id: 'mc' + ci, name: '🎬 ' + ch[0], cat: 'Films', movieCh: 1, events: ev };
+    }).filter(Boolean);
+  }
   function buySources() {
     if (!buy && !buyBusy) buyFetch(false);
     if (Date.now() - (buySources.metaAt || 0) > 3600000) { buySources.metaAt = Date.now(); buyMetaLoad(); }
@@ -2224,6 +2256,10 @@ var app = (function () {
       if (b5 && window.Native && Native.openWebPick && (!fp || (fp.s <= now + 300 && fp.e > now))) { Native.openWebPick('https://www.channel5.com/live', c.name, b5); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
       if (c && c.play === 'tubi') { tubiPlay(c); return; }
+      // My Movie Channels: join the film where the channel is up to (or from the start if you picked an earlier one)
+      if (c && c.movieCh && (!fp || fp.s <= now)) { var mv = fp || (c.events || []).filter(function (e) { return e.s <= now && e.e > now; })[0];
+        if (mv && Native.openYouTubeAt) { var off = mv.e > now ? Math.max(0, now - mv.s - 60) : 0; toast((off > 120 ? 'Joining ' : 'Starting ') + mv.t + (off > 120 ? ' ' + Math.round(off / 60) + ' mins in' : '')); Native.openYouTubeAt(mv.yt, off); }
+        else if (mv) Native.openYouTube(mv.yt); return; }
       if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink(c.caze === 'getv' ? 'https://www.youtube.com/@getv/streams' : c.caze === 'goat' ? 'https://www.youtube.com/@canalgoatbr/streams' : 'https://www.youtube.com/@CazeTV/streams'); return; }
       if (c && c.play === 'eu' && (!fp || fp.s <= now) && playPlutoChannel(c.id)) return;
       if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
