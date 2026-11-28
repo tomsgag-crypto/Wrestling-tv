@@ -13,7 +13,7 @@ def api(ep, **q):
 CHANNELS = [
     ("wwe", "WWE (YouTube)", ["@WWE"], 8, 12),
     ("wwevault", "WWE Vault", ["@WWEVault", "q:WWE Vault"], 8, 20),
-    ("wcwvault", "WCW Vault", ["q:WCW Vault"], 8, 20),
+    ("wcwvault", "WCW", ["@wcw"], 8, 20),
 ]
 def channel(handles):
     for h in handles:
@@ -61,12 +61,5 @@ for key, name, handles, minlen, pages in CHANNELS:
         if len(vids) >= 5: out[key] = {"n": name, "v": vids}
     except Exception as x:
         print(name, "failed", x)
-# WCW on WWE Vault: the Vault's WCW uploads (Nitro, Thunder, Starrcade…) as a channel of their own
-WCW = re.compile(r"\bWCW\b|\bNitro\b|\bThunder\b|Starrcade|Halloween Havoc|Bash at the Beach|Souled Out|SuperBrawl|Uncensored|Slamboree|Great American Bash|Fall Brawl|World War 3|Spring Stampede|Road Wild|Clash of the Champions|\bnWo\b|Monday Nitro", re.I)
-if "wwevault" in out:
-    w = [x for x in out["wwevault"]["v"] if WCW.search(x[1])]
-    print("WCW on WWE Vault:", len(w))
-    for x in w[:5]: print("   ", x[2], "min", x[1][:80])
-    if len(w) >= 5 and "wcwvault" not in out: out["wcw"] = {"n": "WCW (WWE Vault)", "v": w}
 data["ytch"] = out
 json.dump(data, open(path, "w"), separators=(",", ":"))
