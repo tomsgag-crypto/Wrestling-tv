@@ -782,7 +782,10 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void virginSyncQuiet() { ui.post(MainActivity.this::quietVirginSync); }
         @android.webkit.JavascriptInterface
-        public boolean pipActive() { return WebPlayerActivity.pip != null; }
+        public boolean pipActive() {   // only the small corner window counts (not a channel playing full screen)
+            WebPlayerActivity p = WebPlayerActivity.pip;
+            return p != null && !p.isFinishing() && (p.cornered || (android.os.Build.VERSION.SDK_INT >= 24 && p.isInPictureInPictureMode()));
+        }
         @android.webkit.JavascriptInterface
         public String pipName() { WebPlayerActivity p = WebPlayerActivity.pip; String t = p == null ? null : p.getIntent().getStringExtra("title"); return t == null ? "" : t; }
         @android.webkit.JavascriptInterface
