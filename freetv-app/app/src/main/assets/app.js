@@ -1128,6 +1128,26 @@ var app = (function () {
       if (v('am')) L.appletv = 'https://tv.apple.com/movie/' + v('am');
       else if (v('as')) L.appletv = 'https://tv.apple.com/show/' + v('as');
       return L;
+    }, function () { return {}; }).then(function (L) {
+      // titles Wikidata doesn't know yet (often the newest): ask Watchmode for the service's own page (kept for a month)
+      if (L.disney && L.netflix && L.prime && L.appletv) return L;
+      return watchmodeLinks(it).then(function (W) { Object.keys(W).forEach(function (k) { if (!L[k]) L[k] = W[k]; }); return L; });
+    });
+  }
+  var wmCache = load('wmLinks') || {};
+  function watchmodeLinks(it) {
+    var key = window.WATCHMODE_KEY, id = it.tmdb ? it.tmdb.replace('/', '-').replace(/^movie-/, 'movie-').replace(/^tv-/, 'tv-') : '';
+    if (!key || !id) return Promise.resolve({});
+    var c = wmCache[id];
+    if (c && Date.now() - c.at < 30 * 86400000) return Promise.resolve(c.L);
+    return getJSON('https://api.watchmode.com/v1/title/' + id + '/sources/?regions=GB&apiKey=' + encodeURIComponent(key)).then(function (list) {
+      var L = {}, MAP = [['disney', /^disney\+?/i, /disneyplus\.com/], ['netflix', /^netflix$/i, /netflix\.com/], ['prime', /^(amazon )?prime video$/i, /primevideo\.com|amazon\./], ['appletv', /^apple tv\+?$/i, /tv\.apple\.com/]];
+      (list || []).forEach(function (x) {
+        if (x.region && x.region !== 'GB') return;
+        MAP.forEach(function (m) { if (!L[m[0]] && m[1].test(x.name || '') && m[2].test(x.web_url || '')) L[m[0]] = x.web_url; });
+      });
+      wmCache[id] = { at: Date.now(), L: L }; save('wmLinks', wmCache);
+      return L;
     }, function () { return {}; });
   }
   // ITVX and Prime Video programmes: play the programme's own web page in Free TV (their TV apps only open at the home screen)
