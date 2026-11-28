@@ -30,7 +30,7 @@ public class WebPlayerActivity extends Activity {
     private android.widget.TextView cover;
     private CursorView cursor;
     /** The pointer is used whenever the page itself is showing (not the loading screen or full-screen video). */
-    private boolean pointerOn() { return cursor != null && !watching() && cover.getVisibility() != View.VISIBLE; }
+    private boolean pointerOn() { return cursor != null && !ytEmbed && !watching() && cover.getVisibility() != View.VISIBLE; }
     private boolean pageFull = false;
     private volatile boolean skyPage = false, adPage = false;
     private volatile int adHits = 0;
@@ -1111,7 +1111,7 @@ public class WebPlayerActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        { String su = getIntent().getStringExtra("url"); skyStart = su != null && su.contains("skysports.com"); }
+        { String su = getIntent().getStringExtra("url"); skyStart = su != null && su.contains("skysports.com"); ytEmbed = su != null && su.contains("youtube.com/embed/"); }
         // back to the Sky setup of 2.23.2: clear anything later Sky menus and tests changed (once)
         if (!prefs().getBoolean("skyBack2232", false)) {
             prefs().edit().remove("skyDelay").remove("skyNet").remove("skyAutoRestart").remove("skyclock").remove("skypage").remove("skyNoAds").remove("skyFresh").remove("skyTestResults").putBoolean("skyBack2232", true).apply();
@@ -1152,8 +1152,10 @@ public class WebPlayerActivity extends Activity {
         s.setUseWideViewPort(false);
         s.setLoadWithOverviewMode(false);
         web.setInitialScale(0);
-        s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + cv("157", "124") + ".0.0.0 Safari/537.36");
-        looksLikeDesktop(s);
+        if (!ytEmbed) {   // YouTube channels keep the TV's own browser identity, so YouTube sends streams the Chromecast decodes smoothly
+            s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + cv("157", "124") + ".0.0.0 Safari/537.36");
+            looksLikeDesktop(s);
+        }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         web.setWebViewClient(new WebViewClient() {
@@ -1257,10 +1259,15 @@ public class WebPlayerActivity extends Activity {
             // so the player sits in a small page of our own, given a website address to come from
             ytEmbed = true;
             String base = "https://tomsgag-crypto.github.io/freetv/";
-            String src = start + "&enablejsapi=1&origin=" + android.net.Uri.encode("https://tomsgag-crypto.github.io") + "&widget_referrer=" + android.net.Uri.encode(base);
+            String src = start + "&cc_load_policy=0&enablejsapi=1&origin=" + android.net.Uri.encode("https://tomsgag-crypto.github.io") + "&widget_referrer=" + android.net.Uri.encode(base);
             String html = "<!DOCTYPE html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><meta name=referrer content='strict-origin-when-cross-origin'></head>"
                 + "<body style='margin:0;background:#000;overflow:hidden'><iframe src='" + src.replace("'", "%27") + "' style='position:fixed;left:0;top:0;width:100vw;height:100vh;border:0'"
-                + " allow='autoplay; encrypted-media; fullscreen; picture-in-picture' allowfullscreen referrerpolicy='strict-origin-when-cross-origin'></iframe></body></html>";
+                + " allow='autoplay; encrypted-media; fullscreen; picture-in-picture' allowfullscreen referrerpolicy='strict-origin-when-cross-origin' id=yt></iframe>"
+                // subtitles off: ask the player to drop its captions, now and whenever a new video starts
+                + "<script>var f=document.getElementById('yt');function off(){try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['captions']}),'*');"
+                + "f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['cc']}),'*');}catch(e){}}"
+                + "f.addEventListener('load',function(){f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1}),'*');});setInterval(off,3000);"
+                + "addEventListener('message',function(m){try{var d=JSON.parse(m.data);if(d.event==='onStateChange'||(d.info&&d.info.playerState===1))off();}catch(e){}});</script></body></html>";
             web.loadDataWithBaseURL(base, html, "text/html", "utf-8", null);
             ui.postDelayed(reveal, 2500);
         } else web.loadUrl(start);
