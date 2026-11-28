@@ -14,11 +14,17 @@ def streams(handles):
     try:
         if not KEY: raise RuntimeError("no YouTube key")
         c = None
-        for h in handles:
+        for h in [h for h in handles if not h.startswith("q:")]:
             try:
                 it = api("channels", part="id,snippet,contentDetails", forHandle=h).get("items") or []
                 if it: c = it[0]; break
             except Exception as x: print(h, x)
+        if handles[0].startswith("q:"):   # find by name: the biggest channel with that name
+            ch = [i["snippet"]["channelId"] for i in api("search", part="snippet", q=handles[0][2:], type="channel", maxResults=8).get("items", [])]
+            cs = api("channels", part="id,snippet,contentDetails,statistics", id=",".join(ch)).get("items", []) if ch else []
+            for x in cs: print("  candidate", x["id"], x["snippet"]["title"], x["snippet"].get("customUrl"), x["statistics"].get("subscriberCount"))
+            cs.sort(key=lambda x: -int(x["statistics"].get("subscriberCount") or 0))
+            c = cs[0] if cs else None
         if not c: raise RuntimeError("channel not found: %s" % handles)
         up = c["contentDetails"]["relatedPlaylists"]["uploads"]
         print("channel", c["id"], c["snippet"]["title"])
@@ -56,6 +62,6 @@ def streams(handles):
 
 data["caze"] = streams(["@CazeTV"])
 data["getv"] = streams(["@getv", "@GETV", "@ge.tv", "@getvoficial"])
-data["goat"] = streams(["@canalgoat", "@CanalGOAT", "@goat", "@canalgoatbr"])
+data["goat"] = streams(["q:Canal GOAT futebol"])
 
 json.dump(data, open(path, "w"), separators=(",", ":"))
