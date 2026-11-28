@@ -22,12 +22,22 @@ def streams(handles):
         if not c: raise RuntimeError("channel not found: %s" % handles)
         up = c["contentDetails"]["relatedPlaylists"]["uploads"]
         print("channel", c["id"], c["snippet"]["title"])
-        ids, tok = [], None
-        for _ in range(3):
-            r = api("playlistItems", part="contentDetails", playlistId=up, maxResults=50, **({"pageToken": tok} if tok else {}))
-            ids += [i["contentDetails"]["videoId"] for i in r.get("items", [])]
-            tok = r.get("nextPageToken")
-            if not tok: break
+        ids = []
+        # the uploads list, else the channel's live-streams list, else a search (costs more, used last)
+        for pl in (up, "UULV" + c["id"][2:]):
+            try:
+                tok = None
+                for _ in range(3):
+                    r = api("playlistItems", part="contentDetails", playlistId=pl, maxResults=50, **({"pageToken": tok} if tok else {}))
+                    ids += [i["contentDetails"]["videoId"] for i in r.get("items", [])]
+                    tok = r.get("nextPageToken")
+                    if not tok: break
+                if ids: break
+            except Exception as x: print("  list", pl, x)
+        if not ids:
+            for ev in ("live", "upcoming"):
+                try: ids += [i["id"]["videoId"] for i in api("search", part="id", channelId=c["id"], eventType=ev, type="video", maxResults=50).get("items", [])]
+                except Exception as x: print("  search", ev, x)
         for b in range(0, len(ids), 50):
             for v in api("videos", part="snippet,liveStreamingDetails", id=",".join(ids[b:b + 50])).get("items", []):
                 ld = v.get("liveStreamingDetails") or {}
