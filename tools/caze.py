@@ -62,6 +62,6 @@ def streams(handles):
 
 data["caze"] = streams(["@CazeTV"])
 data["getv"] = streams(["@getv", "@GETV", "@ge.tv", "@getvoficial"])
-data["goat"] = streams(["q:Canal GOAT futebol"])
+data["goat"] = streams(["@canalgoatbr", "q:Canal GOAT futebol"])
 
 json.dump(data, open(path, "w"), separators=(",", ":"))

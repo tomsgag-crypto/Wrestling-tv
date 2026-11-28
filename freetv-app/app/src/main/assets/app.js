@@ -2224,7 +2224,7 @@ var app = (function () {
       if (b5 && window.Native && Native.openWebPick && (!fp || (fp.s <= now + 300 && fp.e > now))) { Native.openWebPick('https://www.channel5.com/live', c.name, b5); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
       if (c && c.play === 'tubi') { tubiPlay(c); return; }
-      if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink(c.caze === 'getv' ? 'https://www.youtube.com/@getv/streams' : c.caze === 'goat' ? 'https://www.youtube.com/@canalgoat/streams' : 'https://www.youtube.com/@CazeTV/streams'); return; }
+      if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink(c.caze === 'getv' ? 'https://www.youtube.com/@getv/streams' : c.caze === 'goat' ? 'https://www.youtube.com/@canalgoatbr/streams' : 'https://www.youtube.com/@CazeTV/streams'); return; }
       if (c && c.play === 'eu' && (!fp || fp.s <= now) && playPlutoChannel(c.id)) return;
       if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
