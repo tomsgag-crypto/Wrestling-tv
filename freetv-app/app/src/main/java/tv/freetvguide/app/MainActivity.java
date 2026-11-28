@@ -71,7 +71,7 @@ public class MainActivity extends Activity {
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        super.onCreate(savedInstanceState); Diag.install(this);
         web = new WebView(this);
         web.setBackgroundColor(Color.BLACK);
         root = new android.widget.FrameLayout(this);
@@ -891,6 +891,10 @@ public class MainActivity extends Activity {
         // ---------------- helper (works iPlayer and U for you)
         @JavascriptInterface
         public boolean helperOn() { return HelperService.isOn(); }
+        @JavascriptInterface
+        public String diag() { return Diag.text(MainActivity.this); }
+        @JavascriptInterface
+        public void diagClear() { Diag.clear(MainActivity.this); }
         /** Give the helper its job before opening the app: labels = which app, mode = live | find. */
         @JavascriptInterface
         public void helperJob(String labels, String mode, String targets, String profile) {

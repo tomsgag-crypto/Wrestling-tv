@@ -18,7 +18,9 @@ class LayoutServer {
     private static ServerSocket server;
     private static long until;
 
+    private static Context ctx0;
     static synchronized String start(Context ctx) {
+        ctx0 = ctx.getApplicationContext();
         until = System.currentTimeMillis() + 10 * 60000L;
         String ip = ip();
         if (ip == null) return "";
@@ -39,7 +41,7 @@ class LayoutServer {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()));
                     in.readLine();
-                    String esc = (HelperService.report() + "\n\n=== Web page (Virgin TV Go etc)\n" + WebPlayerActivity.lastDump).replace("&", "&amp;").replace("<", "&lt;");
+                    String esc = ("=== Helper error recorder\n" + Diag.text(ctx0) + "\n\n" + HelperService.report() + "\n\n=== Web page (Virgin TV Go etc)\n" + WebPlayerActivity.lastDump).replace("&", "&amp;").replace("<", "&lt;");
                     String html = "<!DOCTYPE html><html><head><meta name=viewport content='width=device-width'><title>Free TV layouts</title></head><body style='font-family:sans-serif'>" +
                             "<p><button onclick=\"var t=document.getElementById('t');t.focus();t.select();t.setSelectionRange(0,t.value.length);document.execCommand('copy');this.textContent='Copied - now paste it to Claude'\" style='font-size:20px;padding:10px'>Copy all</button></p>" +
                             "<textarea id=t readonly style='width:100%;height:80vh;font-size:11px'>" + esc + "</textarea></body></html>";

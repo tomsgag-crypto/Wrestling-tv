@@ -2789,6 +2789,7 @@ var app = (function () {
       var hOn = window.Native && Native.helperOn && Native.helperOn();
       t.push({ kind: 'set', k: 'helper', name: 'Helper for iPlayer and U', desc: !hOn ? 'Off – OK to switch it on (in the TV\'s Accessibility settings)' : settings.helper ? 'On – picks your profile and finds the channel or programme. OK to pause it' : 'Paused – OK to use it again' });
       t.push({ kind: 'set', k: 'profile', name: 'Your iPlayer profile', desc: (settings.profile ? '"' + settings.profile + '"' : 'Not set') + ' – the name on iPlayer\'s "Who\'s watching" screen' });
+      t.push({ kind: 'set', k: 'diag', name: 'Helper error recorder', desc: 'Why the helper won\'t stay on – OK to see' });
       t.push({ kind: 'set', k: 'record', name: 'Record app screens for Claude', desc: (window.Native && Native.layoutCount ? Native.layoutCount() + ' screens recorded' : '') + ' – OK to start or share' });
     }
     t.push({ kind: 'set', k: 'showhide', name: 'Show or hide', desc: (Object.keys(settings.hide).length ? Object.keys(settings.hide).length + ' hidden' : 'Everything shown') + ' – choose which channels and apps appear (e.g. hide Pluto TV)' });
@@ -2872,6 +2873,7 @@ var app = (function () {
       }
       if (x.k === 'profile') { askText('Your iPlayer profile name (as shown on "Who\'s watching")', settings.profile, function (v) { settings.profile = v; saveSettings(); }); return; }
       if (x.k === 'record') { recordMenu(); return; }
+      if (x.k === 'diag') { diagMenu(); return; }
       if (x.k === 'link') {
         var st2 = {}; try { st2 = JSON.parse(Native.syncStatus()); } catch (e) { }
         if (st2.tv) { toast(st2.phones ? 'Linked – nothing to do here' : 'Link from your phone: Free TV → Apps → Link to my TV'); return; }
@@ -3132,6 +3134,20 @@ var app = (function () {
   function helperHowTo() {
     showPop({ title: 'To switch on the helper: choose "Free TV helper" in Accessibility settings, turn it on and press OK to allow. (You can also get there with Home → Settings → System → Accessibility.)',
       opts: [{ label: 'Open Accessibility settings', fn: function () { Native.openHelperSettings(); } }, { label: 'Close' }] });
+  }
+  function diagMenu() {
+    var d = window.Native && Native.diag ? Native.diag() : 'Not available';
+    var lines = d.split('\n'), short = lines.slice(0, 14).join('\n');
+    showPop({ title: short, opts: [
+      { label: 'Open Accessibility settings (switch the helper on, then come back here)', fn: function () { Native.openHelperSettings(); } },
+      { label: 'Send the full log to my phone', fn: function () {
+        var a = Native.shareLayouts();
+        if (!a) { toast('Couldn\'t start sharing – is the TV on Wi-Fi?'); return; }
+        showPop({ title: 'On your phone (on the same Wi-Fi), open ' + a + ' – press "Copy all" and paste it to Claude. This works for 10 minutes.', opts: [{ label: 'OK' }] });
+      } },
+      { label: 'Clear the log', fn: function () { Native.diagClear(); toast('Cleared'); } },
+      { label: 'Close' }
+    ] });
   }
   function recordMenu() {
     showPop({ title: 'Recording helps me tune the helper. Start it, then open BBC iPlayer and U and move around them for a few minutes (profiles, Channels, Search, typing a title, a result). Then come back here and share.', opts: [

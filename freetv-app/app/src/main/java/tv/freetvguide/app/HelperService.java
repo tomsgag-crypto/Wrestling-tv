@@ -56,9 +56,11 @@ public class HelperService extends AccessibilityService {
     }
     static void note(String s) { synchronized (log) { log.add(System.currentTimeMillis() % 1000000 + " " + s); if (log.size() > 300) log.remove(0); } }
 
-    @Override protected void onServiceConnected() { try { running = this; note("helper on"); } catch (Throwable ignored) { } }
-    @Override public boolean onUnbind(android.content.Intent i) { running = null; return super.onUnbind(i); }
-    @Override public void onInterrupt() { }
+    @Override public void onCreate() { super.onCreate(); Diag.install(this); Diag.add("helper: created"); }
+    @Override protected void onServiceConnected() { try { running = this; note("helper on"); Diag.add("helper: started OK"); } catch (Throwable t) { Diag.add("helper: start failed " + t); } }
+    @Override public boolean onUnbind(android.content.Intent i) { running = null; Diag.add("helper: switched off by the TV (unbind)"); return super.onUnbind(i); }
+    @Override public void onDestroy() { Diag.add("helper: stopped"); super.onDestroy(); }
+    @Override public void onInterrupt() { Diag.add("helper: interrupted"); }
 
     // ---------------------------------------------------------------- hold Back to get back to the guide
     // In an app Free TV opened (YouTube, Tubi, Netflix…): a normal Back press does what it always does;
