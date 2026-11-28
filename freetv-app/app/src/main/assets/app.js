@@ -2159,6 +2159,9 @@ var app = (function () {
         if (lk && window.Native && Native.open2) { var r2 = Native.open2(SVC.sling.app, lk, SVC.sling.store, ''); if (r2 === 'link') { toast('Opening ' + sln + ' on Sling…'); return; } } }
       if (c && c.appK === 'sling' && window.Native && Native.openPlay) { var nm = c.name.replace(/ \((Sling|US)\)$/, ''); var rr = Native.openPlay(SVC.sling.app, SVC.sling.store, nm);
         toast(rr === 'play' ? 'Asking Sling to play ' + nm + '…' : rr === 'search' ? 'Searching Sling for ' + nm : rr === 'app' ? 'Opened Sling – choose ' + nm : 'Sling TV isn\'t installed'); return; }
+      // Channel 5's channels: watched on channel5.com in Free TV's own player (no 5 app needed); sign in once on the page
+      var b5 = c && c.svc === 'five' && !c.vpn && /^5(\b|[A-Z])/.test(c.name) ? c.name.replace(/\s*\+1$/, '').replace(/ HD$/, '') : '';
+      if (b5 && window.Native && Native.openWebPick && (!fp || (fp.s <= now + 300 && fp.e > now))) { Native.openWebPick('https://www.channel5.com/live', c.name, b5); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
       if (c && c.play === 'tubi') { tubiPlay(c); return; }
       if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink('https://www.youtube.com/@CazeTV/streams'); return; }
