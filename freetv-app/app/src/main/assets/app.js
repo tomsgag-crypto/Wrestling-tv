@@ -601,6 +601,7 @@ var app = (function () {
       if (j.tubi && j.tubi.length) usTubi = j.tubi;
       if (j.caze) { cazeList = j.caze; save('caze', cazeList); }
       if (j.getv) { getvList = j.getv; save('getv', getvList); }
+      if (j.goat) { goatList = j.goat; save('goat', goatList); }
       if (j.sling && Object.keys(j.sling).length) { slingIds = j.sling; save('slingIds', slingIds); }
     }).catch(function () {});
   }
@@ -703,7 +704,7 @@ var app = (function () {
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (!settings.hide['Sling TV']) slingRows().forEach(function (r) { out.push(r); });
     if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); });
-    if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); }
+    if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); cazeRows(goatList, 'Canal GOAT', 'goat').forEach(function (r) { out.push(r); }); }
     if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
@@ -776,12 +777,12 @@ var app = (function () {
   /** Tubi's free live channels (US connection, no login): played in Free TV's player. */
   var tubiUrls = load('tubiUrls') || { at: 0, u: {} };
   /** CazéTV (Brazil): its live and scheduled YouTube streams, one row per overlapping stream. OK opens the stream in YouTube. */
-  var cazeList = load('caze') || [], getvList = load('getv') || [];
+  var cazeList = load('caze') || [], getvList = load('getv') || [], goatList = load('goat') || [];
   function cazeRows(list, label, idp) {
     list = list || cazeList; label = label || 'CazéTV'; idp = idp || 'caze';
     var nowS = nowSec(), lanes = [];
     list.filter(function (x) { return x[1] > nowS - 86400; }).forEach(function (x) {
-      var ev = { s: x[0], e: x[1], t: x[2].replace(/^AO VIVO( \(SOM AMBIENTE\))?:\s*/i, '').replace(/\s*\|\s*(ge tv|sportv)\s*$/i, ''), sub: label + ' · YouTube (Brazil)', desc: x[3] || '', img: '', yt: x[4] };
+      var ev = { s: x[0], e: x[1], t: x[2].replace(/^AO VIVO( \(SOM AMBIENTE\))?:\s*/i, '').replace(/\s*\|\s*(ge tv|sportv|canal goat|goat)\s*$/i, ''), sub: label + ' · YouTube (Brazil)', desc: x[3] || '', img: '', yt: x[4] };
       var L = lanes.filter(function (l) { return l[l.length - 1].e <= ev.s; })[0];
       if (L) L.push(ev); else lanes.push([ev]);
     });
@@ -1815,7 +1816,7 @@ var app = (function () {
   function remId(it) { return 'r' + String(it.ch || '').replace(/[^A-Za-z0-9]/g, '') + '_' + Math.round(it.s); }
   function reminderFor(it) { var id = remId(it); return reminders.filter(function (r) { return r.id === id; })[0]; }
   function saveReminders() { save('reminders', reminders.map(function (r) { return { id: r.id, at: r.at, title: r.title, text: r.text, mins: r.mins, item: r.item }; })); }
-  function addReminder(it, mins) {
+  function addReminder(it, mins, quiet) {
     cancelReminder(it, true);
     var at = (it.s - mins * 60) * 1000;
     if (at < Date.now() + 15000) at = Date.now() + 15000;
@@ -1825,11 +1826,12 @@ var app = (function () {
     saveReminders();
     mark('rem:' + r.id, false, { id: r.id, at: r.at, title: r.title, text: r.text, mins: r.mins, item: r.item });
     if (window.Native && Native.remind) Native.remind(r.id, r.at, r.title, r.text);
-    toast('Reminder set: ' + (mins ? mins + ' mins before ' : 'when ') + '"' + it.title + '" ' + (mins ? 'starts' : 'starts') + ' (' + dayWord(it.s) + ' ' + clock(it.s) + ')');
+    if (!quiet) toast('Reminder set: ' + (mins ? mins + ' mins before ' : 'when ') + '"' + it.title + '" ' + (mins ? 'starts' : 'starts') + ' (' + dayWord(it.s) + ' ' + clock(it.s) + ')');
   }
   function cancelReminder(it, quiet) {
     var id = remId(it), n = reminders.length;
     reminders = reminders.filter(function (r) { return r.id !== id; });
+    if (!quiet) { remSkip[id] = 1; save('remSkip', remSkip); }
     if (reminders.length !== n) { saveReminders(); mark('rem:' + id, true); if (window.Native && Native.unremind) Native.unremind(id); if (!quiet) toast('Reminder cancelled'); }
   }
   function tidyReminders() {
@@ -1843,7 +1845,63 @@ var app = (function () {
     var o = [];
     if (it.s - nowSec() > m * 60) o.push({ label: '🔔 Remind me ' + m + ' mins before it starts', fn: function () { addReminder(it, m); } });
     o.push({ label: '🔔 Remind me when it starts', fn: function () { addReminder(it, 0); } });
+    if (it.src === 'tv' && it.chName) o.push({ label: '🔁 Remind me every time…', fn: function () { setTimeout(function () { ruleMenu(it); }, 0); } });
     return o;
+  }
+  // ---- auto reminders: rules that set reminders for every matching programme in the guide (e.g. "NFL" on 5, "Premier League" anywhere)
+  var remRules = load('remRules') || [], remSkip = load('remSkip') || {};
+  function ruleText(r) { return (r.title ? 'Every "' + r.title + '"' : 'Anything with "' + r.q + '"') + (r.ch ? ' on ' + r.ch : ' on any channel'); }
+  function addRule(r) {
+    r.mins = settings.remindMins || 0;
+    remRules = remRules.filter(function (x) { return ruleText(x) !== ruleText(r); }).concat([r]);
+    save('remRules', remRules);
+    var n = applyRemRules();
+    toast('Auto reminder: ' + ruleText(r) + ' – ' + (n ? n + ' coming up in the guide' : 'none in the guide yet, it\'ll keep checking'));
+  }
+  function ruleMenu(it) {
+    var ask = function (onCh) {
+      showPop({ title: 'Remind me about anything that mentions… (e.g. Premier League, NFL)', input: true, inputFocus: true, opts: [
+        { label: '🔁 Set it' + (onCh ? ' – only on ' + it.chName : ' – any channel'), fn: function () { var q = ($('popIn').value || '').trim(); if (q.length > 1) addRule({ q: q, ch: onCh ? it.chName : '' }); } },
+        { label: 'Cancel' }] });
+      $('popIn').value = ''; setTimeout(function () { $('popIn').focus(); }, 30);
+    };
+    showPop({ title: 'Remind me every time…', opts: [
+      { label: 'Every "' + it.title + '" on ' + it.chName, fn: function () { addRule({ title: it.title, ch: it.chName }); } },
+      { label: 'Every "' + it.title + '" on any channel', fn: function () { addRule({ title: it.title, ch: '' }); } },
+      { label: 'Anything mentioning a word, on ' + it.chName + '…', fn: function () { setTimeout(function () { ask(true); }, 0); } },
+      { label: 'Anything mentioning a word, any channel…', fn: function () { setTimeout(function () { ask(false); }, 0); } },
+      { label: 'Cancel' }] });
+  }
+  function rulesMenu() {
+    showPop({ title: remRules.length ? 'Auto reminders (OK on one to delete it)' : 'No auto reminders yet – pick a programme in the guide, then 🔁 Remind me every time', opts: remRules.map(function (r) {
+      return { label: '✕ ' + ruleText(r), fn: function () { remRules = remRules.filter(function (x) { return x !== r; }); save('remRules', remRules); toast('Auto reminder deleted (reminders it already set stay – cancel them in the guide)'); } };
+    }).concat([{ label: 'Close' }]) });
+  }
+  var buildChans0 = buildChans;
+  buildChans = function () { buildChans0.apply(this, arguments); setTimeout(applyRemRules, 0); };
+  /** Set reminders for every upcoming programme a rule matches (runs whenever the guide is built). */
+  function applyRemRules() {
+    if (!remRules.length || !chans || !chans.length) return 0;
+    var now = nowSec(), added = 0, seen = {};
+    chans.forEach(function (c) {
+      var ck = dupKey(c.name);
+      (c.events || []).forEach(function (e) {
+        if (e.s <= now + 60 || e.s > now + 8 * 86400 || !e.t) return;
+        var txt = (e.t + ' ' + (e.sub || '') + ' ' + (e.desc || '')).toLowerCase();
+        var hit = remRules.filter(function (r) {
+          if (r.ch && dupKey(r.ch) !== ck) return false;
+          return r.title ? e.t.toLowerCase() === r.title.toLowerCase() : txt.indexOf(r.q.toLowerCase()) >= 0;
+        })[0];
+        if (!hit) return;
+        var key = e.t.toLowerCase() + '|' + e.s;
+        if (seen[key]) return;   // the same programme on an HD or +1 copy of the channel
+        seen[key] = 1;
+        var it = progItem(c, e), id = remId(it);
+        if (remSkip[id] || reminderFor(it)) return;
+        addReminder(it, hit.mins || 0, true); added++;
+      });
+    });
+    return added;
   }
   /** Java: a reminder went off while the app is on screen. */
   function reminderDue(id) {
@@ -2166,7 +2224,7 @@ var app = (function () {
       if (b5 && window.Native && Native.openWebPick && (!fp || (fp.s <= now + 300 && fp.e > now))) { Native.openWebPick('https://www.channel5.com/live', c.name, b5); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
       if (c && c.play === 'tubi') { tubiPlay(c); return; }
-      if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink(c.caze === 'getv' ? 'https://www.youtube.com/@getv/streams' : 'https://www.youtube.com/@CazeTV/streams'); return; }
+      if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink(c.caze === 'getv' ? 'https://www.youtube.com/@getv/streams' : c.caze === 'goat' ? 'https://www.youtube.com/@canalgoat/streams' : 'https://www.youtube.com/@CazeTV/streams'); return; }
       if (c && c.play === 'eu' && (!fp || fp.s <= now) && playPlutoChannel(c.id)) return;
       if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
@@ -2980,6 +3038,7 @@ var app = (function () {
     var opts = [];
     if (view === 'guide') {
       opts.push({ label: 'Jump to a channel  ▸', fn: sub(channelMenu) });
+      opts.push({ label: '🔁 Auto reminders (' + remRules.length + ')  ▸', fn: sub(rulesMenu) });
     }
     if (view === 'guide' && window.Native && Native.pipActive && Native.pipActive()) opts.unshift({ label: '■ Stop ' + Native.pipName() + ' (playing in the corner window)', fn: function () { Native.pipStop(); toast('Stopped'); } });
     if (mini && view === 'guide') opts.unshift({ label: '■ Stop ' + mini.name + ' (playing in the corner)', fn: function () { Native.miniStop(); mini = null; toast('Stopped'); render(); } });
