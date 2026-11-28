@@ -24,6 +24,7 @@ CHANNELS = [
     ("plfoot", "Premier League", [(["@SkySportsPremierLeague", "q:Sky Sports Premier League"], None),
                                   (["@SkySportsFootball", "q:Sky Sports Football"], r"premier league|\bPL\b|MNF|monday night football"),
                                   (["@tntsports", "@TNTSportsUK", "q:TNT Sports"], r"premier league"),
+                                  (["@tntsportsfootball"], r"premier league"),
                                   (["@premierleague"], None)], 2, 4, {"g": "f", "fresh": 1}),
     ("eurofoot", "Champions, Europa & Conference League", [(["@tntsports", "@TNTSportsUK", "q:TNT Sports"], EURO),
                                   (["@tntsportsfootball", "q:TNT Sports Football"], EURO),
@@ -94,7 +95,9 @@ for key, name, sources, minlen, pages, ex in CHANNELS:
     except Exception as x:
         print(name, handles, "failed", x)
   if ex.get("fresh"):
-    vids.sort(key=lambda x: x[3], reverse=True)    # newest first
+    vids.sort(key=lambda x: x[3], reverse=True)    # newest first, with the latest round's highlights at the front
+    wk = (now - datetime.timedelta(days=8)).isoformat()[:19]
+    vids.sort(key=lambda x: 0 if (x[3] >= wk and re.search(r"highlight", x[1], re.I)) else 1)
     recent = [x for x in vids if x[3] >= (now - datetime.timedelta(days=21)).isoformat()[:19]]
     if len(recent) >= 10: vids = recent             # the last three weeks (longer over an international break)
     vids = vids[:150]

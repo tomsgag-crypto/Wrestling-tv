@@ -707,7 +707,8 @@ var app = (function () {
     // the newer extra rows can't stop the guide appearing if one of them goes wrong
     var extra = function (name, f) { try { f(); } catch (x) { console.log('guide rows failed: ' + name + ' ' + x); } };
     extra('tubi', function () { if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); }); });
-    extra('wrestling', function () { if (!settings.hide['Wrestling on YouTube']) ytChannelRows('Wrestling on YouTube').forEach(function (r) { out.push(r); }); });
+    extra('wrestling', function () { if (!settings.hide['Wrestling on YouTube']) ytChannelRows('Wrestling on YouTube', '').forEach(function (r) { out.push(r); }); });
+    extra('football', function () { if (!settings.hide['Football on YouTube']) ytChannelRows('Football on YouTube', 'f').forEach(function (r) { out.push(r); }); });
     extra('movies', function () { if (!settings.hide['My Movie Channels']) movieChannels('My Movie Channels').forEach(function (r) { out.push(r); }); });
     extra('youtube', function () { if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); cazeRows(goatList, 'Canal GOAT', 'goat').forEach(function (r) { out.push(r); }); } });
     if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
@@ -837,7 +838,7 @@ var app = (function () {
     });
   }
   /** US channels sit under "US TV", everything else under "UK TV". */
-  var YT_SECS = { 'Wrestling on YouTube': 1, 'CazéTV (Brazil)': 1, 'My Movie Channels': 1 };
+  var YT_SECS = { 'Wrestling on YouTube': 1, 'Football on YouTube': 1, 'CazéTV (Brazil)': 1, 'My Movie Channels': 1 };
   function secGroup(sec) { return /\(US\)/.test(sec) ? 'US TV' : YT_SECS[sec] ? 'YouTube' : 'UK TV'; }
   /** Read the Virgin package by itself when it's never been read or is over 2 days old (at most once every 6 hours). */
   function autoVirginSync() {
@@ -1499,12 +1500,26 @@ var app = (function () {
   }
   /** YouTube channels as 24/7 channels (WWE, WWE Vault, WCW): their longer uploads back to back. */
   var ytChans = load('ytch') || {};
-  function ytChannelRows(sec) {
+  /** Newest first, starting again from the top at midnight each day (highlights channels: the latest round leads). */
+  function freshSchedule(list, mk) {
+    var now = nowSec(), d = new Date(); d.setHours(0, 0, 0, 0);
+    var day = Math.floor(d.getTime() / 1000) - 86400, end = now + 8 * 86400, ev = [];
+    for (; day < end; day += 86400) {
+      for (var t = day, i = 0; t < day + 86400; i = (i + 1) % list.length) {
+        var f = list[i], e = Math.min(t + f.mn * 60, day + 86400);
+        if (e > now - 6 * 3600) ev.push(mk(f, t, e));
+        t = e;
+      }
+    }
+    return ev;
+  }
+  function ytChannelRows(sec, grp) {
     return Object.keys(ytChans).map(function (k, ci) {
-      var c = ytChans[k], list = (c.v || []).map(function (x) { return { yt: x[0], t: x[1], mn: x[2] }; });
-      if (list.length < 5) return null;
-      var ev = loopSchedule(list, 11 + ci * 97, 0, function (f, s, e) { return { s: s, e: e, t: f.t.replace(/\s*\|\s*WWE.*$/i, ''), sub: c.n + ' · YouTube', desc: f.t, img: 'https://i.ytimg.com/vi/' + f.yt + '/mqdefault.jpg', yt: f.yt }; });
-      return { sec: sec, id: 'yc' + k, name: '📺 ' + c.n, cat: 'Sports', movieCh: 1, events: ev };
+      var c = ytChans[k], list = (c.v || []).map(function (x) { return { yt: x[0], t: x[1], mn: Math.max(1, x[2]) }; });
+      if (list.length < 5 || (c.g || '') !== grp) return null;
+      var mk = function (f, s, e) { return { s: s, e: e, t: f.t.replace(/\s*\|\s*(WWE|AEW|TNA|NJPW|ROH)\b.*$/i, ''), sub: c.n + ' · YouTube', desc: f.t, img: 'https://i.ytimg.com/vi/' + f.yt + '/mqdefault.jpg', yt: f.yt }; };
+      var ev = c.f ? freshSchedule(list, mk) : loopSchedule(list, 11 + ci * 97, 0, mk);
+      return { sec: sec, id: 'yc' + k, name: (c.g === 'f' ? '⚽ ' : '📺 ') + c.n, cat: 'Sports', movieCh: 1, events: ev };
     }).filter(Boolean);
   }
   function movieChannels(sec) {
