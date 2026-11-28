@@ -12,6 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Cut the US guide down to the sports channels
         run: python3 tools/us_epg.py us-epg.json
+      - name: CazéTV streams
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+        run: python3 tools/caze.py us-epg.json
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
