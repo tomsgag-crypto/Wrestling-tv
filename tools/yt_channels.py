@@ -53,6 +53,7 @@ for key, name, handles, minlen, pages in CHANNELS:
         for b in range(0, len(ids), 50):
             for v in api("videos", part="snippet,contentDetails,status", id=",".join(ids[b:b + 50])).get("items", []):
                 if v.get("status", {}).get("privacyStatus") != "public" or v["snippet"].get("liveBroadcastContent") in ("live", "upcoming"): continue
+                if v.get("status", {}).get("embeddable") is False: continue   # played inside Free TV, so it has to allow that
                 if (v["contentDetails"].get("regionRestriction") or {}).get("blocked") and "GB" in v["contentDetails"]["regionRestriction"]["blocked"]: continue
                 m = mins(v["contentDetails"].get("duration"))
                 if m >= minlen and m <= 300: vids.append([v["id"], v["snippet"]["title"], m])

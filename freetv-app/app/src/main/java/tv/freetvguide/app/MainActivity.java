@@ -52,6 +52,7 @@ public class MainActivity extends Activity {
         m.js("window.app && app.zap(" + JSONObject.quote(id) + ")");
         return true;
     }
+    static int followGen = 0;   // bumps to cancel a channel being followed in YouTube
     static String zapList = "[]", pendingZap = null;   // the guide's channels for the player's mini guide; a channel picked there
     static int zapIndex = 0;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -181,6 +182,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         visible = true;
+        followGen++;   // back in Free TV: stop following a movie channel in YouTube
         current = this;
         if (web != null) js("window.app && app.key('resume')");
         if (web != null && pendingZap != null) { String z = pendingZap; pendingZap = null; ui.postDelayed(() -> js("window.app && app.zap(" + org.json.JSONObject.quote(z) + ")"), 300); }
@@ -521,6 +523,32 @@ public class MainActivity extends Activity {
         /** Open a film in the YouTube app (TV app first, then phone app / anything that opens YouTube links). */
         @android.webkit.JavascriptInterface
         public void openYouTube(String id) { openYouTubeAt(id, 0); }
+        /** My Movie Channels: after each film ends, open the next one in YouTube (until you come back to Free TV or leave YouTube).
+         *  json: [[videoId, startSec, endSec, title], ...] in schedule order, the first being the one just opened. */
+        @JavascriptInterface
+        public void followYouTube(String json) {
+            ui.post(() -> {
+                followGen++;
+                final int gen = followGen;
+                try {
+                    org.json.JSONArray a = new org.json.JSONArray(json);
+                    long nowMs = System.currentTimeMillis();
+                    for (int i = 1; i < a.length() && i < 12; i++) {
+                        final org.json.JSONArray x = a.getJSONArray(i);
+                        long at = x.getLong(1) * 1000 - nowMs;
+                        if (at < 0) continue;
+                        ui.postDelayed(() -> {
+                            if (gen != followGen) return;   // stopped (back in Free TV, or another channel picked)
+                            HelperService h = HelperService.running;
+                            // with the remote helper on, only carry on while YouTube is the app on screen
+                            if (h != null && HelperService.lastPkgAt > 0 && !HelperService.lastPkg.contains("youtube")) { followGen++; return; }
+                            Toast.makeText(MainActivity.this, "Next on the channel: " + x.optString(3), Toast.LENGTH_LONG).show();
+                            openYouTubeAt(x.optString(0), 0);
+                        }, at);
+                    }
+                } catch (Exception ignored) { }
+            });
+        }
         /** Open a YouTube video at a point (seconds in). */
         @JavascriptInterface
         public void openYouTubeAt(String id, int secs) {

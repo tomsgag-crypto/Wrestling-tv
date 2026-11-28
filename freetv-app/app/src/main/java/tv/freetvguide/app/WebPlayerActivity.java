@@ -137,6 +137,7 @@ public class WebPlayerActivity extends Activity {
         return new android.webkit.WebResourceResponse(p.type, null, p.code, p.reason, out, new java.io.ByteArrayInputStream(p.body));
     }
     volatile int aheadHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
+    private boolean onYtEmbed() { String u = web == null ? null : web.getUrl(); return u != null && u.contains("youtube.com/embed/"); }
     private boolean watching() { return custom != null || pageFull; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
     /** Opened from a "Sign in" tile: show every page as it is (no loading screen, no player tricks). */
@@ -215,7 +216,7 @@ public class WebPlayerActivity extends Activity {
                     try { ct = Double.parseDouble(parts[parts.length - 2]); paused = "1".equals(parts[parts.length - 1].trim()); } catch (Exception ignored) { }
                     if (ct > 0 && !userPaused && Math.abs(ct - lastCt) < 0.3) stillSecs++; else stillSecs = 0;
                     if (ct >= 0) lastCt = ct;
-                    if (stillSecs >= 5 && now2 - lastLiveReload > (onSky() ? 45000 : 15000)) {   // Sky: as in 2.23.2
+                    if (stillSecs >= 5 && now2 - lastLiveReload > (onSky() ? 45000 : 15000) && !onYtEmbed()) {   // (a YouTube channel moves between videos by itself)   // Sky: as in 2.23.2
                         stillSecs = 0; lastLiveReload = now2;
                         applyQuality(); String tt = getIntent().getStringExtra("title"); cover.setText("Loading " + (tt == null ? "" : tt) + "…");
                         return;

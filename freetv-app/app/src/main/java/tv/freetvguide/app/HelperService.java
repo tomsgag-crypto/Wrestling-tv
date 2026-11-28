@@ -27,6 +27,7 @@ import java.util.Map;
  */
 public class HelperService extends AccessibilityService {
     static HelperService running;
+    static volatile String lastPkg = ""; static volatile long lastPkgAt = 0;   // the app on screen (for following a channel in YouTube)
 
     // the job Free TV gave us
     private static String jobPkg, jobMode, jobProfile;
@@ -65,6 +66,7 @@ public class HelperService extends AccessibilityService {
     }
     private void onEvent(AccessibilityEvent e) {
         CharSequence pkg = e.getPackageName();
+        if (pkg != null && e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !pkg.toString().startsWith("com.android.systemui")) { lastPkg = pkg.toString(); lastPkgAt = System.currentTimeMillis(); }
         if (pkg == null || pkg.toString().equals(getPackageName())) return;
         if (System.currentTimeMillis() < recordUntil) record();
         if (jobPkg != null && System.currentTimeMillis() < jobUntil && jobPkg.contentEquals(pkg)) {

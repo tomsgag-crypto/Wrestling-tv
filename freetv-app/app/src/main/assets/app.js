@@ -2309,8 +2309,19 @@ var app = (function () {
       if (c && c.play === 'tubi') { tubiPlay(c); return; }
       // My Movie Channels: join the film where the channel is up to (or from the start if you picked an earlier one)
       if (c && c.movieCh && (!fp || fp.s <= now)) { var mv = fp || (c.events || []).filter(function (e) { return e.s <= now && e.e > now; })[0];
-        if (mv && Native.openYouTubeAt) { var off = mv.e > now ? Math.max(0, now - mv.s - 60) : 0; toast((off > 120 ? 'Joining ' : 'Starting ') + mv.t + (off > 120 ? ' ' + Math.round(off / 60) + ' mins in' : '')); Native.openYouTubeAt(mv.yt, off); }
-        else if (mv) Native.openYouTube(mv.yt); return; }
+        if (!mv) return;
+        var off = mv.e > now ? Math.max(0, Math.floor(now - mv.s - 30)) : 0, at = (c.events || []).indexOf(mv), next = (c.events || []).slice(at + 1, at + 40);
+        // WWE / WCW channels: played inside Free TV (YouTube's own embedded player), one video after another like a real channel
+        if (/^yc/.test(c.id) && Native.openWeb) {
+          var ids = [mv.yt].concat(next.map(function (e) { return e.yt; })).filter(function (v, i, a) { return a.indexOf(v) === i; });
+          Native.openWeb('https://www.youtube.com/embed/' + mv.yt + '?autoplay=1&rel=0&fs=1&iv_load_policy=3&start=' + off + '&playlist=' + ids.join(','), c.name);
+          return;
+        }
+        // your films: in the YouTube app, and the next one opens when each ends (until you come back to Free TV)
+        toast((off > 120 ? 'Joining ' : 'Starting ') + mv.t + (off > 120 ? ' ' + Math.round(off / 60) + ' mins in' : '') + ' – the next film follows automatically');
+        if (Native.openYouTubeAt) Native.openYouTubeAt(mv.yt, off); else Native.openYouTube(mv.yt);
+        if (Native.followYouTube && mv.e > now) Native.followYouTube(JSON.stringify([[mv.yt, mv.s, mv.e, mv.t]].concat(next.slice(0, 11).map(function (e) { return [e.yt, e.s, e.e, e.t]; }))));
+        return; }
       if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink(c.caze === 'getv' ? 'https://www.youtube.com/@getv/streams' : c.caze === 'goat' ? 'https://www.youtube.com/@canalgoatbr/streams' : 'https://www.youtube.com/@CazeTV/streams'); return; }
       if (c && c.play === 'eu' && (!fp || fp.s <= now) && playPlutoChannel(c.id)) return;
       if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
