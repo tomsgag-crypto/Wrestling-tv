@@ -71,12 +71,16 @@ except Exception as x:
 print("pluto channels", len(pluto))
 # Sling's public channel list: each channel's id, for direct links (watch.sling.com/1/channel/<id>/watch)
 import base64
-sling = {}
+sling, sling4k = {}, {}
 def walk(o):
     if isinstance(o, dict):
         g = o.get("channel_guid") or (o.get("guid") if o.get("call_sign") or o.get("network_affiliate_name") else None)
         nm = o.get("network_affiliate_name") or o.get("title") or o.get("name") or o.get("call_sign")
-        if g and nm and isinstance(nm, str) and len(g) == 32: sling.setdefault(nm.strip(), g)
+        if g and nm and isinstance(nm, str) and len(g) == 32:
+            # the 4K versions (title "USA4K", "FS14K"…) share the channel's name: keep the normal one
+            k4 = "4k" in str(o.get("title") or "").lower() or "4k" in str(o.get("call_sign") or "").lower()
+            nm = nm.strip()
+            if nm not in sling or (sling4k.get(nm) and not k4): sling[nm] = g; sling4k[nm] = k4
         for v in o.values(): walk(v)
     elif isinstance(o, list):
         for v in o: walk(v)
