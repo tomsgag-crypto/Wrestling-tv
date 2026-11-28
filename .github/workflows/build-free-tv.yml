@@ -37,7 +37,7 @@ jobs:
           echo "window.TMDB_KEY = '${TMDB_KEY}';" > app/src/main/assets/config.js
           echo "window.SERPAPI_KEY = '${SERPAPI_KEY}';" >> app/src/main/assets/config.js
           echo "window.WATCHMODE_KEY = '${WATCHMODE_KEY}';" >> app/src/main/assets/config.js
-          if [ -n "$WATCHMODE_KEY" ]; then echo "watchmode check:"; curl -s "https://api.watchmode.com/v1/title/movie-1022789/sources/?regions=GB&apiKey=$WATCHMODE_KEY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d if isinstance(d,dict) else [(x.get('name'),x.get('web_url')) for x in d][:6])" || true; else echo "no WATCHMODE_KEY secret"; fi
+          if [ -n "$WATCHMODE_KEY" ]; then echo "watchmode check:"; curl -s "https://api.watchmode.com/v1/title/movie-1022789/sources/?apiKey=$WATCHMODE_KEY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d if isinstance(d,dict) else [(x.get('name'),x.get('web_url')) for x in d][:6])" || true; else echo "no WATCHMODE_KEY secret"; fi
 
       - name: Use the fixed signing key (so new versions install as updates)
         env:

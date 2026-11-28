@@ -1140,10 +1140,10 @@ var app = (function () {
     if (!key || !id) return Promise.resolve({});
     var c = wmCache[id];
     if (c && Date.now() - c.at < 30 * 86400000) return Promise.resolve(c.L);
-    return getJSON('https://api.watchmode.com/v1/title/' + id + '/sources/?regions=GB&apiKey=' + encodeURIComponent(key)).then(function (list) {
+    return getJSON('https://api.watchmode.com/v1/title/' + id + '/sources/?apiKey=' + encodeURIComponent(key)).then(function (list) {
       var L = {}, MAP = [['disney', /^disney\+?/i, /disneyplus\.com/], ['netflix', /^netflix$/i, /netflix\.com/], ['prime', /^(amazon )?prime video$/i, /primevideo\.com|amazon\./], ['appletv', /^apple tv\+?$/i, /tv\.apple\.com/]];
       (list || []).forEach(function (x) {
-        if (x.region && x.region !== 'GB') return;
+        // the free Watchmode plan only covers some countries; a service's page address is the same everywhere, so any country's link will do
         MAP.forEach(function (m) { if (!L[m[0]] && m[1].test(x.name || '') && m[2].test(x.web_url || '')) L[m[0]] = x.web_url; });
       });
       wmCache[id] = { at: Date.now(), L: L }; save('wmLinks', wmCache);
