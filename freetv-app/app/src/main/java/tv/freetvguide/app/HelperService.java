@@ -60,6 +60,36 @@ public class HelperService extends AccessibilityService {
     @Override public boolean onUnbind(android.content.Intent i) { running = null; return super.onUnbind(i); }
     @Override public void onInterrupt() { }
 
+    // ---------------------------------------------------------------- hold Back to get back to the guide
+    // In an app Free TV opened (YouTube, Tubi, Netflix…): a normal Back press does what it always does;
+    // holding Back for about a second jumps straight back to the Free TV guide.
+    private boolean backDown = false, backDone = false;
+    private final Runnable backHeld = () -> {
+        backDone = true;
+        try {
+            note("back held in " + lastPkg + ": back to the guide");
+            startActivity(new android.content.Intent(this, MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        } catch (Throwable t) { note("guide " + t); }
+    };
+    @Override protected boolean onKeyEvent(android.view.KeyEvent e) {
+        try {
+            if (e.getKeyCode() != android.view.KeyEvent.KEYCODE_BACK) return false;
+            String p = lastPkg == null ? "" : lastPkg;
+            if (MainActivity.current == null || p.isEmpty() || p.equals(getPackageName()) || p.contains("launcher") || p.contains("tvlauncher") || p.contains("settings")) { backDown = false; return false; }
+            if (e.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) { backDown = true; backDone = false; ui.removeCallbacks(backHeld); ui.postDelayed(backHeld, 900); }
+                return true;
+            }
+            if (e.getAction() == android.view.KeyEvent.ACTION_UP) {
+                ui.removeCallbacks(backHeld);
+                boolean wasDown = backDown; backDown = false;
+                if (wasDown && !backDone) performGlobalAction(GLOBAL_ACTION_BACK);   // a normal Back press
+                return wasDown;
+            }
+        } catch (Throwable t) { note("key " + t); }
+        return false;
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
         try { onEvent(e); } catch (Throwable t) { note("error " + t); }
