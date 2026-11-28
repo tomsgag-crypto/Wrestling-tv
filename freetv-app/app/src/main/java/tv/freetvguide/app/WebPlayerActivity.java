@@ -533,6 +533,14 @@ public class WebPlayerActivity extends Activity {
         org.json.JSONObject c = zapArr == null || at < 0 ? null : zapArr.optJSONObject(at);
         hideZap();
         if (c == null) return;
+        // the channel you're already watching: restart it here (the quick fix for buffering), no trip through the guide
+        String curName = getIntent().getStringExtra("title");
+        if (curName != null && curName.equals(c.optString("name"))) {
+            lastLiveReload = System.currentTimeMillis();
+            applyQuality();
+            cover.setText("Restarting " + curName + "…");
+            return;
+        }
         MainActivity.zapIndex = at;
         if (switchHere(c)) return;
         // keep this screen up (with a note) until the new channel opens on top, so the guide never flashes up
