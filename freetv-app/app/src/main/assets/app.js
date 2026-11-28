@@ -703,9 +703,11 @@ var app = (function () {
     if (!SPORTS && !isUS() && primeUCL.length) out.push({ sec: 'Prime Video', id: 'primeucl', name: 'Prime Video Champions League', cat: 'Sports', svc: 'prime', primeLive: true, events: primeUCL });
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (!settings.hide['Sling TV']) slingRows().forEach(function (r) { out.push(r); });
-    if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); });
-    if (!settings.hide['My Movie Channels']) movieChannels('My Movie Channels').forEach(function (r) { out.push(r); });
-    if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); cazeRows(goatList, 'Canal GOAT', 'goat').forEach(function (r) { out.push(r); }); }
+    // the newer extra rows can't stop the guide appearing if one of them goes wrong
+    var extra = function (name, f) { try { f(); } catch (x) { console.log('guide rows failed: ' + name + ' ' + x); } };
+    extra('tubi', function () { if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); }); });
+    extra('movies', function () { if (!settings.hide['My Movie Channels']) movieChannels('My Movie Channels').forEach(function (r) { out.push(r); }); });
+    extra('youtube', function () { if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); cazeRows(goatList, 'Canal GOAT', 'goat').forEach(function (r) { out.push(r); }); } });
     if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
@@ -723,6 +725,10 @@ var app = (function () {
       .map(function (c) { return Object.assign({}, c, { sec: 'Favourites', fav: true }); });
     out.forEach(function (c) { c.fav = settings.favs.indexOf(c.id) >= 0; });
     chans = settings.favOnly && favs.length ? favs : favs.concat(out);
+    // a genre or channel filter that leaves nothing: show everything rather than an empty guide
+    if (!chans.length && (settings.guideType || settings.guideSec) && !buildChans.retry) {
+      settings.guideType = ''; settings.guideSec = ''; saveSettings(); buildChans.retry = 1; buildChans(); buildChans.retry = 0; return;
+    }
     if (gRow >= chans.length) gRow = 0;
   }
   // Where the internet connection appears to be (a US VPN makes it 'US'): Pluto's start-up answer says
@@ -2127,7 +2133,7 @@ var app = (function () {
     $('gTimes').innerHTML = '<div id="gTin">' + th + '</div>';
     if (TOUCH) $('gTimes').innerHTML += '<div id="tNav"><span data-tn="-1">◀</span><span data-tn="0">Now</span><span data-tn="1">▶</span></div>';
     if (!chans.length) {
-      $('rows').innerHTML = '<div class="empty">' + (loading.guide ? '<span class="spinner"></span>Loading the TV guide…' : 'The TV guide couldn\'t be loaded. Press Menu to try again.') + '</div>';
+      $('rows').innerHTML = '<div class="empty">' + (loading.guide ? '<span class="spinner"></span>Loading the TV guide…' : (!(freely.order || []).length ? 'The UK listings didn\'t load. If Surfshark is set to another country, switch it back to the UK. Press Menu to try again.' : 'The TV guide couldn\'t be loaded. Press Menu to try again.')) + '</div>';
       $('gChan').textContent = ''; $('gTitle').textContent = ''; $('gWhen').textContent = ''; $('gDesc').textContent = '';
       return;
     }
