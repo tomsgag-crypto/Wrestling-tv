@@ -1466,7 +1466,7 @@ var app = (function () {
   function movieChannels(sec) {
     if (!buy || !buy.length || !Object.keys(buyMeta).length) return [];
     var films = buy.filter(function (x) { var md = buyMeta[x.id] || {}; return !md.dup && !md.x && md.tm; }).map(function (x) {
-      var md = buyMeta[x.id] || {}; return { yt: x.id, t: (md.t && (md.f || !/[a-z]/i.test(x.title))) ? md.t : x.title, mn: md.mn || 100, md: md };
+      var md = buyMeta[x.id] || {}, yt = String(x.t || x.title || ''); return { yt: x.id, t: (md.t && (md.f || !/[a-z]/i.test(yt))) ? md.t : (yt || md.t || 'Film'), mn: md.mn || 100, md: md };
     });
     films.sort(function (a, b) { return a.yt < b.yt ? -1 : 1; });
     var now = nowSec(), from = now - 6 * 3600, to = now + 8 * 86400, E0 = 1767225600;   // 1 Jan 2026: the schedule's starting point
