@@ -1290,6 +1290,7 @@ public class WebPlayerActivity extends Activity {
                 // and stretched to fill the TV (1080p stutters on the Chromecast)
                 + "<script>var Q=" + ytQ() + ",SUBS=" + ytSubs() + ";var f=document.getElementById('yt'),r=window.devicePixelRatio||1;"
                 + "function size(q){var w=q?q*16/9/r:innerWidth,h=q?q/r:innerHeight;f.style.width=w+'px';f.style.height=h+'px';f.style.transform=q?'scale('+(innerWidth/w)+','+(innerHeight/h)+')':'none';}size(Q);"
+                + "addEventListener('resize',function(){size(Q);});[300,1000,2500,5000].forEach(function(t){setTimeout(function(){size(Q);},t);});"
                 + "window.ftvQuality=function(q){Q=q;size(q);};window.ftvSubs=function(on){SUBS=on;cmd(on?'loadModule':'unloadModule',[on?'captions':'captions']);if(on)cmd('setOption',['captions','track',{languageCode:'en'}]);};"
                 + "function cmd(fn,a){try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:fn,args:a||[]}),'*');}catch(e){}}"
                 + "f.src=f.getAttribute('data-src');function off(){if(SUBS)return;try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['captions']}),'*');"
