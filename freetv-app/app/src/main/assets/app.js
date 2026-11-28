@@ -602,6 +602,7 @@ var app = (function () {
       if (j.caze) { cazeList = j.caze; save('caze', cazeList); }
       if (j.getv) { getvList = j.getv; save('getv', getvList); }
       if (j.goat) { goatList = j.goat; save('goat', goatList); }
+      if (j.ytch && Object.keys(j.ytch).length) { ytChans = j.ytch; save('ytch', ytChans); }
       if (j.sling && Object.keys(j.sling).length) { slingIds = j.sling; save('slingIds', slingIds); }
     }).catch(function () {});
   }
@@ -706,6 +707,7 @@ var app = (function () {
     // the newer extra rows can't stop the guide appearing if one of them goes wrong
     var extra = function (name, f) { try { f(); } catch (x) { console.log('guide rows failed: ' + name + ' ' + x); } };
     extra('tubi', function () { if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); }); });
+    extra('wrestling', function () { if (!settings.hide['Wrestling on YouTube']) ytChannelRows('Wrestling on YouTube').forEach(function (r) { out.push(r); }); });
     extra('movies', function () { if (!settings.hide['My Movie Channels']) movieChannels('My Movie Channels').forEach(function (r) { out.push(r); }); });
     extra('youtube', function () { if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); cazeRows(goatList, 'Canal GOAT', 'goat').forEach(function (r) { out.push(r); }); } });
     if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
@@ -1482,7 +1484,28 @@ var app = (function () {
   /** My Movie Channels: your purchased films as 24/7 channels in the guide, one per genre, played back-to-back on a fixed schedule.
    *  The schedule is worked out from the clock, so it's the same every time you look and OK joins the film where it's "up to". */
   var MOVIE_CH = [['All My Movies', null], ['Action', [28]], ['Comedy', [35]], ['Horror', [27]], ['Sci-Fi', [878]], ['Thriller', [53, 9648]], ['Crime', [80]],
-    ['Drama', [18]], ['Family & Animation', [10751, 16]], ['Fantasy & Adventure', [14, 12]], ['War & Western', [10752, 37]], ['Christmas', 'christmas']];
+    ['Drama', [18]], ['Family & Animation', [10751, 16]], ['Fantasy & Adventure', [14, 12]], ['War & Western', [10752, 37]], ['Christmas', 'christmas'], ['Latest Releases', 'new']];
+  /** Back-to-back schedule for a list of [{yt, t, mn, ...}] (minutes); the same at any moment for the same list. */
+  function loopSchedule(list, seed0, gap, mk) {
+    var now = nowSec(), from = now - 6 * 3600, to = now + 8 * 86400, E0 = 1767225600;
+    var seed = seed0; list = list.map(function (f) { seed = (seed * 9301 + 49297) % 233280; return [seed, f]; }).sort(function (a, b) { return a[0] - b[0]; }).map(function (x) { return x[1]; });
+    var loop = list.reduce(function (a, f) { return a + f.mn * 60 + gap; }, 0);
+    if (!loop) return [];
+    var t = E0 + Math.floor((from - E0) / loop) * loop, i = 0, ev = [];
+    while (t + list[i].mn * 60 + gap < from) { t += list[i].mn * 60 + gap; i = (i + 1) % list.length; }
+    while (t < to) { var f = list[i], e = t + f.mn * 60 + gap; ev.push(mk(f, t, e)); t = e; i = (i + 1) % list.length; }
+    return ev;
+  }
+  /** YouTube channels as 24/7 channels (WWE, WWE Vault, WCW): their longer uploads back to back. */
+  var ytChans = load('ytch') || {};
+  function ytChannelRows(sec) {
+    return Object.keys(ytChans).map(function (k, ci) {
+      var c = ytChans[k], list = (c.v || []).map(function (x) { return { yt: x[0], t: x[1], mn: x[2] }; });
+      if (list.length < 5) return null;
+      var ev = loopSchedule(list, 11 + ci * 97, 0, function (f, s, e) { return { s: s, e: e, t: f.t.replace(/\s*\|\s*WWE.*$/i, ''), sub: c.n + ' · YouTube', desc: f.t, img: 'https://i.ytimg.com/vi/' + f.yt + '/mqdefault.jpg', yt: f.yt }; });
+      return { sec: sec, id: 'yc' + k, name: '📺 ' + c.n, cat: 'Sports', movieCh: 1, events: ev };
+    }).filter(Boolean);
+  }
   function movieChannels(sec) {
     if (!buy || !buy.length || !Object.keys(buyMeta).length) return [];
     var films = buy.filter(function (x) { var md = buyMeta[x.id] || {}; return !md.dup && !md.x && md.tm; }).map(function (x) {
@@ -1493,6 +1516,7 @@ var app = (function () {
     return MOVIE_CH.map(function (ch, ci) {
       var list = films.filter(function (f) {
         if (!ch[1]) return true;
+        if (ch[1] === 'new') return +(f.md.y || 0) >= 2024;
         if (typeof ch[1] === 'string') return (f.md.k || []).some(function (k) { return /^(christmas|christmas (eve|party|horror|carol|present|spirit|movie|magic)|santa claus|santa)$/i.test(k); }) || f.t.toLowerCase().indexOf(ch[1]) >= 0;
         return ch[1].some(function (g) { return (f.md.g || []).indexOf(g) >= 0; });
       });
