@@ -16,6 +16,10 @@ jobs:
         env:
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
         run: python3 tools/caze.py us-epg.json
+      - name: YouTube channels for the guide (WWE, WWE Vault, WCW)
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+        run: python3 tools/yt_channels.py us-epg.json
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
