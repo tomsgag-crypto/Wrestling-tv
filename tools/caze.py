@@ -41,9 +41,6 @@ try:
             sn = v["snippet"]
             out.append([s, s + 2 * 3600 + 900, sn.get("title", ""), (sn.get("description") or "")[:160], v["id"]])
     out.sort()
-    # don't let one stream's slot run into the next
-    for i in range(len(out) - 1):
-        if out[i][1] > out[i + 1][0] and out[i + 1][0] > out[i][0]: out[i][1] = out[i + 1][0]
 except Exception as x:
     print("caze failed", x)
 print("caze streams", len(out))

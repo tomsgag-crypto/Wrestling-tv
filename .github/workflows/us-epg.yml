@@ -1,7 +1,7 @@
 name: US sports listings (Sky Sports TV)
 on:
   schedule:
-    - cron: '17 */6 * * *'
+    - cron: '17 */2 * * *'   # every 2 hours: CazéTV only schedules its streams shortly before
   workflow_dispatch:
 permissions:
   contents: write
