@@ -17,6 +17,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
@@ -91,6 +92,7 @@ public class PlayerActivity extends Activity {
 
         http = new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15000).setReadTimeoutMs(20000);
         player = new ExoPlayer.Builder(this).setMediaSourceFactory(new DefaultMediaSourceFactory(http)).build();
+        applySubs();
         view.setPlayer(player);
         player.addListener(new Player.Listener() {
             @Override public void onPlayerError(PlaybackException e) {
@@ -240,12 +242,31 @@ public class PlayerActivity extends Activity {
         ui.postDelayed(hide, ms);
     }
 
+    // subtitles: off unless you turn them on (remembered)
+    private long lastOk = 0;
+    private boolean subsOn() { return getSharedPreferences("player", MODE_PRIVATE).getBoolean("subs", false); }
+    private void applySubs() {
+        if (player == null) return;
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subsOn()).build());
+    }
+    private void toggleSubs() {
+        boolean on = !subsOn();
+        getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("subs", on).apply();
+        applySubs();
+        android.widget.Toast.makeText(this, on ? "Subtitles on" : "Subtitles off", android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     @Override
     public boolean onKeyDown(int k, KeyEvent e) {
         switch (k) {
             case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_CHANNEL_UP: case KeyEvent.KEYCODE_PAGE_UP: zap(1); return true;
             case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_CHANNEL_DOWN: case KeyEvent.KEYCODE_PAGE_DOWN: zap(-1); return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_INFO:
+            case KeyEvent.KEYCODE_CAPTIONS: toggleSubs(); return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
+                // OK twice in a row (while the channel info is showing): subtitles on/off
+                if (System.currentTimeMillis() - lastOk < 6000) { lastOk = 0; toggleSubs(); return true; }
+                lastOk = System.currentTimeMillis(); updateInfo(); showInfo(6000); return true;
+            case KeyEvent.KEYCODE_INFO:
             case KeyEvent.KEYCODE_DPAD_LEFT: case KeyEvent.KEYCODE_DPAD_RIGHT:
                 updateInfo(); showInfo(6000); return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: case KeyEvent.KEYCODE_MEDIA_PAUSE: case KeyEvent.KEYCODE_MEDIA_PLAY:
