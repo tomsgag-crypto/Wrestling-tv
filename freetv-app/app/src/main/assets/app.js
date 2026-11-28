@@ -720,7 +720,7 @@ var app = (function () {
     out.forEach(function (c) { c.type = chanType(c); });
     if (settings.guideType) out = out.filter(function (c) { return c.type === settings.guideType; });
     if (settings.guideSec === 'Europe TV') settings.guideSec = '';
-    if (/^(UK|US) TV$/.test(settings.guideSec || '')) { var gs = out.filter(function (c) { return secGroup(c.sec) === settings.guideSec; }); if (gs.length) out = gs; }
+    if (/^(UK TV|US TV|YouTube)$/.test(settings.guideSec || '')) { var gs = out.filter(function (c) { return secGroup(c.sec) === settings.guideSec; }); if (gs.length) out = gs; }
     else if (settings.guideSec && out.some(function (c) { return c.sec === settings.guideSec; })) out = out.filter(function (c) { return c.sec === settings.guideSec; });
     // favourites at the top (or on their own)
     var favs = settings.favs.map(function (id) { return out.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean)
@@ -837,7 +837,8 @@ var app = (function () {
     });
   }
   /** US channels sit under "US TV", everything else under "UK TV". */
-  function secGroup(sec) { return /\(US\)/.test(sec) ? 'US TV' : sec === 'Europe TV' ? 'Europe TV' : 'UK TV'; }
+  var YT_SECS = { 'Wrestling on YouTube': 1, 'CazéTV (Brazil)': 1, 'My Movie Channels': 1 };
+  function secGroup(sec) { return /\(US\)/.test(sec) ? 'US TV' : YT_SECS[sec] ? 'YouTube' : 'UK TV'; }
   /** Read the Virgin package by itself when it's never been read or is over 2 days old (at most once every 6 hours). */
   function autoVirginSync() {
     if (!settings.virgin || !window.Native || !Native.virginSyncQuiet) return;
@@ -2166,7 +2167,7 @@ var app = (function () {
     dh += '<div class="day opts' + (settings.guideType ? ' on' : '') + (gZone === 'days' && zone === 'main' && gDay === DAYS ? ' sel' : '') + '" data-day="opts">▾ Genre: ' + esc(settings.guideType || 'All') + '</div>';
     dh += '<div class="day sec on' + (gZone === 'days' && zone === 'main' && gDay === DAYS + 1 ? ' sel' : '') + '" data-day="src">▾ Channels: ' + esc(settings.guideSec || 'All') + (nHide ? ' (' + nHide + ' hidden)' : '') + '</div>';
     // country buttons: everything, UK TV only, US TV only
-    if (!SPORTS) [['', 'All'], ['UK TV', 'UK TV'], ['US TV', 'US TV']].forEach(function (x, i) {
+    if (!SPORTS) [['', 'All'], ['UK TV', 'UK TV'], ['US TV', 'US TV'], ['YouTube', 'YouTube']].forEach(function (x, i) {
       dh += '<div class="day' + ((settings.guideSec || '') === x[0] ? ' on' : '') + (gZone === 'days' && zone === 'main' && gDay === DAYS + 2 + i ? ' sel' : '') + '" data-day="c' + i + '">' + x[1] + '</div>';
     });
     $('gDays').innerHTML = dh;
@@ -2271,10 +2272,10 @@ var app = (function () {
     if (gZone === 'days') {
       if (k === 'up') { zone = 'tabs'; render(); return; }
       // the chips: day drop-down (0), Filter & options (DAYS), Channels (DAYS + 1)
-      var CH = SPORTS ? [0, DAYS, DAYS + 1] : [0, DAYS, DAYS + 1, DAYS + 2, DAYS + 3, DAYS + 4], ci = Math.max(0, CH.indexOf(gDay));
+      var CH = SPORTS ? [0, DAYS, DAYS + 1] : [0, DAYS, DAYS + 1, DAYS + 2, DAYS + 3, DAYS + 4, DAYS + 5], ci = Math.max(0, CH.indexOf(gDay));
       if (k === 'left') gDay = CH[Math.max(0, ci - 1)];
       else if (k === 'right') gDay = CH[Math.min(CH.length - 1, ci + 1)];
-      else if (k === 'ok' && gDay >= DAYS + 2) { setSource(['', 'UK TV', 'US TV', 'Europe TV'][gDay - DAYS - 2]); return; }
+      else if (k === 'ok' && gDay >= DAYS + 2) { setSource(['', 'UK TV', 'US TV', 'YouTube'][gDay - DAYS - 2]); return; }
       else if (k === 'ok' && gDay === DAYS) { genreGuideMenu(); return; }
       else if (k === 'ok' && gDay > DAYS) { sourceMenu(); return; }
       else if (k === 'ok') { dayMenu(); return; }
@@ -3301,7 +3302,7 @@ var app = (function () {
     if (tn) { shiftTime(+tn.getAttribute('data-tn')); return; }
     var dy = e.target.closest('[data-day]');
     if (dy) { zone = 'main'; if (dy.getAttribute('data-day') === 'opts') { genreGuideMenu(); return; }
-      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } var cy = /^c(\d)$/.exec(dy.getAttribute('data-day') || ''); if (cy) { setSource(['', 'UK TV', 'US TV', 'Europe TV'][+cy[1]]); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
+      if (dy.getAttribute('data-day') === 'src') { sourceMenu(); return; } if (dy.getAttribute('data-day') === 'pick') { dayMenu(); return; } var cy = /^c(\d)$/.exec(dy.getAttribute('data-day') || ''); if (cy) { setSource(['', 'UK TV', 'US TV', 'YouTube'][+cy[1]]); return; } gZone = 'rows'; goDay(+dy.getAttribute('data-day')); render(); return; }
     var sc = e.target.closest('[data-s]');
     if (sc) { zone = 'main'; var sv = sc.getAttribute('data-s'); if (sv === 'g') { genreMenu(); return; } if (sv === 'z') { if (curCat()) catMenu(curCat()); return; } if (sv === 'o') { optionsMenu(); return; } if (sv === 'q') { odSearch(); return; } if (sv === 'a') { if (odQ && view === 'ondemand') { odSearchRun(''); return; } appMenu(); return; } odZone = 'cats'; pickSrc(+sv); odChip = odSrc; render(); return; }
     if (e.target.closest('#alert')) { $('alert').classList.remove('show'); return; }
