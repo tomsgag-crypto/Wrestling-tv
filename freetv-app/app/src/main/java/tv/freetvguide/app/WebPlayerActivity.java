@@ -138,8 +138,30 @@ public class WebPlayerActivity extends Activity {
     }
     volatile int aheadHits = 0;   // Sky's page player stretched to fill the screen (instead of TV full screen)
     private boolean ytEmbed = false;
+    // YouTube channels: subtitles and picture quality (Left opens the choices; remembered)
+    private int ytQ() { return getSharedPreferences("player", MODE_PRIVATE).getInt("ytQ", 720); }
+    private boolean ytSubs() { return getSharedPreferences("player", MODE_PRIVATE).getBoolean("ytSubs", false); }
+    private void ytMenu() {
+        final int q = ytQ(); final boolean sb = ytSubs();
+        final int[] Qs = { 0, 1080, 720, 480, 360 };
+        String[] items = new String[Qs.length + 1];
+        items[0] = sb ? "Subtitles: ON  (OK to turn off)" : "Subtitles: OFF  (OK to turn on)";
+        for (int i = 0; i < Qs.length; i++) items[i + 1] = (Qs[i] == q ? "✓ " : "   ") + "Picture: " + (Qs[i] == 0 ? "Auto (YouTube decides)" : Qs[i] + "p") + (Qs[i] == 720 ? "  – smoothest on this TV" : "");
+        new android.app.AlertDialog.Builder(this).setTitle("YouTube options").setItems(items, (d, w) -> {
+            if (w == 0) {
+                getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("ytSubs", !sb).apply();
+                web.evaluateJavascript("window.ftvSubs&&ftvSubs(" + (!sb) + ")", null);
+                android.widget.Toast.makeText(this, !sb ? "Subtitles on" : "Subtitles off", android.widget.Toast.LENGTH_SHORT).show();
+            } else {
+                int nq = Qs[w - 1];
+                getSharedPreferences("player", MODE_PRIVATE).edit().putInt("ytQ", nq).apply();
+                web.evaluateJavascript("window.ftvQuality&&ftvQuality(" + nq + ")", null);
+                android.widget.Toast.makeText(this, "Picture: " + (nq == 0 ? "Auto" : nq + "p") + " – it changes within a few seconds", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        }).show();
+    }
     private boolean onYtEmbed() { return ytEmbed; }
-    private boolean watching() { return custom != null || pageFull; }
+    private boolean watching() { return custom != null || pageFull || ytEmbed; }
     private android.content.SharedPreferences prefs() { return getSharedPreferences("player", MODE_PRIVATE); }
     /** Opened from a "Sign in" tile: show every page as it is (no loading screen, no player tricks). */
     private boolean signIn() { String t = getIntent().getStringExtra("title"); return t != null && t.toLowerCase().endsWith("sign in"); }
@@ -1259,15 +1281,18 @@ public class WebPlayerActivity extends Activity {
             // so the player sits in a small page of our own, given a website address to come from
             ytEmbed = true;
             String base = "https://tomsgag-crypto.github.io/freetv/";
-            String src = start + "&cc_load_policy=0&enablejsapi=1&origin=" + android.net.Uri.encode("https://tomsgag-crypto.github.io") + "&widget_referrer=" + android.net.Uri.encode(base);
+            String src = start + "&cc_load_policy=" + (ytSubs() ? 1 : 0) + "&enablejsapi=1&origin=" + android.net.Uri.encode("https://tomsgag-crypto.github.io") + "&widget_referrer=" + android.net.Uri.encode(base);
             String html = "<!DOCTYPE html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><meta name=referrer content='strict-origin-when-cross-origin'></head>"
                 + "<body style='margin:0;background:#000;overflow:hidden'><iframe data-src='" + src.replace("'", "%27") + "' style='position:fixed;left:0;top:0;width:100vw;height:100vh;border:0;transform-origin:0 0'"
                 + " allow='autoplay; encrypted-media; fullscreen; picture-in-picture' allowfullscreen referrerpolicy='strict-origin-when-cross-origin' id=yt></iframe>"
                 // subtitles off: ask the player to drop its captions, now and whenever a new video starts
                 // 720p: YouTube picks the picture size from the player's size on screen, so the player is made 1280x720 real pixels
                 // and stretched to fill the TV (1080p stutters on the Chromecast)
-                + "<script>var f=document.getElementById('yt'),r=window.devicePixelRatio||1,w=1280/r,h=720/r;f.style.width=w+'px';f.style.height=h+'px';"
-                + "f.style.transform='scale('+(innerWidth/w)+','+(innerHeight/h)+')';f.src=f.getAttribute('data-src');function off(){try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['captions']}),'*');"
+                + "<script>var Q=" + ytQ() + ",SUBS=" + ytSubs() + ";var f=document.getElementById('yt'),r=window.devicePixelRatio||1;"
+                + "function size(q){var w=q?q*16/9/r:innerWidth,h=q?q/r:innerHeight;f.style.width=w+'px';f.style.height=h+'px';f.style.transform=q?'scale('+(innerWidth/w)+','+(innerHeight/h)+')':'none';}size(Q);"
+                + "window.ftvQuality=function(q){Q=q;size(q);};window.ftvSubs=function(on){SUBS=on;cmd(on?'loadModule':'unloadModule',[on?'captions':'captions']);if(on)cmd('setOption',['captions','track',{languageCode:'en'}]);};"
+                + "function cmd(fn,a){try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:fn,args:a||[]}),'*');}catch(e){}}"
+                + "f.src=f.getAttribute('data-src');function off(){if(SUBS)return;try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['captions']}),'*');"
                 + "f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['cc']}),'*');}catch(e){}}"
                 + "f.addEventListener('load',function(){f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1}),'*');});setInterval(off,3000);"
                 + "addEventListener('message',function(m){try{var d=JSON.parse(m.data);if(d.event==='onStateChange'||(d.info&&d.info.playerState===1))off();}catch(e){}});</script></body></html>";
@@ -1323,7 +1348,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (watching() && (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (!onSky()) adMenu(); }   // Sky: no options menu
+                if (k == KeyEvent.KEYCODE_DPAD_LEFT) { if (ytEmbed) ytMenu(); else if (!onSky()) adMenu(); }   // Sky: no options menu
                 else { showStats = !showStats; stats.setVisibility(showStats ? View.VISIBLE : View.GONE); if (showStats) stats.bringToFront(); }
             }
             return true;
