@@ -1261,10 +1261,13 @@ public class WebPlayerActivity extends Activity {
             String base = "https://tomsgag-crypto.github.io/freetv/";
             String src = start + "&cc_load_policy=0&enablejsapi=1&origin=" + android.net.Uri.encode("https://tomsgag-crypto.github.io") + "&widget_referrer=" + android.net.Uri.encode(base);
             String html = "<!DOCTYPE html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><meta name=referrer content='strict-origin-when-cross-origin'></head>"
-                + "<body style='margin:0;background:#000;overflow:hidden'><iframe src='" + src.replace("'", "%27") + "' style='position:fixed;left:0;top:0;width:100vw;height:100vh;border:0'"
+                + "<body style='margin:0;background:#000;overflow:hidden'><iframe data-src='" + src.replace("'", "%27") + "' style='position:fixed;left:0;top:0;width:100vw;height:100vh;border:0;transform-origin:0 0'"
                 + " allow='autoplay; encrypted-media; fullscreen; picture-in-picture' allowfullscreen referrerpolicy='strict-origin-when-cross-origin' id=yt></iframe>"
                 // subtitles off: ask the player to drop its captions, now and whenever a new video starts
-                + "<script>var f=document.getElementById('yt');function off(){try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['captions']}),'*');"
+                // 720p: YouTube picks the picture size from the player's size on screen, so the player is made 1280x720 real pixels
+                // and stretched to fill the TV (1080p stutters on the Chromecast)
+                + "<script>var f=document.getElementById('yt'),r=window.devicePixelRatio||1,w=1280/r,h=720/r;f.style.width=w+'px';f.style.height=h+'px';"
+                + "f.style.transform='scale('+(innerWidth/w)+','+(innerHeight/h)+')';f.src=f.getAttribute('data-src');function off(){try{f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['captions']}),'*');"
                 + "f.contentWindow.postMessage(JSON.stringify({event:'command',func:'unloadModule',args:['cc']}),'*');}catch(e){}}"
                 + "f.addEventListener('load',function(){f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1}),'*');});setInterval(off,3000);"
                 + "addEventListener('message',function(m){try{var d=JSON.parse(m.data);if(d.event==='onStateChange'||(d.info&&d.info.playerState===1))off();}catch(e){}});</script></body></html>";
