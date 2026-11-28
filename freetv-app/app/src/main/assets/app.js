@@ -600,6 +600,7 @@ var app = (function () {
       if (j.pluto && j.pluto.length) usPluto = j.pluto;
       if (j.tubi && j.tubi.length) usTubi = j.tubi;
       if (j.caze) { cazeList = j.caze; save('caze', cazeList); }
+      if (j.getv) { getvList = j.getv; save('getv', getvList); }
       if (j.sling && Object.keys(j.sling).length) { slingIds = j.sling; save('slingIds', slingIds); }
     }).catch(function () {});
   }
@@ -702,7 +703,7 @@ var app = (function () {
     // US subscriptions you watch on their websites (only when the connection is in the US, e.g. through a VPN)
     if (!settings.hide['Sling TV']) slingRows().forEach(function (r) { out.push(r); });
     if (!settings.hide['Tubi']) tubiRows().forEach(function (r) { out.push(r); });
-    if (!settings.hide['CazéTV (Brazil)']) cazeRows().forEach(function (r) { out.push(r); });
+    if (!settings.hide['CazéTV (Brazil)']) { cazeRows().forEach(function (r) { out.push(r); }); cazeRows(getvList, 'GE TV', 'getv').forEach(function (r) { out.push(r); }); }
     if (!settings.hide['Pluto TV (US)'] && !isUS()) plutoUSRows().forEach(function (r) { out.push(r); });
     if (isUS()) US_WEB.forEach(function (w) {
       if (settings.hide[w.sec.replace(' (US)', '')]) return;
@@ -775,16 +776,17 @@ var app = (function () {
   /** Tubi's free live channels (US connection, no login): played in Free TV's player. */
   var tubiUrls = load('tubiUrls') || { at: 0, u: {} };
   /** CazéTV (Brazil): its live and scheduled YouTube streams, one row per overlapping stream. OK opens the stream in YouTube. */
-  var cazeList = load('caze') || [];
-  function cazeRows() {
+  var cazeList = load('caze') || [], getvList = load('getv') || [];
+  function cazeRows(list, label, idp) {
+    list = list || cazeList; label = label || 'CazéTV'; idp = idp || 'caze';
     var nowS = nowSec(), lanes = [];
-    cazeList.filter(function (x) { return x[1] > nowS - 86400; }).forEach(function (x) {
-      var ev = { s: x[0], e: x[1], t: x[2].replace(/^AO VIVO( \(SOM AMBIENTE\))?:\s*/i, ''), sub: 'CazéTV · YouTube (Brazil)', desc: x[3] || '', img: '', yt: x[4] };
+    list.filter(function (x) { return x[1] > nowS - 86400; }).forEach(function (x) {
+      var ev = { s: x[0], e: x[1], t: x[2].replace(/^AO VIVO( \(SOM AMBIENTE\))?:\s*/i, '').replace(/\s*\|\s*(ge tv|sportv)\s*$/i, ''), sub: label + ' · YouTube (Brazil)', desc: x[3] || '', img: '', yt: x[4] };
       var L = lanes.filter(function (l) { return l[l.length - 1].e <= ev.s; })[0];
       if (L) L.push(ev); else lanes.push([ev]);
     });
     if (!lanes.length) lanes.push([]);
-    return lanes.map(function (ev, i) { return { sec: 'CazéTV (Brazil)', id: 'caze' + i, name: 'CazéTV' + (i ? ' ' + (i + 1) : ''), cat: 'Sports', caze: 1, events: ev }; });
+    return lanes.map(function (ev, i) { return { sec: 'CazéTV (Brazil)', id: idp + i, name: label + (i ? ' ' + (i + 1) : ''), cat: 'Sports', caze: idp, events: ev }; });
   }
   function tubiRows() {
     return usTubi.map(function (c) {
@@ -2164,7 +2166,7 @@ var app = (function () {
       if (b5 && window.Native && Native.openWebPick && (!fp || (fp.s <= now + 300 && fp.e > now))) { Native.openWebPick('https://www.channel5.com/live', c.name, b5); return; }
       if (c && c.appK) { toast('Opening ' + SVC[c.appK].name + '…'); openIn(c.appK, c.web || '', '"' + c.name.replace(/ \((Sling|US)\)$/, '') + '"'); return; }
       if (c && c.play === 'tubi') { tubiPlay(c); return; }
-      if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink('https://www.youtube.com/@CazeTV/streams'); return; }
+      if (c && c.caze) { var cv = (fp && fp.yt) ? fp : (c.events || []).filter(function (e) { return e.s <= now + 1800 && e.e > now; })[0]; if (cv && cv.yt && Native.openYouTube) Native.openYouTube(cv.yt); else if (Native.openLink) Native.openLink(c.caze === 'getv' ? 'https://www.youtube.com/@getv/streams' : 'https://www.youtube.com/@CazeTV/streams'); return; }
       if (c && c.play === 'eu' && (!fp || fp.s <= now) && playPlutoChannel(c.id)) return;
       if (c && c.vpn && c.web) { if (c.pick && Native.openWebPick) Native.openWebPick(c.web, c.name, c.pick); else Native.openWeb(c.web, c.name); return; }
       if (c && c.web) { Native.openWeb(c.web, c.name); return; }
